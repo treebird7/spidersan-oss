@@ -104,7 +104,8 @@ export class SupabaseStorage implements StorageAdapter {
             files_changed: branch.files,
             state: branch.status || 'active',
             description: branch.description,
-            created_by_agent: branch.agent,
+            created_by_agent: branch.agent || 'unknown',
+            created_by_session: branch.agent || 'cli-session',
             parent_branch: 'main',
         };
 

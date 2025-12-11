@@ -1,17 +1,11 @@
-/**
- * spidersan list
- * 
- * List all registered branches.
- */
-
 import { Command } from 'commander';
-import { LocalStorage } from '../storage/index.js';
+import { getStorage } from '../storage/index.js';
 
 export const listCommand = new Command('list')
     .description('List all registered branches')
     .option('--json', 'Output as JSON')
     .action(async (options) => {
-        const storage = new LocalStorage();
+        const storage = await getStorage();
 
         if (!await storage.isInitialized()) {
             console.error('❌ Spidersan not initialized. Run: spidersan init');
