@@ -6,12 +6,20 @@
  */
 
 import { Command } from 'commander';
-import { initCommand } from '../commands/init.js';
-import { registerCommand } from '../commands/register.js';
-import { listCommand } from '../commands/list.js';
-import { conflictsCommand } from '../commands/conflicts.js';
-import { mergeOrderCommand } from '../commands/merge-order.js';
-import { readyCheckCommand } from '../commands/ready-check.js';
+import {
+    initCommand,
+    registerCommand,
+    listCommand,
+    conflictsCommand,
+    mergeOrderCommand,
+    readyCheckCommand,
+    dependsCommand,
+    staleCommand,
+    cleanupCommand,
+    abandonCommand,
+    mergedCommand,
+    syncCommand,
+} from '../commands/index.js';
 
 const program = new Command();
 
@@ -20,12 +28,20 @@ program
     .description('🕷️ Branch coordination for AI coding agents')
     .version('0.1.0');
 
-// Free tier commands
+// Core commands (Free tier)
 program.addCommand(initCommand);
 program.addCommand(registerCommand);
 program.addCommand(listCommand);
 program.addCommand(conflictsCommand);
 program.addCommand(mergeOrderCommand);
 program.addCommand(readyCheckCommand);
+
+// Branch lifecycle
+program.addCommand(dependsCommand);
+program.addCommand(staleCommand);
+program.addCommand(cleanupCommand);
+program.addCommand(abandonCommand);
+program.addCommand(mergedCommand);
+program.addCommand(syncCommand);
 
 program.parse();
