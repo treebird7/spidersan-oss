@@ -1,0 +1,120 @@
+{
+    "$schema": "https://json.schemastore.org/spidersanrc.json",
+    "title": "Spidersan Configuration",
+    "type": "object",
+    "properties": {
+        "readyCheck": {
+            "type": "object",
+            "properties": {
+                "enableWipDetection": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable WIP marker detection"
+                },
+                "wipPatterns": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "TODO",
+                        "FIXME",
+                        "WIP",
+                        "HACK",
+                        "XXX"
+                    ],
+                    "description": "Patterns to detect as work-in-progress"
+                },
+                "excludeFiles": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "tests/**",
+                        "*.test.js",
+                        "*.test.ts",
+                        "*.md",
+                        "**/docs/**"
+                    ],
+                    "description": "Glob patterns to exclude from WIP detection"
+                },
+                "enableExperimentalDetection": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Detect experimental paths/files"
+                },
+                "experimentalPatterns": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "experimental/",
+                        "test-"
+                    ],
+                    "description": "Patterns to flag as experimental"
+                },
+                "enableBuildCheck": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Run build check before ready-check passes"
+                }
+            }
+        },
+        "conflicts": {
+            "type": "object",
+            "properties": {
+                "highSeverityPatterns": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "package.json$",
+                        "migrations/",
+                        "\\.env",
+                        "middleware\\.",
+                        "route\\.ts$"
+                    ],
+                    "description": "File patterns that indicate high severity conflicts"
+                },
+                "mediumSeverityPatterns": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "components/ui/",
+                        "lib/",
+                        "hooks/",
+                        "utils/"
+                    ],
+                    "description": "File patterns that indicate medium severity conflicts"
+                }
+            }
+        },
+        "storage": {
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "local",
+                        "supabase"
+                    ],
+                    "default": "local",
+                    "description": "Storage backend to use"
+                },
+                "supabaseUrl": {
+                    "type": "string",
+                    "description": "Supabase project URL (or set SUPABASE_URL env var)"
+                },
+                "supabaseKey": {
+                    "type": "string",
+                    "description": "Supabase anon/service key (or set SUPABASE_KEY env var)"
+                }
+            }
+        }
+    }
+}
