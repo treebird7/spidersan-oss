@@ -1,3 +1,4 @@
-export { StorageAdapter, Branch, BranchRegistry } from './adapter.js';
-export { LocalStorage } from './local.js';
-export { SupabaseStorage } from './supabase.js';
+export * from './adapter.js';
+export * from './local.js';
+export * from './supabase.js';
+export * from './factory.js';
