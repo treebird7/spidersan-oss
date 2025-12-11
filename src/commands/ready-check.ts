@@ -2,14 +2,15 @@
  * spidersan ready-check
  * 
  * Verify branch is ready to merge (no WIP markers, no conflicts).
+ * Uses .spidersanrc config for customizable patterns.
  */
 
 import { Command } from 'commander';
 import { execSync } from 'child_process';
 import { readFile } from 'fs/promises';
 import { LocalStorage } from '../storage/index.js';
-
-const DEFAULT_WIP_PATTERNS = ['TODO', 'FIXME', 'WIP', 'XXX', 'HACK', '@todo'];
+import { loadConfig, type SpidersanConfig } from '../lib/config.js';
+import { minimatch } from 'minimatch';
 
 function getCurrentBranch(): string {
     try {
@@ -21,7 +22,6 @@ function getCurrentBranch(): string {
 
 function getChangedFiles(): string[] {
     try {
-        // Get files changed vs main branch
         const diff = execSync('git diff --name-only main...HEAD 2>/dev/null || git diff --name-only HEAD~1', {
             encoding: 'utf-8'
         });
@@ -31,12 +31,18 @@ function getChangedFiles(): string[] {
     }
 }
 
+function shouldExcludeFile(file: string, excludePatterns: string[]): boolean {
+    return excludePatterns.some(pattern => minimatch(file, pattern));
+}
+
 export const readyCheckCommand = new Command('ready-check')
     .description('Verify branch is ready to merge')
     .option('--strict', 'Fail on any WIP markers')
     .option('--json', 'Output as JSON')
+    .option('--skip-wip', 'Skip WIP detection')
     .action(async (options) => {
         const storage = new LocalStorage();
+        const config = await loadConfig();
 
         if (!await storage.isInitialized()) {
             console.error('❌ Spidersan not initialized. Run: spidersan init');
@@ -49,26 +55,49 @@ export const readyCheckCommand = new Command('ready-check')
 
         const issues: Array<{ type: string; file: string; line?: number; pattern?: string }> = [];
 
-        // Check for WIP markers in changed files
-        for (const file of changedFiles) {
-            try {
-                const content = await readFile(file, 'utf-8');
-                const lines = content.split('\n');
+        // Check for WIP markers (if enabled and not skipped)
+        if (config.readyCheck.enableWipDetection && !options.skipWip) {
+            for (const file of changedFiles) {
+                // Skip excluded files
+                if (shouldExcludeFile(file, config.readyCheck.excludeFiles)) {
+                    continue;
+                }
 
-                lines.forEach((line, i) => {
-                    for (const pattern of DEFAULT_WIP_PATTERNS) {
-                        if (line.includes(pattern)) {
+                try {
+                    const content = await readFile(file, 'utf-8');
+                    const lines = content.split('\n');
+
+                    lines.forEach((line, i) => {
+                        for (const pattern of config.readyCheck.wipPatterns) {
+                            // Case-insensitive match
+                            if (line.toUpperCase().includes(pattern.toUpperCase())) {
+                                issues.push({
+                                    type: 'wip',
+                                    file,
+                                    line: i + 1,
+                                    pattern,
+                                });
+                            }
+                        }
+                    });
+                } catch {
+                    // File might not exist (deleted)
+                }
+            }
+
+            // Check for experimental patterns
+            if (config.readyCheck.enableExperimentalDetection) {
+                for (const file of changedFiles) {
+                    for (const pattern of config.readyCheck.experimentalPatterns) {
+                        if (file.includes(pattern)) {
                             issues.push({
-                                type: 'wip',
+                                type: 'experimental',
                                 file,
-                                line: i + 1,
                                 pattern,
                             });
                         }
                     }
-                });
-            } catch {
-                // File might not exist (deleted)
+                }
             }
         }
 
@@ -90,6 +119,10 @@ export const readyCheckCommand = new Command('ready-check')
             ready: issues.length === 0 && conflicts.length === 0,
             issues,
             conflicts,
+            config: {
+                wipDetection: config.readyCheck.enableWipDetection,
+                patternsChecked: config.readyCheck.wipPatterns.length,
+            },
         };
 
         if (options.json) {
@@ -100,14 +133,27 @@ export const readyCheckCommand = new Command('ready-check')
         console.log(`🕷️ Ready Check: ${branchName}\n`);
 
         if (issues.length > 0) {
-            console.log(`⚠️  Found ${issues.length} WIP marker(s):\n`);
-            for (const issue of issues.slice(0, 10)) {
-                console.log(`   ${issue.file}:${issue.line} - ${issue.pattern}`);
+            const wipIssues = issues.filter(i => i.type === 'wip');
+            const expIssues = issues.filter(i => i.type === 'experimental');
+
+            if (wipIssues.length > 0) {
+                console.log(`⚠️  Found ${wipIssues.length} WIP marker(s):\n`);
+                for (const issue of wipIssues.slice(0, 10)) {
+                    console.log(`   ${issue.file}:${issue.line} - ${issue.pattern}`);
+                }
+                if (wipIssues.length > 10) {
+                    console.log(`   ... and ${wipIssues.length - 10} more`);
+                }
+                console.log('');
             }
-            if (issues.length > 10) {
-                console.log(`   ... and ${issues.length - 10} more`);
+
+            if (expIssues.length > 0) {
+                console.log(`⚠️  Found ${expIssues.length} experimental file(s):\n`);
+                for (const issue of expIssues) {
+                    console.log(`   ${issue.file}`);
+                }
+                console.log('');
             }
-            console.log('');
         }
 
         if (conflicts.length > 0) {
@@ -118,6 +164,7 @@ export const readyCheckCommand = new Command('ready-check')
             console.log('✅ Branch is ready to merge!');
         } else {
             console.log('❌ Branch is NOT ready to merge.');
+            console.log('   Tip: Use --skip-wip to bypass WIP detection');
             if (options.strict) {
                 process.exit(1);
             }
