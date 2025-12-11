@@ -1,0 +1,42 @@
+{
+    "name": "spidersan",
+    "version": "0.1.0",
+    "description": "Branch coordination for AI coding agents",
+    "main": "src/index.js",
+    "bin": {
+        "spidersan": "./bin/spidersan.js"
+    },
+    "scripts": {
+        "start": "node bin/spidersan.js",
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "keywords": [
+        "ai",
+        "agents",
+        "git",
+        "branch",
+        "coordination",
+        "merge",
+        "conflicts",
+        "claude",
+        "cursor",
+        "copilot",
+        "mcp"
+    ],
+    "author": "treebird7",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/treebird7/Spidersan.git"
+    },
+    "bugs": {
+        "url": "https://github.com/treebird7/Spidersan/issues"
+    },
+    "homepage": "https://github.com/treebird7/Spidersan#readme",
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "dependencies": {
+        "commander": "^12.0.0"
+    }
+}
