@@ -4,12 +4,13 @@
 
 Go to: **GitHub repo → Settings → Secrets and variables → Actions → New repository secret**
 
-### For Supabase Migrations
+### For Supabase Migrations (using Supabase CLI)
 
 | Secret Name | Description | Where to Get |
 |-------------|-------------|--------------|
-| `SUPABASE_URL` | Spidersan's Supabase project URL | Supabase Dashboard → Settings → API → Project URL |
-| `SUPABASE_KEY` | Supabase anon/public key | Supabase Dashboard → Settings → API → anon key |
+| `SUPABASE_URL` | Project URL | Dashboard → Settings → API |
+| `SUPABASE_ACCESS_TOKEN` | Personal access token | supabase.com/dashboard/account/tokens |
+| `SUPABASE_DB_PASSWORD` | Database password | Dashboard → Settings → Database |
 
 ### For npm Publishing
 

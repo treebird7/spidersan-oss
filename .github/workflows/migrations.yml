@@ -6,15 +6,6 @@ on:
     paths:
       - 'migrations/*.sql'
   workflow_dispatch:
-    inputs:
-      migration_file:
-        description: 'Specific migration file to run (optional)'
-        required: false
-        type: string
-
-env:
-  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-  SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
 
 jobs:
   apply-migrations:
@@ -22,65 +13,33 @@ jobs:
     
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
       
-      - name: Check for Supabase credentials
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      
+      - name: Check secrets
         run: |
-          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
-            echo "❌ SUPABASE_URL and SUPABASE_KEY secrets are required"
-            echo "   Go to GitHub repo Settings → Secrets → Actions"
+          if [ -z "${{ secrets.SUPABASE_URL }}" ]; then
+            echo "❌ SUPABASE_URL secret required"
             exit 1
           fi
-          echo "✅ Supabase credentials found"
+          echo "✅ Secrets configured"
       
-      - name: Get changed migrations
-        id: changed
+      - name: Link to project
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.migration_file }}" ]; then
-            echo "files=${{ inputs.migration_file }}" >> $GITHUB_OUTPUT
-          else
-            CHANGED=$(git diff --name-only HEAD~1 HEAD | grep '^migrations/.*\.sql$' || true)
-            echo "files=$CHANGED" >> $GITHUB_OUTPUT
-          fi
+          supabase link --project-ref $(echo "${{ secrets.SUPABASE_URL }}" | sed 's|https://||' | sed 's|.supabase.co||')
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       
-      - name: Apply migrations
-        if: steps.changed.outputs.files != ''
+      - name: Push migrations
+        run: supabase db push
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      
+      - name: Summary
         run: |
-          echo "📦 Migrations to apply:"
-          echo "${{ steps.changed.outputs.files }}"
-          
-          for file in ${{ steps.changed.outputs.files }}; do
-            echo ""
-            echo "🔄 Applying: $file"
-            
-            # Read SQL file
-            SQL=$(cat "$file")
-            
-            # Apply via Supabase REST API
-            RESPONSE=$(curl -s -X POST \
-              "${SUPABASE_URL}/rest/v1/rpc/exec_sql" \
-              -H "apikey: ${SUPABASE_KEY}" \
-              -H "Authorization: Bearer ${SUPABASE_KEY}" \
-              -H "Content-Type: application/json" \
-              -d "{\"query\": $(echo "$SQL" | jq -Rs .)}" \
-              2>&1) || true
-            
-            # Alternative: Direct SQL endpoint (if available)
-            if echo "$RESPONSE" | grep -q "error"; then
-              echo "⚠️  RPC method failed, trying direct SQL..."
-              curl -s -X POST \
-                "${SUPABASE_URL}/rest/v1/" \
-                -H "apikey: ${SUPABASE_KEY}" \
-                -H "Authorization: Bearer ${SUPABASE_KEY}" \
-                -H "Content-Type: application/json" \
-                -H "Prefer: return=minimal" \
-                -d "{}"
-            fi
-            
-            echo "✅ Applied: $file"
-          done
-      
-      - name: No migrations to apply
-        if: steps.changed.outputs.files == ''
-        run: echo "ℹ️  No new migrations to apply"
+          echo "## ✅ Migrations Applied" >> $GITHUB_STEP_SUMMARY
+          echo "Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
