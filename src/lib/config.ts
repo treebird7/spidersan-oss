@@ -23,8 +23,11 @@ export interface SpidersanConfig {
     };
     storage: {
         type: 'local' | 'supabase';
+        environment?: 'production' | 'staging' | 'local';
         supabaseUrl?: string;
         supabaseKey?: string;
+        supabaseUrlStaging?: string;
+        supabaseKeyStaging?: string;
     };
 }
 
@@ -43,6 +46,7 @@ const DEFAULT_CONFIG: SpidersanConfig = {
     },
     storage: {
         type: 'local',
+        environment: 'production',
     },
 };
 
