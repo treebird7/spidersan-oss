@@ -10,3 +10,8 @@ export { cleanupCommand } from './cleanup.js';
 export { abandonCommand } from './abandon.js';
 export { mergedCommand } from './merged.js';
 export { syncCommand } from './sync.js';
+
+// Messaging commands
+export { sendCommand } from './send.js';
+export { inboxCommand } from './inbox.js';
+export { msgReadCommand } from './msg-read.js';
