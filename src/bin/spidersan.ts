@@ -19,6 +19,10 @@ import {
     abandonCommand,
     mergedCommand,
     syncCommand,
+    // Messaging
+    sendCommand,
+    inboxCommand,
+    msgReadCommand,
 } from '../commands/index.js';
 
 const program = new Command();
@@ -43,5 +47,10 @@ program.addCommand(cleanupCommand);
 program.addCommand(abandonCommand);
 program.addCommand(mergedCommand);
 program.addCommand(syncCommand);
+
+// Messaging (requires Supabase)
+program.addCommand(sendCommand);
+program.addCommand(inboxCommand);
+program.addCommand(msgReadCommand);
 
 program.parse();
