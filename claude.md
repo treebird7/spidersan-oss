@@ -171,6 +171,54 @@ If WIP detection is too aggressive, update `.spidersan.config.json` to exclude f
 
 ---
 
+## Database Migrations
+
+**CRITICAL:** Spidersan shares a Supabase database with Recovery-Tree. Follow these rules to avoid collisions:
+
+### Migration Numbering
+
+- **Recovery-Tree:** Uses migrations 001-199
+- **Spidersan:** Uses migrations 200-299 **← START HERE**
+- **Shared infrastructure:** 300-399 (coordinate with Recovery-Tree)
+
+### Schema Rules
+
+All Spidersan-specific tables MUST use the `spidersan` schema:
+
+```sql
+-- migrations/2XX_feature_name.sql
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS spidersan.your_table (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- your columns
+);
+
+COMMIT;
+```
+
+**Shared tables** (agent_messages, branch_registry) stay in `public` schema.
+
+### Before Creating a Migration
+
+1. Check `migrations/` folder for the highest number used
+2. Start your migration at 200 or higher
+3. Use `spidersan` schema for new tables
+4. See `docs/MIGRATION_STRATEGY.md` for full details
+
+### Example Migration
+
+```sql
+-- migrations/200_example.sql
+CREATE TABLE IF NOT EXISTS spidersan.my_feature (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+);
+```
+
+**Never:** Create migrations <200 or use `public` schema for Spidersan-only tables.
+
+---
+
 ## Pro Features (Coming)
 
 Free tier includes all commands with 1 Supabase project.
