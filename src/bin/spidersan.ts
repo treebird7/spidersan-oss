@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
  * Spidersan CLI Entry Point
- * 
+ *
  * Branch coordination for AI coding agents.
  */
 
+import 'dotenv/config';
 import { Command } from 'commander';
 import {
     initCommand,
