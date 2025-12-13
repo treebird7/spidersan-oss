@@ -15,3 +15,8 @@ export { syncCommand } from './sync.js';
 export { sendCommand } from './send.js';
 export { inboxCommand } from './inbox.js';
 export { msgReadCommand } from './msg-read.js';
+
+// Key management commands
+export { keygenCommand } from './keygen.js';
+export { keyImportCommand } from './key-import.js';
+export { keysCommand } from './keys.js';
