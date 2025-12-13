@@ -53,11 +53,11 @@ For full standalone independence from Recovery-Tree:
 4. Add as `SUPABASE_URL` and `SUPABASE_KEY` secrets
 5. Run the setup migration:
    - Go to SQL Editor
-   - Paste contents of `migrations/000_setup_schema.sql`
+   - Paste contents of `migrations/200_setup_schema.sql`
    - Run
 6. Apply base migrations:
-   - `migrations/001_branch_registry.sql` (if needed)
-   - `migrations/040_agent_messages.sql` (if needed)
+   - `migrations/201_branch_registry.sql` (if needed)
+   - `migrations/202_agent_messages.sql` (if needed)
 
 ## Verification
 

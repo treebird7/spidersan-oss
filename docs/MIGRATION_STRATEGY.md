@@ -10,7 +10,7 @@
 ### Recovery-Tree: 001-199
 - Existing migrations continue as normal
 - Plenty of room for growth (199 total slots)
-- Example: `040_agent_messages.sql`, `041_next_feature.sql`
+- Example: `202_agent_messages.sql`, `203_next_feature.sql`
 
 ### Spidersan: 200-299
 - All Spidersan-specific migrations start at 200
