@@ -8,7 +8,7 @@
 import { Command } from 'commander';
 import { execSync } from 'child_process';
 import { readFile } from 'fs/promises';
-import { LocalStorage } from '../storage/index.js';
+import { getStorage } from '../storage/index.js';
 import { loadConfig, type SpidersanConfig } from '../lib/config.js';
 import { minimatch } from 'minimatch';
 
@@ -41,7 +41,7 @@ export const readyCheckCommand = new Command('ready-check')
     .option('--json', 'Output as JSON')
     .option('--skip-wip', 'Skip WIP detection')
     .action(async (options) => {
-        const storage = new LocalStorage();
+        const storage = await getStorage();
         const config = await loadConfig();
 
         if (!await storage.isInitialized()) {

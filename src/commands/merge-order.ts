@@ -5,14 +5,14 @@
  */
 
 import { Command } from 'commander';
-import { LocalStorage } from '../storage/index.js';
+import { getStorage } from '../storage/index.js';
 import type { Branch } from '../storage/adapter.js';
 
 export const mergeOrderCommand = new Command('merge-order')
     .description('Get optimal merge order for all branches')
     .option('--json', 'Output as JSON')
     .action(async (options) => {
-        const storage = new LocalStorage();
+        const storage = await getStorage();
 
         if (!await storage.isInitialized()) {
             console.error('❌ Spidersan not initialized. Run: spidersan init');

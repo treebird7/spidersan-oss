@@ -6,7 +6,7 @@
 
 import { Command } from 'commander';
 import { execSync } from 'child_process';
-import { LocalStorage } from '../storage/index.js';
+import { getStorage } from '../storage/index.js';
 
 function getCurrentBranch(): string {
     try {
@@ -21,7 +21,7 @@ export const mergedCommand = new Command('merged')
     .argument('[branch]', 'Branch that was merged (default: current)')
     .option('--pr <number>', 'PR number for tracking')
     .action(async (branchArg: string | undefined, options) => {
-        const storage = new LocalStorage();
+        const storage = await getStorage();
 
         if (!await storage.isInitialized()) {
             console.error('❌ Spidersan not initialized. Run: spidersan init');
