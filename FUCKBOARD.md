@@ -16,3 +16,15 @@
 ## 4. Duplicate Repos
 **Problem:** Multiple clones cause divergent histories  
 **Fix:** Single source of truth - one location per project
+
+## 5. Always Use Storage Factory (12-Dec-25)
+**Problem:** 9 commands used `new LocalStorage()` directly, ignoring Supabase config  
+**Fix:** Always use `await getStorage()` - it auto-detects backend from env vars  
+**Pattern:**
+```typescript
+// ❌ Wrong - bypasses Supabase
+const storage = new LocalStorage();
+
+// ✅ Right - uses factory
+const storage = await getStorage();
+```
