@@ -63,7 +63,7 @@ spidersan list  # Should see Spidersan's main branch
 | Commands | 13 commands | 12 commands (same core set) |
 | Config | `.spidersan.config.json` | `.spidersanrc` (same structure) |
 | WIP Detection | ✅ Configurable | ✅ Configurable (ported from yours) |
-| Migration | In your repo | `migrations/001_branch_registry.sql` |
+| Migration | In your repo | `migrations/201_branch_registry.sql` |
 
 ---
 

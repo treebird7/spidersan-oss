@@ -18,7 +18,7 @@ I'm an AI agent working in the **Spidersan repository** (`github.com/treebird7/S
 
 ### 1. Cross-Repo Coordination Infrastructure ✅
 - Connected both Spidersan and Recovery-Tree to shared Supabase (`iopbbsjdphgctfbqljcf`)
-- Applied migration `040_agent_messages.sql` to create messaging system
+- Applied migration `202_agent_messages.sql` to create messaging system
 - Set up `.env` file with Supabase credentials
 - Verified I can see all Recovery-Tree branches (15 total)
 
@@ -33,7 +33,7 @@ Analyzed your **step-files branch** (118 files) and categorized conflicts:
 
 **High-Severity Conflicts:**
 - `supabase/migrations/031_function_search_path_hardening.sql`
-- `supabase/migrations/040_agent_messages.sql`
+- `supabase/migrations/202_agent_messages.sql`
 - `middleware.ts.disabled`
 - `vercel.json`
 - Billing API routes (`app/api/billing/*`)
