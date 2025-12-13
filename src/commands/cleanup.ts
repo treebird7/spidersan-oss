@@ -5,14 +5,14 @@
  */
 
 import { Command } from 'commander';
-import { LocalStorage } from '../storage/index.js';
+import { getStorage } from '../storage/index.js';
 
 export const cleanupCommand = new Command('cleanup')
     .description('Remove stale branches from registry')
     .option('--days <n>', 'Days threshold', '7')
     .option('--dry-run', 'Show what would be removed without removing')
     .action(async (options) => {
-        const storage = new LocalStorage();
+        const storage = await getStorage();
 
         if (!await storage.isInitialized()) {
             console.error('❌ Spidersan not initialized. Run: spidersan init');

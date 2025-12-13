@@ -15,7 +15,10 @@
         "test": "vitest",
         "test:run": "vitest run",
         "lint": "eslint src/",
-        "prepublishOnly": "npm run build"
+        "prepublishOnly": "npm run build",
+        "stress-test": "node scripts/stress-test.js",
+        "stress-test:clean": "node scripts/stress-test.js --clean",
+        "stress-test:report": "node scripts/stress-test.js --report"
     },
     "keywords": [
         "ai",

@@ -6,7 +6,7 @@
 
 import { Command } from 'commander';
 import { execSync } from 'child_process';
-import { LocalStorage } from '../storage/index.js';
+import { getStorage } from '../storage/index.js';
 
 function getCurrentBranch(): string {
     try {
@@ -22,7 +22,7 @@ export const dependsCommand = new Command('depends')
     .option('--branch <name>', 'Target branch (default: current)')
     .option('--clear', 'Clear all dependencies')
     .action(async (branches: string[], options) => {
-        const storage = new LocalStorage();
+        const storage = await getStorage();
 
         if (!await storage.isInitialized()) {
             console.error('❌ Spidersan not initialized. Run: spidersan init');
