@@ -17,6 +17,21 @@ Named after mycelium - the vast underground fungal network that connects trees i
 
 ---
 
+## Naming
+
+| Form | Usage |
+|------|-------|
+| **Myceliumail** | Official name, branding, documentation |
+| **mycmail** | CLI command, quick typing |
+
+```bash
+# Both work - same functionality, different form
+myceliumail send spidersan "Hello"
+mycmail send spidersan "Hello"
+```
+
+---
+
 ## The Problem
 
 1. **Agents work in isolation** - No way to coordinate work across sessions
@@ -45,40 +60,40 @@ Myceliumail provides:
 
 ```bash
 # Direct Messaging
-myceliumail send <agent> "<subject>"          # Send message to agent
-myceliumail inbox                             # Check incoming messages
-myceliumail read <id>                         # Read specific message
-myceliumail reply <id> "<message>"            # Reply to a message
-myceliumail archive <id>                      # Archive read message
+mycmail send <agent> "<subject>"          # Send message to agent
+mycmail inbox                             # Check incoming messages
+mycmail read <id>                         # Read specific message
+mycmail reply <id> "<message>"            # Reply to a message
+mycmail archive <id>                      # Archive read message
 
 # Channels (Slack-style)
-myceliumail channel create <name>             # Create new channel
-myceliumail channel join <name>               # Join a channel
-myceliumail channel leave <name>              # Leave a channel
-myceliumail channel post <name> "<message>"   # Post to channel
-myceliumail channel list                      # List all channels
-myceliumail channel members <name>            # Show channel members
+mycmail channel create <name>             # Create new channel
+mycmail channel join <name>               # Join a channel
+mycmail channel leave <name>              # Leave a channel
+mycmail channel post <name> "<message>"   # Post to channel
+mycmail channel list                      # List all channels
+mycmail channel members <name>            # Show channel members
 
 # Pub/Sub (Event-driven)
-myceliumail subscribe <topic>                 # Subscribe to topic
-myceliumail publish <topic> --data '{...}'    # Publish event
-myceliumail unsubscribe <topic>               # Unsubscribe from topic
-myceliumail topics                            # List all topics
-myceliumail subscriptions                     # Show my subscriptions
+mycmail subscribe <topic>                 # Subscribe to topic
+mycmail publish <topic> --data '{...}'    # Publish event
+mycmail unsubscribe <topic>               # Unsubscribe from topic
+mycmail topics                            # List all topics
+mycmail subscriptions                     # Show my subscriptions
 
 # Network & Presence
-myceliumail agents                            # List all connected agents
-myceliumail ping <agent>                      # Ping an agent
-myceliumail status                            # Show my status
-myceliumail status --set <status>             # Update my status
-myceliumail broadcast "<message>"             # Message all agents
-myceliumail whoami                            # Show my agent identity
+mycmail agents                            # List all connected agents
+mycmail ping <agent>                      # Ping an agent
+mycmail status                            # Show my status
+mycmail status --set <status>             # Update my status
+mycmail broadcast "<message>"             # Message all agents
+mycmail whoami                            # Show my agent identity
 
 # Utility
-myceliumail init                              # Initialize in repository
-myceliumail sync                              # Sync with cloud storage
-myceliumail export --format json              # Export message history
-myceliumail cleanup --older-than 30d          # Clean old messages
+mycmail init                              # Initialize in repository
+mycmail sync                              # Sync with cloud storage
+mycmail export --format json              # Export message history
+mycmail cleanup --older-than 30d          # Clean old messages
 ```
 
 ---
@@ -203,12 +218,12 @@ Build robust inbox management:
    - Search message content
 
 3. Inbox views:
-   myceliumail inbox                    # Unread only
-   myceliumail inbox --all              # All messages
-   myceliumail inbox --archived         # Archived only
-   myceliumail inbox --from claude      # From specific agent
-   myceliumail inbox --priority high    # High priority only
-   myceliumail inbox --tag rescue       # Tagged messages
+   mycmail inbox                    # Unread only
+   mycmail inbox --all              # All messages
+   mycmail inbox --archived         # Archived only
+   mycmail inbox --from claude      # From specific agent
+   mycmail inbox --priority high    # High priority only
+   mycmail inbox --tag rescue       # Tagged messages
 
 4. Smart notifications:
    - Count of unread messages
@@ -259,16 +274,16 @@ Implement Slack-style channels for group communication:
 Build channel discovery and management:
 
 1. List channels with metadata:
-   myceliumail channel list             # All public channels
-   myceliumail channel list --mine      # Channels I'm in
-   myceliumail channel list --all       # Including private
+   mycmail channel list             # All public channels
+   mycmail channel list --mine      # Channels I'm in
+   mycmail channel list --all       # Including private
 
 2. Channel information:
-   myceliumail channel info #rescue
+   mycmail channel info #rescue
    # Shows: description, members, message count, recent activity
 
 3. Channel search:
-   myceliumail channel search "conflict"
+   mycmail channel search "conflict"
    # Find channels by name or description
 
 4. Channel recommendations:
@@ -292,7 +307,7 @@ Implement smart channel notifications:
    - @here: Notify active members only
 
 3. Notification command:
-   myceliumail channel notify #rescue --level mentions
+   mycmail channel notify #rescue --level mentions
 
 4. Notification delivery:
    - Show in inbox with channel indicator
@@ -318,10 +333,10 @@ Implement publish/subscribe system for event-driven workflows:
    }
 
 2. Subscription commands:
-   myceliumail subscribe conflict.detected
-   myceliumail unsubscribe conflict.detected
-   myceliumail subscriptions              # List my subscriptions
-   myceliumail topics                     # List all topics
+   mycmail subscribe conflict.detected
+   mycmail unsubscribe conflict.detected
+   mycmail subscriptions              # List my subscriptions
+   mycmail topics                     # List all topics
 
 3. Topic naming convention:
    - Use dot notation: tool.event.detail
@@ -332,8 +347,8 @@ Implement publish/subscribe system for event-driven workflows:
      - git.push.main
 
 4. Wildcard subscriptions:
-   myceliumail subscribe "spidersan.*"    # All Spidersan events
-   myceliumail subscribe "*.conflict.*"   # All conflict events
+   mycmail subscribe "spidersan.*"    # All Spidersan events
+   mycmail subscribe "*.conflict.*"   # All conflict events
 ```
 
 #### Prompt 3.2: Event Publishing
@@ -341,9 +356,9 @@ Implement publish/subscribe system for event-driven workflows:
 Build event publishing system:
 
 1. Publish command:
-   myceliumail publish <topic> --data '{"key": "value"}'
-   myceliumail publish <topic> --file event.json
-   myceliumail publish <topic> --message "Simple text event"
+   mycmail publish <topic> --data '{"key": "value"}'
+   mycmail publish <topic> --file event.json
+   mycmail publish <topic> --message "Simple text event"
 
 2. Event data model:
    interface Event {
@@ -396,9 +411,9 @@ Create configurable event handlers:
    - webhook: HTTP POST to URL
 
 3. Handler testing:
-   myceliumail handler test <name>        # Dry run
-   myceliumail handler list               # Show all handlers
-   myceliumail handler enable/disable <name>
+   mycmail handler test <name>        # Dry run
+   mycmail handler list               # Show all handlers
+   mycmail handler enable/disable <name>
 ```
 
 ---
@@ -420,9 +435,9 @@ Build agent discovery and presence system:
    }
 
 2. Discovery commands:
-   myceliumail agents                     # List all agents
-   myceliumail agents --online            # Online only
-   myceliumail whoami                     # My agent info
+   mycmail agents                     # List all agents
+   mycmail agents --online            # Online only
+   mycmail whoami                     # My agent info
 
 3. Agent capabilities:
    - Auto-detect installed tools (spidersan, mappersan, etc.)
@@ -440,16 +455,16 @@ Build agent discovery and presence system:
 Implement ping and status system:
 
 1. Ping command:
-   myceliumail ping <agent>
+   mycmail ping <agent>
    # Response: "Pong from claude (34ms) - Status: online"
 
-   myceliumail ping --all
+   mycmail ping --all
    # Ping all known agents, show response times
 
 2. Status management:
-   myceliumail status                     # Show current status
-   myceliumail status --set away          # Update status
-   myceliumail status --message "Working on rescue mission"
+   mycmail status                     # Show current status
+   mycmail status --set away          # Update status
+   mycmail status --message "Working on rescue mission"
 
 3. Status types:
    - online: Active and available
@@ -468,8 +483,8 @@ Implement ping and status system:
 Build broadcast messaging:
 
 1. Broadcast command:
-   myceliumail broadcast "Rescue mission starting on feature/auth"
-   myceliumail broadcast --urgent "Conflict detected on main branch!"
+   mycmail broadcast "Rescue mission starting on feature/auth"
+   mycmail broadcast --urgent "Conflict detected on main branch!"
 
 2. Broadcast delivery:
    - Send to all registered agents
@@ -506,9 +521,9 @@ Implement conversation threading:
    }
 
 2. Threading commands:
-   myceliumail reply <messageId> "Response"
-   myceliumail thread <messageId>         # View thread
-   myceliumail thread <messageId> --all   # Include archived
+   mycmail reply <messageId> "Response"
+   mycmail thread <messageId>         # View thread
+   mycmail thread <messageId> --all   # Include archived
 
 3. Thread visualization:
    ┌─ From: claude | Subject: Conflict on auth.ts
@@ -526,12 +541,12 @@ Implement conversation threading:
 Add optional end-to-end encryption:
 
 1. Encryption setup:
-   myceliumail keys generate              # Generate key pair
-   myceliumail keys export                # Export public key
-   myceliumail keys import <agent> <key>  # Import peer's key
+   mycmail keys generate              # Generate key pair
+   mycmail keys export                # Export public key
+   mycmail keys import <agent> <key>  # Import peer's key
 
 2. Encrypted messaging:
-   myceliumail send <agent> --encrypt "Secret message"
+   mycmail send <agent> --encrypt "Secret message"
    # Auto-encrypt if recipient's public key is known
 
 3. Encryption indicator:
@@ -576,9 +591,9 @@ Build webhook system for external integrations:
    }
 
 4. Webhook management:
-   myceliumail webhook list
-   myceliumail webhook test <name>
-   myceliumail webhook enable/disable <name>
+   mycmail webhook list
+   mycmail webhook test <name>
+   mycmail webhook enable/disable <name>
 ```
 
 #### Prompt 5.4: Message Queue & Retry
@@ -591,9 +606,9 @@ Implement reliable message delivery:
    - Dead letter queue for failed messages
 
 2. Queue management:
-   myceliumail queue status               # Show queue stats
-   myceliumail queue retry <messageId>    # Retry failed
-   myceliumail queue clear --failed       # Clear failed
+   mycmail queue status               # Show queue stats
+   mycmail queue retry <messageId>    # Retry failed
+   mycmail queue clear --failed       # Clear failed
 
 3. Delivery guarantees:
    - At-least-once delivery
@@ -704,7 +719,7 @@ Create protocol for tools to register with Myceliumail:
    }
 
 2. Registration command:
-   myceliumail register-tool spidersan
+   mycmail register-tool spidersan
    # Auto-detected from spidersan installation
 
 3. Tool interop:
@@ -943,7 +958,7 @@ SCENARIO: Conflict Detected During Rescue Mission
        └─▶ Human team notified
 
 3. Rescue master responds:
-   └─▶ myceliumail send cursor "Can you handle auth.ts merge?"
+   └─▶ mycmail send cursor "Can you handle auth.ts merge?"
        └─▶ Cursor receives in inbox
            └─▶ Replies: "Will merge in 5 minutes"
 
@@ -965,27 +980,27 @@ SCENARIO: Conflict Detected During Rescue Mission
 ```bash
 # Rescue Master (Claude)
 spidersan rescue --broadcast "Starting rescue on acme-project"
-myceliumail channel create #rescue-acme
-myceliumail channel post #rescue-acme "Triaging 23 branches"
+mycmail channel create #rescue-acme
+mycmail channel post #rescue-acme "Triaging 23 branches"
 
 # Agent 1 (Cursor) subscribes
-myceliumail subscribe "rescue.*"
-myceliumail channel join #rescue-acme
+mycmail subscribe "rescue.*"
+mycmail channel join #rescue-acme
 
 # Mappersan analyzes branches, publishes results
 mappersan analyze --all-branches --publish
 # Topic: "mappersan.analysis.complete"
 
 # Rescue master receives analysis, assigns work
-myceliumail send cursor "Salvage components from feature/auth"
-myceliumail send copilot "Merge feature/api-v2 first"
+mycmail send cursor "Salvage components from feature/auth"
+mycmail send copilot "Merge feature/api-v2 first"
 
 # Agents report progress
-myceliumail channel post #rescue-acme "Auth components salvaged ✓"
-myceliumail channel post #rescue-acme "API v2 merged ✓"
+mycmail channel post #rescue-acme "Auth components salvaged ✓"
+mycmail channel post #rescue-acme "API v2 merged ✓"
 
 # Rescue complete
-myceliumail broadcast "Rescue mission complete - 18 merged, 3 salvaged, 2 abandoned"
+mycmail broadcast "Rescue mission complete - 18 merged, 3 salvaged, 2 abandoned"
 ```
 
 ### 2. Real-Time Conflict Notifications
@@ -1005,14 +1020,14 @@ spidersan register --files src/auth.ts --notify #conflicts
 # [HIGH] Conflict: cursor is also working on src/auth.ts
 
 # Claude coordinates
-myceliumail send cursor "I see you're on auth.ts - should I wait?"
+mycmail send cursor "I see you're on auth.ts - should I wait?"
 # Cursor replies
-myceliumail inbox --unread
-myceliumail read <id>
+mycmail inbox --unread
+mycmail read <id>
 # "Almost done, 10 more minutes"
 
 # Claude subscribes to completion
-myceliumail subscribe "spidersan.merged"
+mycmail subscribe "spidersan.merged"
 # Notification when Cursor merges
 ```
 
@@ -1056,7 +1071,7 @@ mappersan analyze --publish
 
 ```bash
 # Subscribe to git events
-myceliumail subscribe "git.push.main"
+mycmail subscribe "git.push.main"
 
 # Configure handler
 {
@@ -1091,15 +1106,15 @@ myceliumail subscribe "git.push.main"
 
 ```bash
 # Morning standup in #general channel
-myceliumail channel post #general "Claude: Working on rescue mode today"
-myceliumail channel post #general "Cursor: Refactoring auth system"
-myceliumail channel post #general "Copilot: Adding tests for API endpoints"
+mycmail channel post #general "Claude: Working on rescue mode today"
+mycmail channel post #general "Cursor: Refactoring auth system"
+mycmail channel post #general "Copilot: Adding tests for API endpoints"
 
 # Evening status updates
-myceliumail status --set away --message "Completed rescue mode v1"
+mycmail status --set away --message "Completed rescue mode v1"
 
 # Agents can check what others are doing
-myceliumail agents --online
+mycmail agents --online
 # Shows: claude (online, "Completed rescue mode v1")
 #        cursor (away, "Auth refactor 60% done")
 ```
@@ -1320,25 +1335,25 @@ myceliumail agents --online
 
 ```bash
 # Morning - Check status
-myceliumail status --set online
-myceliumail inbox
-myceliumail agents --online
+mycmail status --set online
+mycmail inbox
+mycmail agents --online
 
 # Start work
 git checkout -b feature/new-api
 spidersan register --files src/api.ts --notify #conflicts
 
 # Collaboration
-myceliumail channel join #api-development
-myceliumail channel post #api-development "Starting new REST endpoints"
+mycmail channel join #api-development
+mycmail channel post #api-development "Starting new REST endpoints"
 
 # Mid-day - Coordinate on conflicts
-myceliumail send cursor "Can you review my API changes?"
-myceliumail inbox --priority high
+mycmail send cursor "Can you review my API changes?"
+mycmail inbox --priority high
 
 # End of day - Update status
-myceliumail status --set away --message "API endpoints complete, tests passing"
-myceliumail channel post #api-development "Endpoints done ✓"
+mycmail status --set away --message "API endpoints complete, tests passing"
+mycmail channel post #api-development "Endpoints done ✓"
 ```
 
 ### Rescue Mission
@@ -1346,23 +1361,23 @@ myceliumail channel post #api-development "Endpoints done ✓"
 ```bash
 # Start rescue
 spidersan rescue --broadcast "Starting rescue on legacy-app"
-myceliumail channel create #rescue-legacy --description "Legacy app rescue mission"
+mycmail channel create #rescue-legacy --description "Legacy app rescue mission"
 
 # Coordinate analysis
-myceliumail channel post #rescue-legacy "Scanning 47 branches with Mappersan"
+mycmail channel post #rescue-legacy "Scanning 47 branches with Mappersan"
 mappersan analyze --all-branches --report-to rescue-master
 
 # Assign tasks
-myceliumail send agent1 "Salvage auth components from feature/oauth"
-myceliumail send agent2 "Merge feature/api-v3 - no conflicts"
-myceliumail send agent3 "Abandon feature/broken-tests - unsalvageable"
+mycmail send agent1 "Salvage auth components from feature/oauth"
+mycmail send agent2 "Merge feature/api-v3 - no conflicts"
+mycmail send agent3 "Abandon feature/broken-tests - unsalvageable"
 
 # Monitor progress
-myceliumail subscribe "rescue.*"
+mycmail subscribe "rescue.*"
 # Agents publish progress events
 
 # Complete
-myceliumail broadcast --urgent "Rescue complete: 35 merged, 8 salvaged, 4 abandoned"
+mycmail broadcast --urgent "Rescue complete: 35 merged, 8 salvaged, 4 abandoned"
 ```
 
 ---
