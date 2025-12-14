@@ -31,6 +31,7 @@ export interface AgentMessage {
     read: boolean;
     readAt?: Date;
     repliedTo?: string;
+    encrypted?: boolean;
     createdAt: Date;
 }
 
@@ -49,6 +50,7 @@ interface SupabaseMessageRow {
     read: boolean;
     read_at: string | null;
     replied_to: string | null;
+    encrypted: boolean | null;
     created_at: string;
 }
 
@@ -279,6 +281,7 @@ export class SupabaseStorage implements StorageAdapter {
             read: row.read,
             readAt: row.read_at ? new Date(row.read_at) : undefined,
             repliedTo: row.replied_to || undefined,
+            encrypted: row.encrypted || false,
             createdAt: new Date(row.created_at),
         };
     }
@@ -295,6 +298,7 @@ export class SupabaseStorage implements StorageAdapter {
         relatedFiles?: string[];
         attachedFiles?: Record<string, unknown>;
         replyTo?: string;
+        encrypted?: boolean;
     }): Promise<AgentMessage> {
         const payload = {
             from_agent: options.fromAgent,
@@ -308,6 +312,7 @@ export class SupabaseStorage implements StorageAdapter {
             related_files: options.relatedFiles || null,
             attached_files: options.attachedFiles || null,
             replied_to: options.replyTo || null,
+            encrypted: options.encrypted || false,
         };
 
         const response = await this.fetch('agent_messages', {

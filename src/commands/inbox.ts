@@ -94,8 +94,9 @@ export const inboxCommand = new Command('inbox')
                 const readStatus = msg.read ? '  ' : '● ';
                 const ago = getTimeAgo(msg.createdAt);
                 const direction = options.sent ? `→ ${msg.toAgent}` : `← ${msg.fromAgent}`;
+                const encryptedFlag = msg.encrypted ? ' 🔒' : '';
 
-                console.log(`  ${readStatus}${emoji} ${truncate(msg.subject, 40)}`);
+                console.log(`  ${readStatus}${emoji} ${truncate(msg.subject, 40)}${encryptedFlag}`);
                 console.log(`     └─ ${direction} | ${ago}`);
                 console.log(`     └─ ID: ${msg.id.slice(0, 8)}...`);
 
