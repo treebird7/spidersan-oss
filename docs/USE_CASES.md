@@ -1115,12 +1115,292 @@ With Spidersan ready-check:
 
 ---
 
+# Rescue Mode: Repository Recovery
+
+> **When chaos reigns, Spidersan brings order**
+
+## 6. Rescue Mode Use Cases
+
+### 6.1 The ADHD Developer Scenario
+**Scenario:** Developer (often with AI assistance) has created 20+ branches over weeks. Some are complete, some are WIP, some are abandoned experiments. Main branch is outdated. Nobody knows what's where.
+
+**Problem Solved:** Complete loss of project visibility. Developer feels overwhelmed and doesn't know where to start.
+
+**Spidersan Solution:**
+```bash
+# 1. Install and start rescue mission
+npm install -g spidersan
+spidersan rescue --create-master
+
+# 2. Scan all branches
+spidersan scan --all
+# Output:
+# Found 23 branches
+# - 8 appear active
+# - 6 appear stale (>30 days)
+# - 5 have conflicts with each other
+# - 4 are orphaned (no clear purpose)
+
+# 3. View triage dashboard
+spidersan triage
+# Shows: MERGE (3) | SALVAGE (5) | ABANDON (7)
+
+# 4. See the light
+spidersan status
+# Clear action plan with next steps
+```
+
+**Hashtags:** `#rescue-mode` `#adhd-friendly` `#repository-recovery` `#chaos-to-order` `#overwhelm-relief`
+
+---
+
+### 6.2 AI Agent Branch Explosion
+**Scenario:** Team uses Claude Code, Cursor, and Copilot. In one week, 47 branches were created. Many are duplicates, conflicts abound, nobody remembers which AI did what.
+
+**Problem Solved:** AI-generated branch chaos with no coordination history.
+
+**Spidersan Solution:**
+```bash
+# Scan with agent detection
+spidersan scan --all --detect-agents
+# Output:
+# Branch analysis by agent:
+# - claude-code: 18 branches (12 active, 6 stale)
+# - cursor: 15 branches (8 active, 7 stale)
+# - copilot: 9 branches (4 active, 5 stale)
+# - unknown: 5 branches
+#
+# Duplicate work detected:
+# - feature/auth (claude) ↔ feat/authentication (cursor) - 73% overlap
+# - fix/login-bug (claude) ↔ bugfix/login (copilot) - 89% overlap
+
+# Deduplicate
+spidersan dedupe --interactive
+# Choose which version to keep, salvage unique parts from others
+```
+
+**Hashtags:** `#ai-chaos` `#branch-explosion` `#deduplication` `#agent-detection` `#multi-ai-team`
+
+---
+
+### 6.3 Salvage Operation
+**Scenario:** A branch is 80% garbage but has one brilliant component worth saving.
+
+**Problem Solved:** Throwing away good code because the branch is mostly broken.
+
+**Spidersan Solution:**
+```bash
+# Analyze branch for salvageable components
+spidersan analyze feature/experimental-auth
+# Output:
+# BRANCH ANALYSIS: feature/experimental-auth
+# Status: SALVAGEABLE
+#
+# USABLE COMPONENTS:
+# ✓ src/middleware/auth.ts (complete, tested)
+# ✓ src/utils/jwt.ts (complete)
+#
+# BROKEN/INCOMPLETE:
+# ✗ src/routes/oauth.ts (WIP, conflicts)
+# ✗ src/config/auth.ts (syntax errors)
+#
+# RECOMMENDATION: Salvage 2 components
+
+# Extract the good parts
+spidersan salvage feature/experimental-auth \
+  --components src/middleware/auth.ts,src/utils/jwt.ts \
+  --target feature/clean-auth
+
+# Spidermail notification
+spidersan send rescue-master "Salvage Complete" --type handoff \
+  --message "Extracted auth middleware and jwt utils from experimental branch"
+```
+
+**Hashtags:** `#salvage` `#code-rescue` `#partial-recovery` `#component-extraction` `#waste-nothing`
+
+---
+
+### 6.4 Mappersan Intelligence Gathering
+**Scenario:** Need to understand what each branch actually contains before deciding what to do with it.
+
+**Problem Solved:** Manual inspection of 20+ branches is time-prohibitive.
+
+**Spidersan + Mappersan Solution:**
+```bash
+# Mappersan analyzes each branch
+mappersan analyze --branch feature/auth --report-to spidersan
+mappersan analyze --branch feature/api --report-to spidersan
+mappersan analyze --branch feature/ui --report-to spidersan
+
+# Reports arrive via Spidermail
+spidersan inbox
+# FROM: mappersan@feature/auth - Analysis Complete
+# FROM: mappersan@feature/api - Analysis Complete
+# FROM: mappersan@feature/ui - Analysis Complete
+
+# View consolidated intelligence
+spidersan intel
+# Displays all mappersan reports in unified view
+# Shows: components, conflicts, recommendations per branch
+```
+
+**Hashtags:** `#mappersan-integration` `#intelligence-gathering` `#automated-analysis` `#branch-reports`
+
+---
+
+### 6.5 The Master Rescue Branch
+**Scenario:** Need a single point of coordination for the entire rescue operation.
+
+**Problem Solved:** Rescue efforts scattered, no single source of truth.
+
+**Spidersan Solution:**
+```bash
+# Create master rescue branch
+spidersan rescue --create-master
+# Creates: claude/spidersan-rescue-master
+
+# All rescue operations report here
+# - Branch scans
+# - Salvage operations
+# - Mappersan analyses
+# - Triage decisions
+
+# View rescue mission status
+spidersan rescue-status
+# ┌─────────────────────────────────────────────┐
+# │ RESCUE MISSION: my-chaotic-repo             │
+# ├─────────────────────────────────────────────┤
+# │ Started: 2 hours ago                        │
+# │ Branches scanned: 23/23 ✓                   │
+# │ Components salvaged: 8                      │
+# │ Branches merged: 3                          │
+# │ Branches abandoned: 7                       │
+# │ Remaining: 5 (in triage)                    │
+# │                                             │
+# │ Progress: ████████████░░░░ 75%             │
+# │                                             │
+# │ Next action: Merge feature/db-schema        │
+# └─────────────────────────────────────────────┘
+```
+
+**Hashtags:** `#master-branch` `#coordination-center` `#rescue-mission` `#single-source-of-truth`
+
+---
+
+### 6.6 Progressive Recovery
+**Scenario:** Can't fix everything at once. Need to recover incrementally while still shipping features.
+
+**Problem Solved:** Rescue mission blocks all other work.
+
+**Spidersan Solution:**
+```bash
+# Set rescue priority levels
+spidersan triage --prioritize
+# P0 (Critical): Branches blocking deployments
+# P1 (High): Branches with customer-facing features
+# P2 (Medium): Internal tooling branches
+# P3 (Low): Experimental/nice-to-have
+
+# Work on P0 first while tracking others
+spidersan rescue --priority P0
+# Only processes critical branches
+
+# Daily rescue progress
+spidersan rescue --daily-summary
+# Shows: What was recovered today, what's next
+```
+
+**Hashtags:** `#progressive-recovery` `#prioritization` `#incremental` `#ship-while-fixing`
+
+---
+
+### 6.7 The "Start Fresh But Keep History" Pattern
+**Scenario:** Repo is so chaotic that starting fresh seems easier, but don't want to lose valuable work.
+
+**Problem Solved:** False choice between "keep the mess" and "lose everything."
+
+**Spidersan Solution:**
+```bash
+# Full archaeological scan
+spidersan archaeology
+# Scans ALL branches for valuable artifacts:
+# - Completed features (never merged)
+# - Useful utilities
+# - Bug fixes
+# - Documentation
+
+# Create artifact manifest
+spidersan archaeology --export artifacts.json
+# JSON file of all valuable code with locations
+
+# Start fresh branch from clean main
+git checkout -b fresh-start main
+
+# Replay valuable artifacts
+spidersan replay artifacts.json --target fresh-start
+# Intelligently applies salvaged code to fresh branch
+
+# Old branches become archive
+spidersan archive --all-except fresh-start
+# Moves all old branches to archive/ prefix
+```
+
+**Hashtags:** `#fresh-start` `#archaeology` `#artifact-recovery` `#history-preservation` `#clean-slate`
+
+---
+
+## Rescue Mode Commands Reference
+
+| Command | Purpose |
+|---------|---------|
+| `spidersan rescue` | Start rescue mission |
+| `spidersan scan --all` | Scan all branches |
+| `spidersan triage` | Categorize branches |
+| `spidersan salvage <branch>` | Extract usable components |
+| `spidersan dedupe` | Find and resolve duplicates |
+| `spidersan archaeology` | Deep scan for valuable code |
+| `spidersan replay <manifest>` | Apply salvaged code |
+| `spidersan archive` | Move branches to archive |
+| `spidersan rescue-status` | View mission progress |
+| `spidersan intel` | View Mappersan reports |
+
+---
+
+## Rescue Mode Workflow Diagram
+
+```
+     CHAOS                    RESCUE                    ORDER
+       │                         │                         │
+       ▼                         ▼                         ▼
+  ┌─────────┐             ┌─────────────┐           ┌─────────┐
+  │ 20+     │             │   MASTER    │           │ Clean   │
+  │ branches│────scan────▶│   RESCUE    │──merge───▶│ main    │
+  │ ???     │             │   BRANCH    │           │ branch  │
+  └─────────┘             └──────┬──────┘           └─────────┘
+                                 │
+                    ┌────────────┼────────────┐
+                    │            │            │
+                    ▼            ▼            ▼
+              ┌──────────┐ ┌──────────┐ ┌──────────┐
+              │  TRIAGE  │ │ SALVAGE  │ │ ARCHIVE  │
+              │ Decide   │ │ Extract  │ │ Preserve │
+              │ fate     │ │ good     │ │ history  │
+              └──────────┘ └──────────┘ └──────────┘
+```
+
+---
+
+---
+
 # Quick Reference: All Hashtags
 
 ## By Category
 
 ### Development
 `#multi-agent` `#parallel-development` `#conflict-prevention` `#merge-strategy` `#dependency-aware` `#code-quality` `#wip-detection` `#pre-merge-validation` `#repository-hygiene` `#branch-cleanup` `#stale-detection` `#dependency-management` `#context-switching` `#documentation` `#experimentation` `#handoff` `#ci-cd` `#pipeline-integration` `#monorepo`
+
+### Rescue Mode
+`#rescue-mode` `#adhd-friendly` `#repository-recovery` `#chaos-to-order` `#overwhelm-relief` `#ai-chaos` `#branch-explosion` `#deduplication` `#agent-detection` `#multi-ai-team` `#salvage` `#code-rescue` `#partial-recovery` `#component-extraction` `#waste-nothing` `#mappersan-integration` `#intelligence-gathering` `#automated-analysis` `#branch-reports` `#master-branch` `#coordination-center` `#rescue-mission` `#single-source-of-truth` `#progressive-recovery` `#prioritization` `#incremental` `#ship-while-fixing` `#fresh-start` `#archaeology` `#artifact-recovery` `#history-preservation` `#clean-slate`
 
 ### Agent Documentation
 `#agent-communication` `#cross-agent` `#knowledge-sharing` `#best-practices` `#workflow` `#decision-making` `#coordination` `#lifecycle-management`

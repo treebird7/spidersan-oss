@@ -273,6 +273,151 @@ Build IDE extensions:
 
 ---
 
+### Phase 7: Rescue Mode Integration
+
+#### Prompt 7.1: Branch Analysis for Spidersan Rescue
+```
+Create a branch analysis system that:
+- Analyzes code on any git branch (not just current)
+- Compares branches to identify duplicates (% code overlap)
+- Detects salvageable components vs broken/incomplete code
+- Generates rescue reports for Spidersan consumption
+- Sends reports via Spidermail to rescue master branch
+```
+
+#### Prompt 7.2: Multi-Branch Intelligence
+```
+Build multi-branch intelligence gathering:
+- Scan all branches in parallel
+- Create unified "archaeology" report of valuable code
+- Identify which branch has the "best" version of duplicated work
+- Map dependencies between branches
+- Generate triage recommendations (MERGE/SALVAGE/ABANDON)
+```
+
+#### Prompt 7.3: Component Extraction
+```
+Create component extraction system:
+- Parse codebase to identify independent components
+- Score each component: complete/wip/broken
+- Extract clean components to manifest file
+- Support "replay" of components to target branch
+- Preserve git history attribution where possible
+```
+
+#### Prompt 7.4: Spidersan Communication Protocol
+```
+Implement Spidersan communication:
+- Send analysis reports via spidersan send command
+- Report format: structured JSON with markdown summary
+- Message types: analysis_report, salvage_manifest, triage_recommendation
+- Listen for rescue mission commands from Spidersan
+- Update Spidersan registry with analysis metadata
+```
+
+---
+
+## Rescue Mode Workflow
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                    RESCUE MODE INTEGRATION                            │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                       │
+│   SPIDERSAN                         MAPPERSAN                        │
+│   ─────────                         ─────────                        │
+│                                                                       │
+│   spidersan rescue                                                   │
+│        │                                                             │
+│        ├──────── "analyze all branches" ────────▶ mappersan analyze  │
+│        │                                              --all-branches │
+│        │                                                    │        │
+│        │                                                    ▼        │
+│        │                                         ┌─────────────────┐ │
+│        │                                         │ Branch Reports  │ │
+│        │                                         │ - Components    │ │
+│        │                                         │ - Status        │ │
+│        │◀─────── spidermail reports ─────────────│ - Conflicts     │ │
+│        │                                         │ - Duplicates    │ │
+│        │                                         └─────────────────┘ │
+│        ▼                                                             │
+│   ┌──────────┐                                                       │
+│   │  TRIAGE  │                                                       │
+│   │ Decision │──── "salvage feature/auth" ────▶ mappersan extract    │
+│   └──────────┘                                      --components     │
+│        │                                                    │        │
+│        │◀─────── salvage manifest ──────────────────────────┘        │
+│        │                                                             │
+│        ▼                                                             │
+│   spidersan replay                                                   │
+│   (applies salvaged                                                  │
+│    code to target)                                                   │
+│                                                                       │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Rescue Mode Commands (Mappersan)
+
+| Command | Purpose |
+|---------|---------|
+| `mappersan analyze --branch <name>` | Analyze specific branch |
+| `mappersan analyze --all-branches` | Analyze all branches |
+| `mappersan compare <branch1> <branch2>` | Compare two branches |
+| `mappersan duplicates` | Find duplicate code across branches |
+| `mappersan extract --components <list>` | Extract components to manifest |
+| `mappersan report --to spidersan` | Send report via Spidermail |
+
+---
+
+## Rescue Mode Data Models
+
+### BranchAnalysis
+```typescript
+interface BranchAnalysis {
+  branchName: string;
+  lastCommit: string;
+  lastCommitDate: Date;
+  author: string;
+  status: 'active' | 'stale' | 'abandoned';
+  triageRecommendation: 'merge' | 'salvage' | 'abandon';
+  components: ComponentAnalysis[];
+  conflicts: ConflictInfo[];
+  duplicateOf?: string; // Another branch this duplicates
+  overlapPercentage?: number;
+}
+```
+
+### ComponentAnalysis
+```typescript
+interface ComponentAnalysis {
+  path: string;
+  name: string;
+  type: 'function' | 'class' | 'module' | 'file';
+  status: 'complete' | 'wip' | 'broken';
+  hasTests: boolean;
+  dependencies: string[];
+  wipMarkers: WipMarker[];
+  linesOfCode: number;
+  salvageable: boolean;
+}
+```
+
+### SalvageManifest
+```typescript
+interface SalvageManifest {
+  sourceBranch: string;
+  extractedAt: Date;
+  components: ExtractedComponent[];
+  totalLines: number;
+  preserveHistory: boolean;
+  targetBranch?: string;
+}
+```
+
+---
+
 ## Architecture
 
 ```
@@ -391,6 +536,14 @@ interface UsagePattern {
 - [ ] GitHub Action
 - [ ] Pre-commit hooks
 - [ ] Documentation health badge
+
+### v0.6.0 - Rescue Mode
+- [ ] Branch analysis (`--branch` flag)
+- [ ] Multi-branch scanning (`--all-branches`)
+- [ ] Duplicate detection across branches
+- [ ] Component extraction and salvage manifests
+- [ ] Spidermail report integration
+- [ ] Triage recommendations (MERGE/SALVAGE/ABANDON)
 
 ### v1.0.0 - Production Ready
 - [ ] MCP Server

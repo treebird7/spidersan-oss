@@ -52,6 +52,16 @@ spidersan inbox                   # Check incoming messages
 spidersan read <id>               # Read specific message
 ```
 
+### Rescue Mode (Repository Recovery)
+```bash
+spidersan rescue                  # Start rescue mission
+spidersan scan --all              # Scan all branches
+spidersan triage                  # Categorize: MERGE/SALVAGE/ABANDON
+spidersan salvage <branch>        # Extract usable components
+spidersan archaeology             # Deep scan for valuable code
+spidersan rescue-status           # View mission progress
+```
+
 ## When to Use Spidersan
 
 ### ALWAYS Register When:
@@ -68,6 +78,13 @@ spidersan read <id>               # Read specific message
 1. Before requesting PR review
 2. Before merging to main
 3. After completing a feature
+
+### USE RESCUE MODE When:
+1. Repository has 10+ uncoordinated branches
+2. Don't know what each branch contains
+3. Multiple AI agents have created overlapping work
+4. Need to salvage good code from broken branches
+5. Starting fresh but want to preserve valuable work
 
 ## Limitations
 
@@ -111,6 +128,18 @@ spidersan merge-order
 ```bash
 spidersan merged --pr 123
 # Cleans up registry, informs other agents
+```
+
+### Pattern 5: Rescue a Chaotic Repository
+```bash
+spidersan rescue --create-master
+spidersan scan --all
+# Triage: decide what to merge, salvage, or abandon
+spidersan triage
+# Extract good code from broken branches
+spidersan salvage feature/old-auth --components src/auth/jwt.ts
+# View progress
+spidersan rescue-status
 ```
 
 ## Configuration
