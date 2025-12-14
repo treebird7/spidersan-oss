@@ -24,6 +24,10 @@ import {
     sendCommand,
     inboxCommand,
     msgReadCommand,
+    // Key management
+    keygenCommand,
+    keyImportCommand,
+    keysCommand,
 } from '../commands/index.js';
 
 const program = new Command();
@@ -53,5 +57,10 @@ program.addCommand(syncCommand);
 program.addCommand(sendCommand);
 program.addCommand(inboxCommand);
 program.addCommand(msgReadCommand);
+
+// Key management (for encrypted messaging)
+program.addCommand(keygenCommand);
+program.addCommand(keyImportCommand);
+program.addCommand(keysCommand);
 
 program.parse();

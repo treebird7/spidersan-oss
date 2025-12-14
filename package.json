@@ -50,7 +50,9 @@
     "dependencies": {
         "commander": "^12.0.0",
         "dotenv": "^17.2.3",
-        "minimatch": "^10.1.1"
+        "minimatch": "^10.1.1",
+        "tweetnacl": "^1.0.3",
+        "tweetnacl-util": "^0.15.1"
     },
     "devDependencies": {
         "@types/node": "^20.0.0",

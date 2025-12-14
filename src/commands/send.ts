@@ -2,6 +2,12 @@ import { Command } from 'commander';
 import { execSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import { SupabaseStorage, type MessageType } from '../storage/supabase.js';
+import {
+    loadKeyPair,
+    getKnownKey,
+    encryptMessage,
+    hasKeyPair,
+} from '../lib/crypto.js';
 
 function getCurrentBranch(): string {
     try {
@@ -32,6 +38,7 @@ export const sendCommand = new Command('send')
     .option('-b, --branch <name>', 'Related branch name')
     .option('--files <files>', 'Comma-separated list of related files')
     .option('--reply-to <id>', 'Message ID this is replying to')
+    .option('--encrypt', 'Encrypt the message (requires keys setup)')
     .option('--json', 'Output as JSON')
     .action(async (to, subject, options) => {
         const storage = await getStorage();
@@ -77,17 +84,55 @@ export const sendCommand = new Command('send')
         const branchName = options.branch || getCurrentBranch();
         const repoName = getRepoName();
 
+        // Handle encryption if requested
+        let finalMessage = messageBody;
+        let finalSubject = subject;
+        let isEncrypted = false;
+
+        if (options.encrypt) {
+            // Check if we have our own keypair
+            if (!hasKeyPair(fromAgent)) {
+                console.error(`❌ No keypair found for "${fromAgent}"`);
+                console.error('   Run: spidersan keygen');
+                process.exit(1);
+            }
+
+            // Check if we have recipient's public key
+            const recipientPublicKey = getKnownKey(to);
+            if (!recipientPublicKey) {
+                console.error(`❌ No public key found for recipient "${to}"`);
+                console.error('   Import their key: spidersan key-import <agent> <key>');
+                process.exit(1);
+            }
+
+            // Load our keypair
+            const senderKeyPair = loadKeyPair(fromAgent)!;
+
+            // Encrypt message and subject
+            const encryptedContent = encryptMessage(
+                JSON.stringify({ message: messageBody, subject }),
+                recipientPublicKey,
+                senderKeyPair
+            );
+
+            // Store encrypted data as JSON in message field
+            finalMessage = JSON.stringify(encryptedContent);
+            finalSubject = '🔒 [Encrypted Message]';
+            isEncrypted = true;
+        }
+
         try {
             const message = await storage.sendMessage({
                 fromAgent,
                 toAgent: to,
-                subject,
-                message: messageBody,
+                subject: finalSubject,
+                message: finalMessage,
                 messageType: options.type as MessageType,
                 fromRepo: repoName || undefined,
                 branchName: branchName || undefined,
                 relatedFiles: options.files ? options.files.split(',').map((f: string) => f.trim()) : undefined,
                 replyTo: options.replyTo,
+                encrypted: isEncrypted,
             });
 
             if (options.json) {
@@ -100,6 +145,9 @@ export const sendCommand = new Command('send')
             console.log(`   To: ${to}`);
             console.log(`   Subject: ${subject}`);
             console.log(`   Type: ${options.type}`);
+            if (isEncrypted) {
+                console.log(`   🔒 Encrypted: Yes`);
+            }
         } catch (error) {
             console.error(`❌ Failed to send message: ${error instanceof Error ? error.message : error}`);
             process.exit(1);
