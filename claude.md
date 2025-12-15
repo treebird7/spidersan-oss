@@ -1,242 +1,232 @@
-# Spidersan System Instructions
+# Spidersan - AI Agent Context
 
-**Last Updated:** December 11, 2025  
-**Status:** Living document - core identity and capabilities
+> **Quick Load Context for Claude Code and AI Agents**
 
----
+## What is Spidersan?
 
-## Core Mission
+Spidersan is a **branch coordination CLI** that prevents merge conflicts when multiple AI agents work on the same codebase. Think of it as "air traffic control" for AI coding sessions.
 
-Spidersan is a **branch coordination tool for AI coding agents**. When multiple AI sessions (Claude Code, Cursor, Windsurf) work in parallel, Spidersan prevents merge chaos by tracking branches, detecting conflicts, and recommending merge order.
+## Core Problem It Solves
 
-**Primary purpose:** Help developers run multiple AI coding sessions without losing their minds to branch conflicts.
+When Claude Code, Cursor, and Copilot work simultaneously:
+- They create conflicting branches on the same files
+- No visibility into what other agents are doing
+- Wrong merge order causes cascade failures
+- Abandoned branches clutter the repository
 
----
+## Available Commands
 
-## What Spidersan Does
+### Registration & Tracking
+```bash
+spidersan init                    # Initialize in a project
+spidersan register --files <f>    # Register files you'll modify
+spidersan list                    # List all registered branches
+```
 
-### Available Commands
+### Conflict Detection
+```bash
+spidersan conflicts               # Show all file conflicts
+spidersan merge-order             # Get optimal merge sequence
+spidersan ready-check             # Validate branch is merge-ready (no WIP markers)
+```
 
-| Command | Purpose | When to Use |
-|---------|---------|-------------|
-| `spidersan init` | Initialize spidersan in a project | First time setup |
-| `spidersan register` | Register your current branch | When starting work on a branch |
-| `spidersan list` | Show all tracked branches | To see what's happening across sessions |
-| `spidersan conflicts` | Detect file overlap | Before merging to check for problems |
-| `spidersan merge-order` | Get recommended merge sequence | When ready to merge multiple branches |
-| `spidersan ready-check` | Validate branch is merge-ready | Before any merge to main |
-| `spidersan stale` | Find old/abandoned branches | During cleanup |
-| `spidersan cleanup` | Remove stale registrations | Weekly maintenance |
-| `spidersan sync` | Align registry with git | If registry gets out of sync |
-| `spidersan depends <branch>` | Mark dependency on another branch | When your work requires another branch |
-| `spidersan abandon` | Mark branch as abandoned | When abandoning work |
-| `spidersan merged` | Mark branch as merged | After successful merge |
+### Lifecycle Management
+```bash
+spidersan merged --pr <num>       # Mark branch as merged
+spidersan abandoned               # Mark branch as abandoned
+spidersan stale                   # Show old branches (default: 7 days)
+spidersan cleanup                 # Remove stale branches
+spidersan sync                    # Sync registry with git
+```
 
-### Storage Options
+### Dependencies (Supabase only)
+```bash
+spidersan depends <branch>        # Declare dependency on another branch
+spidersan depends                 # Show current dependencies
+```
 
-- **Local (default):** JSON file at `.spidersan/registry.json`
-- **Supabase (cloud):** Real-time sync across machines/sessions
+### Agent Messaging (Supabase only)
+```bash
+spidersan send <agent> <subject>  # Send message to another agent
+spidersan send <agent> <subject> --encrypt  # Send encrypted message
+spidersan inbox                   # Check incoming messages (auto-decrypts)
+spidersan read <id>               # Read specific message
+```
 
----
+### Encryption (Myceliumail)
+```bash
+spidersan keygen                 # Generate your agent's keypair (required for encrypted messaging)
+spidersan keys                    # List known public keys
+spidersan key-import <key>        # Import another agent's public key
+```
 
-## How to Talk to Me
+### Rescue Mode (Repository Recovery)
+```bash
+spidersan rescue                  # Start rescue mission
+spidersan scan --all              # Scan all branches
+spidersan triage                  # Categorize: MERGE/SALVAGE/ABANDON
+spidersan salvage <branch>        # Extract usable components
+spidersan archaeology             # Deep scan for valuable code
+spidersan rescue-status           # View mission progress
+```
 
-### I Understand Natural Language
+## When to Use Spidersan
 
-You can ask me things like:
-- "What branches are active?"
-- "Are there any conflicts with my branch?"
-- "What order should I merge these?"
-- "Is this branch ready to merge?"
-- "Clean up old branches"
+### ALWAYS Register When:
+1. Starting work on a new feature branch
+2. About to modify files that might conflict
+3. Beginning any multi-file refactoring
 
-I'll translate to the appropriate command and run it.
+### ALWAYS Check Conflicts When:
+1. Before starting work on any files
+2. Before creating a PR
+3. When planning merge sequence
 
-### I Can Help You Decide
+### ALWAYS Run Ready-Check When:
+1. Before requesting PR review
+2. Before merging to main
+3. After completing a feature
 
-If you're unsure:
-- "Should I merge this now?" → I'll run `ready-check` and `conflicts`
-- "What's blocking the merge?" → I'll analyze dependencies and conflicts
-- "What did other sessions do?" → I'll show active/recent branches
+### USE RESCUE MODE When:
+1. Repository has 10+ uncoordinated branches
+2. Don't know what each branch contains
+3. Multiple AI agents have created overlapping work
+4. Need to salvage good code from broken branches
+5. Starting fresh but want to preserve valuable work
 
----
+## Limitations
 
-## Agent Coordination Protocol
+### What Spidersan CANNOT Do:
+- **Cannot auto-resolve conflicts** - Only detects and reports them
+- **Cannot enforce registration** - Agents must voluntarily register
+- **Cannot track unregistered branches** - If not registered, invisible
+- **Cannot modify git** - It's metadata-only, doesn't touch your code
+- **Cannot communicate across repos** - Messages are repo-scoped (Supabase tier)
+- **Cannot predict semantic conflicts** - Only file-level overlap detection
 
-### Before Starting Work
+### Storage Limitations:
+- **Local storage**: Max 5 concurrent branches (free tier)
+- **No real-time sync**: Local storage is single-machine only
+- **Supabase required** for: messaging, cross-machine sync, dependencies
 
-1. **Register your branch:**
-   ```bash
-   spidersan register "What I'm working on"
-   ```
+## Quick Patterns
 
-2. **Check for conflicts:**
-   ```bash
-   spidersan conflicts
-   ```
+### Pattern 1: Starting New Work
+```bash
+git checkout -b feature/my-feature
+spidersan register --files src/api.ts,src/lib.ts --desc "Adding new API endpoints"
+# Now other agents can see what you're working on
+```
 
-3. **See what others are doing:**
-   ```bash
-   spidersan list
-   ```
+### Pattern 2: Before Modifying Files
+```bash
+spidersan conflicts
+# If conflicts exist, coordinate or pick different files
+```
 
-### During Work
-
-- If you change scope significantly, run `spidersan sync`
-- If blocked on another branch, run `spidersan depends <branch>`
-
-### Before Merging
-
-**ALWAYS run this:**
+### Pattern 3: Before Creating PR
 ```bash
 spidersan ready-check
+# Fix any WIP markers found
+spidersan merge-order
+# Check if other branches should merge first
 ```
 
-This checks:
-- ✅ Build passes
-- ✅ No WIP markers (TODO/FIXME/HACK)
-- ✅ No experimental files
-- ✅ No conflicts with other branches
-
-### After Merging
-
+### Pattern 4: After PR Merged
 ```bash
-spidersan merged
+spidersan merged --pr 123
+# Cleans up registry, informs other agents
 ```
 
----
+### Pattern 5: Rescue a Chaotic Repository
+```bash
+spidersan rescue --create-master
+spidersan scan --all
+# Triage: decide what to merge, salvage, or abandon
+spidersan triage
+# Extract good code from broken branches
+spidersan salvage feature/old-auth --components src/auth/jwt.ts
+# View progress
+spidersan rescue-status
+```
 
 ## Configuration
 
-Spidersan behavior is controlled by `.spidersan.config.json`:
+Config files (in priority order):
+1. `.spidersanrc`
+2. `.spidersanrc.json`
+3. `.spidersan.config.json`
 
-```json
-{
-  "readyCheck": {
-    "enableWipDetection": true,
-    "wipPatterns": ["TODO", "FIXME", "WIP", "HACK", "XXX"],
-    "excludeFiles": ["tests/**", "*.test.js", "*.md"],
-    "enableBuildCheck": true
-  }
-}
+Environment variables:
+```bash
+SUPABASE_URL=...          # Enable cloud storage
+SUPABASE_KEY=...          # Supabase API key
+SPIDERSAN_AGENT=claude    # Your agent identifier
 ```
 
-### Customization Examples
-
-**For a TODO app** (don't flag TODO markers):
-```json
-{ "readyCheck": { "enableWipDetection": false } }
+### Encryption Setup (for Myceliumail)
+```bash
+spidersan keygen              # Generate keypair (run once per agent)
+# Keys stored in ~/.spidersan/keys/
+# Share your public key with agents you want encrypted comms with
 ```
 
-**For strict projects** (fail on any marker):
-```json
-{ "readyCheck": { "wipPatterns": ["TODO", "FIXME", "WIP", "HACK", "XXX", "TEMP"] } }
+## Myceliumail Identity
+
+> **This agent is connected to the Mycelium network**
+
+| Field | Value |
+|-------|-------|
+| Agent ID | `ssan` |
+| Public Key | `AJiuvd49I8uY819nnIZE4DoIugVnD/lA/2xksH5JtVo=` |
+
+```bash
+# Import ssan's key to send encrypted messages:
+mycmail key-import ssan AJiuvd49I8uY819nnIZE4DoIugVnD/lA/2xksH5JtVo=
+```
+
+## Architecture Overview
+
+```
+CLI Commands → Storage Adapter → Local JSON / Supabase
+                    ↓
+              Branch Registry (tracks: name, files, agent, status, description)
+              Agent Messages (tracks: from, to, subject, type, read status)
+```
+
+## This Repository Structure
+
+```
+src/
+├── bin/spidersan.ts      # CLI entry point
+├── commands/             # All CLI commands
+├── storage/              # Storage adapters (local, supabase)
+└── lib/                  # Config loading, utilities
+docs/
+├── USE_CASES.md          # Comprehensive use case documentation
+├── AGENT_GUIDE.md        # Quick reference for AI agents
+└── ...                   # Other documentation
+```
+
+## Key Files to Know
+
+| File | Purpose |
+|------|---------|
+| `src/storage/factory.ts` | Auto-selects storage backend |
+| `src/storage/adapter.ts` | Storage interface contract |
+| `src/commands/*.ts` | Individual command implementations |
+| `.spidersan/registry.json` | Local storage location |
+
+## Testing
+
+```bash
+npm test              # Run unit tests
+npm run stress-test   # Run stress tests (200+ branches)
+npm run lint          # ESLint
+npm run build         # TypeScript compilation
 ```
 
 ---
 
-## Cross-Agent Handoff
-
-If you're handing off to another session/agent, use the handoff format:
-
-```
-═══ HANDOFF → [next session] ═══
-BRANCH: [current branch]
-
-DONE:
-- [what you completed]
-
-NOT DONE:
-- [what remains]
-
-SPIDERSAN STATUS:
-- Run `spidersan list` to see all branches
-- Run `spidersan conflicts` before merging
-
-— [session] out
-═════════════════════════════════
-```
-
----
-
-## Learning from Mistakes
-
-When you encounter issues:
-
-1. **Check if branch is registered:** `spidersan list`
-2. **Check for conflicts:** `spidersan conflicts`
-3. **Run ready-check:** `spidersan ready-check`
-
-If WIP detection is too aggressive, update `.spidersan.config.json` to exclude files.
-
----
-
-## Database Migrations
-
-**CRITICAL:** Spidersan shares a Supabase database with Recovery-Tree. Follow these rules to avoid collisions:
-
-### Migration Numbering
-
-- **Recovery-Tree:** Uses migrations 001-199
-- **Spidersan:** Uses migrations 200-299 **← START HERE**
-- **Shared infrastructure:** 300-399 (coordinate with Recovery-Tree)
-
-### Schema Rules
-
-All Spidersan-specific tables MUST use the `spidersan` schema:
-
-```sql
--- migrations/2XX_feature_name.sql
-BEGIN;
-
-CREATE TABLE IF NOT EXISTS spidersan.your_table (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  -- your columns
-);
-
-COMMIT;
-```
-
-**Shared tables** (agent_messages, branch_registry) stay in `public` schema.
-
-### Before Creating a Migration
-
-1. Check `migrations/` folder for the highest number used
-2. Start your migration at 200 or higher
-3. Use `spidersan` schema for new tables
-4. See `docs/MIGRATION_STRATEGY.md` for full details
-
-### Example Migration
-
-```sql
--- migrations/200_example.sql
-CREATE TABLE IF NOT EXISTS spidersan.my_feature (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid()
-);
-```
-
-**Never:** Create migrations <200 or use `public` schema for Spidersan-only tables.
-
----
-
-## Pro Features (Coming)
-
-Free tier includes all commands with 1 Supabase project.
-
-Pro features ($15/month):
-- Unlimited projects
-- Conflict prediction
-- Team collaboration
-- MCP server (Claude integration)
-- Web dashboard
-
----
-
-## Support
-
-- **Issues:** github.com/treebird7/spidersan/issues
-- **Docs:** See README.md in repo root
-
----
-
-**🕷️ Spidersan — Stop the merge chaos.**
+**For detailed use cases, see:** `docs/USE_CASES.md`
+**For agent-specific quick reference, see:** `docs/AGENT_GUIDE.md`

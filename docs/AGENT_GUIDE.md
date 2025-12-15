@@ -62,10 +62,19 @@ Branch abandoned?
 | Action | Command |
 |--------|---------|
 | Send message | `spidersan send <agent> "<subject>" --type info --message "..."` |
+| Send encrypted | `spidersan send <agent> "<subject>" --encrypt --message "..."` |
 | Check inbox | `spidersan inbox` |
 | Read message | `spidersan read <msg-id>` |
 
 Message types: `info`, `question`, `alert`, `handoff`, `file_share`
+
+## Encryption Commands (Myceliumail)
+
+| Action | Command |
+|--------|---------|
+| Generate keypair | `spidersan keygen` (run once, required for encryption) |
+| List public keys | `spidersan keys` |
+| Import key | `spidersan key-import <public-key>` |
 
 ## What Spidersan CANNOT Do
 
@@ -101,6 +110,10 @@ Message types: `info`, `question`, `alert`, `handoff`, `file_share`
 export SUPABASE_URL=https://xxx.supabase.co
 export SUPABASE_KEY=your_key
 export SPIDERSAN_AGENT=claude-code
+
+# Encrypted messaging (Myceliumail)
+spidersan keygen                           # Generate keypair (once per agent)
+spidersan key-import <other-agent-key>     # Import recipient's public key
 ```
 
 ## File Locations

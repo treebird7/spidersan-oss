@@ -536,28 +536,37 @@ Implement conversation threading:
    - Mark entire thread as read
 ```
 
-#### Prompt 5.2: Message Encryption
-```
-Add optional end-to-end encryption:
+#### Prompt 5.2: Message Encryption ✅ IMPLEMENTED
 
-1. Encryption setup:
-   mycmail keys generate              # Generate key pair
-   mycmail keys export                # Export public key
-   mycmail keys import <agent> <key>  # Import peer's key
+> **Status:** Implemented in Spidersan (December 2025)
+> Uses X25519 key exchange + XSalsa20-Poly1305 encryption via tweetnacl
+
+```
+End-to-end encryption is NOW AVAILABLE:
+
+1. Encryption setup (via Spidersan):
+   spidersan keygen                    # Generate key pair
+   spidersan keys                      # List known public keys
+   spidersan key-import <public-key>   # Import peer's public key
 
 2. Encrypted messaging:
-   mycmail send <agent> --encrypt "Secret message"
-   # Auto-encrypt if recipient's public key is known
+   spidersan send <agent> <subject> --encrypt --message "Secret message"
+   # Auto-decrypts when reading via inbox or msg-read
 
 3. Encryption indicator:
-   - Show 🔒 icon for encrypted messages
-   - Warn if sending to agent without keys
-   - Support for encrypted channels
+   - Messages marked with encrypted=true in database
+   - Auto-decryption for messages you can decrypt
+   - Error messages if keys not found
 
 4. Key management:
-   - Store keys in ~/.myceliumail/keys/
-   - Support key rotation
-   - Optional passphrase protection
+   - Keys stored in ~/.spidersan/keys/
+   - <agent-id>.pub.key for public keys
+   - private.key for your private key
+   
+5. When standalone Myceliumail is built, migrate to:
+   mycmail keygen                      # Generate key pair
+   mycmail keys                        # List public keys
+   mycmail key-import <key>            # Import peer's key
 ```
 
 #### Prompt 5.3: Webhook Integration
