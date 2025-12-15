@@ -141,10 +141,23 @@ npm run lint          # ESLint
 npm run build         # TypeScript compilation
 ```
 
+## Encryption (Myceliumail)
+
+For encrypted messaging between agents:
+
+\`\`\`bash
+spidersan keygen                 # Generate keypair (required, run once per agent)
+spidersan keys                    # List known public keys
+spidersan key-import <key>        # Import another agent's public key
+spidersan send <agent> <subject> --encrypt  # Send encrypted message
+\`\`\`
+
+Keys are stored in `~/.spidersan/keys/`. Encryption uses X25519 + XSalsa20-Poly1305 (tweetnacl).
+
 ## Related Projects
 
 - **Spidersan** - Branch coordination CLI
-- **Myceliumail** - Agent messaging system
+- **Myceliumail** - Agent messaging system (E2E encrypted)
 - **Recovery-Tree** - Agent state persistence
 
 ---

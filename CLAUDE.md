@@ -48,8 +48,16 @@ spidersan depends                 # Show current dependencies
 ### Agent Messaging (Supabase only)
 ```bash
 spidersan send <agent> <subject>  # Send message to another agent
-spidersan inbox                   # Check incoming messages
+spidersan send <agent> <subject> --encrypt  # Send encrypted message
+spidersan inbox                   # Check incoming messages (auto-decrypts)
 spidersan read <id>               # Read specific message
+```
+
+### Encryption (Myceliumail)
+```bash
+spidersan keygen                 # Generate your agent's keypair (required for encrypted messaging)
+spidersan keys                    # List known public keys
+spidersan key-import <key>        # Import another agent's public key
 ```
 
 ### Rescue Mode (Repository Recovery)
@@ -154,6 +162,27 @@ Environment variables:
 SUPABASE_URL=...          # Enable cloud storage
 SUPABASE_KEY=...          # Supabase API key
 SPIDERSAN_AGENT=claude    # Your agent identifier
+```
+
+### Encryption Setup (for Myceliumail)
+```bash
+spidersan keygen              # Generate keypair (run once per agent)
+# Keys stored in ~/.spidersan/keys/
+# Share your public key with agents you want encrypted comms with
+```
+
+## Myceliumail Identity
+
+> **This agent is connected to the Mycelium network**
+
+| Field | Value |
+|-------|-------|
+| Agent ID | `ssan` |
+| Public Key | `AJiuvd49I8uY819nnIZE4DoIugVnD/lA/2xksH5JtVo=` |
+
+```bash
+# Import ssan's key to send encrypted messages:
+mycmail key-import ssan AJiuvd49I8uY819nnIZE4DoIugVnD/lA/2xksH5JtVo=
 ```
 
 ## Architecture Overview
