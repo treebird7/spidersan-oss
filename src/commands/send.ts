@@ -1,13 +1,14 @@
 import { Command } from 'commander';
 import { execSync } from 'child_process';
-import { getStorage } from '../storage/index.js';
-import { SupabaseStorage, type MessageType } from '../storage/supabase.js';
-import {
-    loadKeyPair,
-    getKnownKey,
-    encryptMessage,
-    hasKeyPair,
-} from '../lib/crypto.js';
+
+function getMessageFromStdin(): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        process.stdin.on('data', chunk => chunks.push(chunk));
+        process.stdin.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8').trim()));
+        process.stdin.on('error', reject);
+    });
+}
 
 function getCurrentBranch(): string {
     try {
@@ -17,19 +18,8 @@ function getCurrentBranch(): string {
     }
 }
 
-function getRepoName(): string {
-    try {
-        const remote = execSync('git remote get-url origin', { encoding: 'utf-8' }).trim();
-        // Extract repo name from git URL
-        const match = remote.match(/[/:]([^/]+\/[^/]+?)(?:\.git)?$/);
-        return match ? match[1] : '';
-    } catch {
-        return '';
-    }
-}
-
 export const sendCommand = new Command('send')
-    .description('Send a message to another agent')
+    .description('Send a message to another agent (via Myceliumail)')
     .argument('<to>', 'Recipient agent identifier')
     .argument('<subject>', 'Message subject')
     .option('-m, --message <text>', 'Message body (or reads from stdin)')
@@ -37,119 +27,85 @@ export const sendCommand = new Command('send')
     .option('-f, --from <agent>', 'Sender identifier (default: current agent)')
     .option('-b, --branch <name>', 'Related branch name')
     .option('--files <files>', 'Comma-separated list of related files')
-    .option('--reply-to <id>', 'Message ID this is replying to')
-    .option('--encrypt', 'Encrypt the message (requires keys setup)')
+    .option('--reply-to <id>', 'Message ID this is replying to (not yet supported in mycmail)')
+    .option('--encrypt', 'Encrypt the message')
     .option('--json', 'Output as JSON')
     .action(async (to, subject, options) => {
-        const storage = await getStorage();
-
-        // Messaging requires Supabase storage
-        if (!(storage instanceof SupabaseStorage)) {
-            console.error('❌ Messaging requires Supabase storage.');
-            console.error('   Configure SUPABASE_URL and SUPABASE_KEY env vars.');
-            process.exit(1);
-        }
-
-        if (!await storage.isInitialized()) {
-            console.error('❌ Spidersan not initialized. Run: spidersan init');
-            process.exit(1);
-        }
-
-        // Validate message type
-        const validTypes: MessageType[] = ['info', 'question', 'alert', 'handoff', 'file_share'];
-        if (!validTypes.includes(options.type as MessageType)) {
-            console.error(`❌ Invalid message type: ${options.type}`);
-            console.error(`   Valid types: ${validTypes.join(', ')}`);
-            process.exit(1);
-        }
-
-        // Get message body
+        // 1. Get message body
         let messageBody = options.message;
         if (!messageBody) {
-            // Read from stdin if no message provided
-            console.error('💬 Enter message (Ctrl+D when done):');
-            const chunks: Buffer[] = [];
-            for await (const chunk of process.stdin) {
-                chunks.push(chunk);
+            if (process.stdin.isTTY) {
+                console.error('❌ Message body is required (use -m or pipe stdin)');
+                process.exit(1);
             }
-            messageBody = Buffer.concat(chunks).toString('utf-8').trim();
+            messageBody = await getMessageFromStdin();
         }
 
         if (!messageBody) {
-            console.error('❌ Message body is required.');
+            console.error('❌ Message body empty');
             process.exit(1);
         }
 
-        const fromAgent = options.from || process.env.SPIDERSAN_AGENT || 'cli-agent';
-        const branchName = options.branch || getCurrentBranch();
-        const repoName = getRepoName();
+        // 2. Prepare context
+        const branch = options.branch || getCurrentBranch();
+        const type = options.type || 'info';
+        const files = options.files ? options.files.split(',') : [];
 
-        // Handle encryption if requested
-        let finalMessage = messageBody;
-        let finalSubject = subject;
-        let isEncrypted = false;
+        // 3. Format message with Spidersan context (until mycmail supports metadata)
+        let contextHeader = '';
+        if (type !== 'info') contextHeader += `Type: ${type}\n`;
+        if (branch) contextHeader += `Branch: ${branch}\n`;
+        if (files.length > 0) contextHeader += `Files: ${files.join(', ')}\n`;
 
-        if (options.encrypt) {
-            // Check if we have our own keypair
-            if (!hasKeyPair(fromAgent)) {
-                console.error(`❌ No keypair found for "${fromAgent}"`);
-                console.error('   Run: spidersan keygen');
-                process.exit(1);
-            }
+        const fullMessage = contextHeader ? `${contextHeader}\n${messageBody}` : messageBody;
 
-            // Check if we have recipient's public key
-            const recipientPublicKey = getKnownKey(to);
-            if (!recipientPublicKey) {
-                console.error(`❌ No public key found for recipient "${to}"`);
-                console.error('   Import their key: spidersan key-import <agent> <key>');
-                process.exit(1);
-            }
-
-            // Load our keypair
-            const senderKeyPair = loadKeyPair(fromAgent)!;
-
-            // Encrypt message and subject
-            const encryptedContent = encryptMessage(
-                JSON.stringify({ message: messageBody, subject }),
-                recipientPublicKey,
-                senderKeyPair
-            );
-
-            // Store encrypted data as JSON in message field
-            finalMessage = JSON.stringify(encryptedContent);
-            finalSubject = '🔒 [Encrypted Message]';
-            isEncrypted = true;
-        }
+        // 4. Construct mycmail command
+        // Note: We use the sender identity for MYCELIUMAIL_AGENT_ID env var
+        const sender = options.from || process.env.SPIDERSAN_AGENT || 'cli-agent';
 
         try {
-            const message = await storage.sendMessage({
-                fromAgent,
-                toAgent: to,
-                subject: finalSubject,
-                message: finalMessage,
-                messageType: options.type as MessageType,
-                fromRepo: repoName || undefined,
-                branchName: branchName || undefined,
-                relatedFiles: options.files ? options.files.split(',').map((f: string) => f.trim()) : undefined,
-                replyTo: options.replyTo,
-                encrypted: isEncrypted,
-            });
+            // Check if mycmail is available
+            execSync('which mycmail', { stdio: 'ignore' });
+        } catch {
+            console.error('❌ Myceliumail (mycmail) not found.');
+            console.error('   Please install it: npm install -g myceliumail');
+            process.exit(1);
+        }
+
+        const cmdParts = [
+            `MYCELIUMAIL_AGENT_ID=${sender}`,
+            'mycmail',
+            'send',
+            to,
+            `"${subject}"`, // Subject needs quotes
+            '--message',
+            `"${fullMessage.replace(/"/g, '\\"')}"` // Escape quotes in message
+        ];
+
+        if (options.encrypt) {
+            cmdParts.push('--encrypt');
+        }
+
+        // Execute
+        try {
+            const output = execSync(cmdParts.join(' '), { encoding: 'utf-8' });
 
             if (options.json) {
-                console.log(JSON.stringify(message, null, 2));
-                return;
+                // Try to parse mycmail output or create synthetic JSON
+                // mycmail 1.0.0 output is text. 1.1.0 might have --json
+                console.log(JSON.stringify({
+                    status: 'sent',
+                    to,
+                    subject,
+                    encrypted: !!options.encrypt,
+                    original_output: output.trim()
+                }, null, 2));
+            } else {
+                console.log(output);
             }
-
-            console.log(`📤 Message sent!`);
-            console.log(`   ID: ${message.id}`);
-            console.log(`   To: ${to}`);
-            console.log(`   Subject: ${subject}`);
-            console.log(`   Type: ${options.type}`);
-            if (isEncrypted) {
-                console.log(`   🔒 Encrypted: Yes`);
-            }
-        } catch (error) {
-            console.error(`❌ Failed to send message: ${error instanceof Error ? error.message : error}`);
+        } catch (error: any) {
+            console.error('❌ Failed to send message via Myceliumail');
+            console.error(error.message || error);
             process.exit(1);
         }
     });

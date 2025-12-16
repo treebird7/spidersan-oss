@@ -28,3 +28,14 @@ const storage = new LocalStorage();
 // ✅ Right - uses factory
 const storage = await getStorage();
 ```
+
+## 6. macOS Case Sensitivity Git Staging (16-Dec-25)
+**Problem:** `git add CLAUDE.md` fails silently when file was tracked as `claude.md`  
+**Cause:** macOS filesystem is case-insensitive, git is case-sensitive  
+**Symptom:** `git status` shows modified, but `git add` does nothing  
+**Fix:** Rename via temp file:
+```bash
+mv CLAUDE.md _CLAUDE.md && git add -A && git commit -m "temp"
+mv _CLAUDE.md CLAUDE.md && git add CLAUDE.md && git commit -m "fix"
+```
+**Prevention:** Use consistent casing from the start
