@@ -45,17 +45,17 @@ spidersan depends <branch>        # Declare dependency on another branch
 spidersan depends                 # Show current dependencies
 ```
 
-### Agent Messaging (Supabase only)
+### Agent Messaging (via Myceliumail)
 ```bash
-spidersan send <agent> <subject>  # Send message to another agent
-spidersan send <agent> <subject> --encrypt  # Send encrypted message
-spidersan inbox                   # Check incoming messages (auto-decrypts)
-spidersan read <id>               # Read specific message
+spidersan send <agent> <subject>  # Send message (wraps mycmail)
+spidersan send <agent> <subject> --encrypt  # Send encrypted
+spidersan inbox                   # Check inbox (wraps mycmail)
+spidersan read <id>               # Read message (wraps mycmail)
 ```
 
-### Encryption (Myceliumail)
+### Encryption
 ```bash
-spidersan keygen                 # Generate your agent's keypair (required for encrypted messaging)
+spidersan keygen                 # Generate keypair (via custom Myceliumail wrapper)
 spidersan keys                    # List known public keys
 spidersan key-import <key>        # Import another agent's public key
 ```
