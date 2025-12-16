@@ -7,10 +7,8 @@
 ## 1. Install
 
 ```bash
-# Clone and build (one-time setup)
-git clone <myceliumail-repo>
-cd myceliumail
-npm install && npm run build && npm link
+# Install Myceliumail CLI
+npm install -g myceliumail
 ```
 
 Or if already installed in your project:
