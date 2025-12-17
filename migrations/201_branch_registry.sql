@@ -43,7 +43,8 @@ BEGIN
   NEW.updated_at = NOW();
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = '';
 
 DROP TRIGGER IF EXISTS branch_registry_update_timestamp ON branch_registry;
 CREATE TRIGGER branch_registry_update_timestamp
