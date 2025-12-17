@@ -58,11 +58,12 @@ LIMIT 50;
 CREATE OR REPLACE FUNCTION mark_message_read(message_id UUID)
 RETURNS VOID AS $$
 BEGIN
-  UPDATE agent_messages
+  UPDATE public.agent_messages
   SET read = true, read_at = NOW()
   WHERE id = message_id;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = '';
 
 -- RLS (optional - adjust as needed)
 ALTER TABLE agent_messages ENABLE ROW LEVEL SECURITY;
