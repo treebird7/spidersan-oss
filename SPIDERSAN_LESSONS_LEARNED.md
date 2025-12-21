@@ -1,4 +1,4 @@
-# FUCKBOARD - Spidersan Lessons Learned
+# Spidersan Lessons Learned
 
 ## 1. Idempotent Migrations (Critical)
 **Problem:** Migrations fail on re-run  
