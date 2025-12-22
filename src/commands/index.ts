@@ -20,3 +20,7 @@ export { msgReadCommand } from './msg-read.js';
 export { keygenCommand } from './keygen.js';
 export { keyImportCommand } from './key-import.js';
 export { keysCommand } from './keys.js';
+
+// License commands
+export { activateCommand } from './activate.js';
+export { statusCommand } from './status.js';

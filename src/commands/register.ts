@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { execSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
+import { checkBranchLimit } from '../lib/license.js';
 
 function getCurrentBranch(): string {
     try {
@@ -28,6 +29,13 @@ export const registerCommand = new Command('register')
 
         // Check if branch already registered
         const existing = await storage.get(branchName);
+
+        if (!existing) {
+            // New registration - check branch limit for free tier
+            const activeBranches = (await storage.list()).filter(b => b.status === 'active');
+            await checkBranchLimit(activeBranches.length);
+        }
+
         if (existing) {
             // Update existing registration
             await storage.update(branchName, {
@@ -52,3 +60,4 @@ export const registerCommand = new Command('register')
             console.log(`   Files: ${files.join(', ')}`);
         }
     });
+
