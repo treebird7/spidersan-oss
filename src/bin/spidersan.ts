@@ -70,4 +70,8 @@ program.addCommand(keysCommand);
 program.addCommand(activateCommand);
 program.addCommand(statusCommand);
 
+// Check for updates (non-blocking)
+import { checkForUpdates } from '../lib/update-check.js';
+checkForUpdates().catch(() => { });
+
 program.parse();
