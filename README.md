@@ -102,13 +102,37 @@ spidersan merge-order
 
 ## 💎 Pro
 
-Spidersan Pro unlocks advanced features for teams running multiple AI agents:
+Spidersan Pro unlocks advanced features for teams running multiple AI agents.
 
-- **Unlimited concurrent branches** (free tier: 5 branches)
-- **Conflict prediction** - Know about conflicts before they happen
-- **MCP Server** - Direct integration with Claude, Cursor, and other AI tools
+| Feature | Free | Pro ($9/mo) |
+|---------|------|-------------|
+| Core commands | ✅ All | ✅ All |
+| Concurrent branches | 5 max | ✅ Unlimited |
+| MCP Server | ❌ | ✅ |
+| Conflict prediction | ❌ | ✅ Coming soon |
+| Priority support | ❌ | ✅ |
 
-[Contact for Pro License →](mailto:pro@spidersan.dev)
+**Activate Pro:**
+```bash
+spidersan activate <your-license-key>
+spidersan status  # Check your plan
+```
+
+Get a license: [spidersan.dev/pro](https://spidersan.dev/pro)
+
+> **Note:** One Pro license unlocks the entire Treebird ecosystem (Spidersan + Myceliumail).
+
+---
+
+## 🗣️ Feedback & Support
+
+We're building this in public and want to hear from you!
+
+- **Issues & Features:** [GitHub Issues](https://github.com/treebird7/Spidersan/issues)
+- **Email:** treebird7@proton.me
+- **Twitter/X:** [@treebird7](https://twitter.com/treebird7)
+
+Tell us what's working, what's broken, and what you'd love to see next.
 
 ---
 
@@ -128,5 +152,7 @@ Contributions welcome! Please read our contributing guidelines first.
 <div align="center">
 
 **Made with 🕷️ for AI-first development teams**
+
+Part of the [Treebird Ecosystem](https://github.com/treebird7) 🌲
 
 </div>

@@ -28,6 +28,9 @@ import {
     keygenCommand,
     keyImportCommand,
     keysCommand,
+    // License
+    activateCommand,
+    statusCommand,
 } from '../commands/index.js';
 
 const program = new Command();
@@ -62,5 +65,9 @@ program.addCommand(msgReadCommand);
 program.addCommand(keygenCommand);
 program.addCommand(keyImportCommand);
 program.addCommand(keysCommand);
+
+// License management
+program.addCommand(activateCommand);
+program.addCommand(statusCommand);
 
 program.parse();
