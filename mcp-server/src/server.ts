@@ -127,43 +127,34 @@ server.tool(
 // Tool: register_branch
 server.tool(
     'register_branch',
-    'Register the current branch with files you are modifying',
+    'Register a branch with files you are modifying',
     {
+        branch: z.string().describe('Branch name to register'),
         files: z.array(z.string()).describe('List of files being modified'),
         description: z.string().optional().describe('Brief description of the changes'),
         agent: z.string().optional().describe('Your agent identifier'),
+        repo: z.string().optional().describe('Repository name (for context)'),
     },
-    async ({ files, description, agent }) => {
-        if (!storage.isInitialized()) {
-            return {
-                content: [{ type: 'text', text: '❌ Spidersan not initialized. Run: spidersan init' }],
-            };
-        }
-
-        let branchName: string;
-        try {
-            branchName = storage.getCurrentBranch();
-        } catch {
-            return {
-                content: [{ type: 'text', text: '❌ Not in a git repository' }],
-            };
-        }
+    async ({ branch, files, description, agent, repo }) => {
+        // Auto-initialize if needed (global storage doesn't need per-repo init)
+        const branchName = branch;
 
         const existing = storage.getBranch(branchName);
-        const branch = storage.registerBranch({
+        const branchData = storage.registerBranch({
             name: branchName,
             files: existing ? [...new Set([...existing.files, ...files])] : files,
             status: 'active',
             description: description || existing?.description,
             agent: agent || existing?.agent,
             dependencies: existing?.dependencies,
+            repo: repo || existing?.repo,
         });
 
         const action = existing ? 'Updated' : 'Registered';
         return {
             content: [{
                 type: 'text',
-                text: `✅ ${action} branch: ${branch.name}\n   Files: ${branch.files.join(', ')}\n   Agent: ${branch.agent || 'not set'}`
+                text: `✅ ${action} branch: ${branchData.name}\n   Files: ${branchData.files.join(', ')}\n   Agent: ${branchData.agent || 'not set'}\n   Repo: ${branchData.repo || 'not set'}`
             }],
         };
     }

@@ -2,14 +2,16 @@
  * Spidersan Storage Adapter for MCP
  * 
  * Interfaces with the main Spidersan registry.
+ * Uses global storage at ~/.spidersan/ for MCP access.
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import { homedir } from 'os';
 import { execSync } from 'child_process';
 
-// Registry file in current working directory
-const REGISTRY_DIR = '.spidersan';
+// Global registry location (not tied to specific repo)
+const REGISTRY_DIR = join(homedir(), '.spidersan');
 const REGISTRY_FILE = 'registry.json';
 
 export interface Branch {
@@ -19,6 +21,7 @@ export interface Branch {
     description?: string;
     agent?: string;
     dependencies?: string[];
+    repo?: string;  // Which repo this branch belongs to
     registeredAt: string;
     updatedAt: string;
 }
@@ -33,7 +36,7 @@ export interface Registry {
  * Get the path to the registry file
  */
 function getRegistryPath(): string {
-    return join(process.cwd(), REGISTRY_DIR, REGISTRY_FILE);
+    return join(REGISTRY_DIR, REGISTRY_FILE);
 }
 
 /**
@@ -61,9 +64,8 @@ export function loadRegistry(): Registry | null {
  * Save the registry
  */
 function saveRegistry(registry: Registry): void {
-    const dir = join(process.cwd(), REGISTRY_DIR);
-    if (!existsSync(dir)) {
-        mkdirSync(dir, { recursive: true });
+    if (!existsSync(REGISTRY_DIR)) {
+        mkdirSync(REGISTRY_DIR, { recursive: true });
     }
     writeFileSync(getRegistryPath(), JSON.stringify(registry, null, 2));
 }
