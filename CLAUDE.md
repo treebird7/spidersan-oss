@@ -39,6 +39,15 @@ spidersan cleanup                 # Remove stale branches
 spidersan sync                    # Sync registry with git
 ```
 
+### Session Lifecycle (Myceliumail Integration)
+```bash
+spidersan wake                    # Start session: sync, conflicts, announce presence
+spidersan wake --skip-mail        # Start session without mycmail
+spidersan close                   # End session: show status, broadcast sign-off
+spidersan close --mark-stale      # End session and mark branches as stale
+spidersan close -m "Done for now" # Custom sign-off message
+```
+
 ### Dependencies (Supabase only)
 ```bash
 spidersan depends <branch>        # Declare dependency on another branch

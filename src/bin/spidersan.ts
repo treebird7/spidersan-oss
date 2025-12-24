@@ -31,6 +31,9 @@ import {
     // License
     activateCommand,
     statusCommand,
+    // Session lifecycle
+    wakeCommand,
+    closeCommand,
 } from '../commands/index.js';
 
 const program = new Command();
@@ -69,6 +72,10 @@ program.addCommand(keysCommand);
 // License management
 program.addCommand(activateCommand);
 program.addCommand(statusCommand);
+
+// Session lifecycle
+program.addCommand(wakeCommand);
+program.addCommand(closeCommand);
 
 // Check for updates (non-blocking)
 import { checkForUpdates } from '../lib/update-check.js';

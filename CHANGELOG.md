@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Session lifecycle commands** - Myceliumail ecosystem integration
+  - `spidersan wake` - Start session: sync registry, check conflicts, call `mycmail wake`
+  - `spidersan close` - End session: show status, optionally mark stale, call `mycmail close`
+
 ## [0.2.0] - 2025-12-23
 
 ### Added
