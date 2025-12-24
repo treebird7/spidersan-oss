@@ -28,3 +28,6 @@ export { statusCommand } from './status.js';
 // Session lifecycle commands
 export { wakeCommand } from './wake.js';
 export { closeCommand } from './close.js';
+
+// Collab command
+export { registerCollabCommand as collabCommand } from './collab.js';
