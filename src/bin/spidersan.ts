@@ -34,6 +34,7 @@ import {
     // Session lifecycle
     wakeCommand,
     closeCommand,
+    collabCommand,
 } from '../commands/index.js';
 
 const program = new Command();
@@ -76,6 +77,7 @@ program.addCommand(statusCommand);
 // Session lifecycle
 program.addCommand(wakeCommand);
 program.addCommand(closeCommand);
+collabCommand(program);
 
 // Check for updates (non-blocking)
 import { checkForUpdates } from '../lib/update-check.js';
