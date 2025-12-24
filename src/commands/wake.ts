@@ -2,7 +2,7 @@
  * spidersan wake
  * 
  * Start a session with branch context.
- * Syncs registry, shows active branches, checks conflicts, calls mycmail wake.
+ * "Weaving into the Web" - the spider feels its threads.
  */
 
 import { Command } from 'commander';
@@ -35,8 +35,18 @@ function hasMycmail(): boolean {
     }
 }
 
+function getInboxCount(): number {
+    try {
+        const output = execSync('mycmail inbox --count 2>/dev/null || echo "0"', { encoding: 'utf-8' });
+        const match = output.match(/(\d+)/);
+        return match ? parseInt(match[1], 10) : 0;
+    } catch {
+        return 0;
+    }
+}
+
 export const wakeCommand = new Command('wake')
-    .description('Start a session - sync registry, check conflicts, announce presence')
+    .description('Start a session - weave into the web, feel the threads')
     .option('--json', 'Output as JSON')
     .option('-q, --quiet', 'Minimal output')
     .option('--skip-mail', 'Skip mycmail integration')
@@ -45,15 +55,15 @@ export const wakeCommand = new Command('wake')
         const currentBranch = getCurrentBranch();
         const result: {
             synced: number;
-            branches: Array<{ name: string; files: string[]; status: string }>;
-            conflicts: Array<{ branch: string; files: string[] }>;
-            inbox: string | null;
+            branches: Array<{ name: string; files: string[]; status: string; agent?: string }>;
+            conflicts: Array<{ branch: string; files: string[]; agent?: string }>;
+            inboxCount: number;
             mycmailCalled: boolean;
         } = {
             synced: 0,
             branches: [],
             conflicts: [],
-            inbox: null,
+            inboxCount: 0,
             mycmailCalled: false,
         };
 
@@ -73,7 +83,7 @@ export const wakeCommand = new Command('wake')
             const branches = await storage.list();
             result.branches = branches
                 .filter(b => b.status === 'active')
-                .map(b => ({ name: b.name, files: b.files, status: b.status }));
+                .map(b => ({ name: b.name, files: b.files, status: b.status, agent: b.agent }));
 
             // Step 2: Check conflicts for current branch
             if (currentBranch) {
@@ -83,7 +93,7 @@ export const wakeCommand = new Command('wake')
                         if (branch.name === currentBranch || branch.status !== 'active') continue;
                         const overlappingFiles = branch.files.filter(f => target.files.includes(f));
                         if (overlappingFiles.length > 0) {
-                            result.conflicts.push({ branch: branch.name, files: overlappingFiles });
+                            result.conflicts.push({ branch: branch.name, files: overlappingFiles, agent: branch.agent });
                         }
                     }
                 }
@@ -93,63 +103,96 @@ export const wakeCommand = new Command('wake')
         // Step 3: Call mycmail wake
         if (!options.skipMail && hasMycmail()) {
             try {
-                const output = execSync('mycmail wake --quiet 2>/dev/null || true', { encoding: 'utf-8' });
-                result.inbox = output.trim() || null;
+                execSync('mycmail wake --quiet 2>/dev/null || true', { encoding: 'utf-8' });
                 result.mycmailCalled = true;
+                result.inboxCount = getInboxCount();
             } catch {
                 // Ignore mycmail errors
             }
         }
 
-        // Output
+        // JSON output
         if (options.json) {
             console.log(JSON.stringify(result, null, 2));
             return;
         }
 
+        // Quiet output
         if (options.quiet) {
-            console.log(`🕷️ Wake: ${result.branches.length} branches, ${result.conflicts.length} conflicts`);
+            console.log(`🕷️ Wake: ${result.branches.length} threads, ${result.conflicts.length} tensions`);
             return;
         }
 
-        // Full output
-        console.log('🕷️ Spidersan Wake\n');
+        // ═══════════════════════════════════════════════════════════
+        // CEREMONIAL OUTPUT: "Weaving into the Web"
+        // ═══════════════════════════════════════════════════════════
 
+        console.log('');
+        console.log('🕷️  Spidersan Awakens...');
+        console.log('');
+        console.log('   ╭─────────────────────────────────────╮');
+        console.log('   │  Feeling the threads...             │');
+        console.log('   ╰─────────────────────────────────────╯');
+        console.log('');
+
+        // Web status
+        const agentCount = new Set(result.branches.map(b => b.agent).filter(Boolean)).size;
+        console.log('   📡 Web Status:');
+        console.log(`      • ${result.branches.length} thread${result.branches.length !== 1 ? 's' : ''} active`);
+        if (agentCount > 0) {
+            console.log(`      • ${agentCount} agent${agentCount !== 1 ? 's' : ''} weaving`);
+        }
         if (result.synced > 0) {
-            console.log(`   🔄 Synced: Removed ${result.synced} orphaned branch(es)`);
+            console.log(`      • ${result.synced} broken thread${result.synced !== 1 ? 's' : ''} cleared`);
         }
 
-        if (currentBranch) {
-            console.log(`   📍 Current branch: ${currentBranch}`);
-        }
-
-        if (result.branches.length > 0) {
-            console.log(`\n   📋 Active Branches (${result.branches.length}):`);
-            for (const branch of result.branches.slice(0, 5)) {
-                const isCurrent = branch.name === currentBranch ? ' ← you' : '';
-                console.log(`      • ${branch.name}${isCurrent}`);
-            }
-            if (result.branches.length > 5) {
-                console.log(`      ... and ${result.branches.length - 5} more`);
-            }
-        } else {
-            console.log('\n   📋 No active branches registered');
-        }
-
+        // Tensions (conflicts)
         if (result.conflicts.length > 0) {
-            console.log(`\n   ⚠️  Conflicts (${result.conflicts.length}):`);
+            console.log('');
+            console.log(`   ⚠️  Tension${result.conflicts.length !== 1 ? 's' : ''} detected:`);
             for (const conflict of result.conflicts) {
-                console.log(`      • ${conflict.branch}: ${conflict.files.join(', ')}`);
+                const agentInfo = conflict.agent ? ` (${conflict.agent})` : '';
+                console.log(`      └─ ${conflict.files[0]}${agentInfo}`);
+                if (conflict.files.length > 1) {
+                    console.log(`         +${conflict.files.length - 1} more file${conflict.files.length > 2 ? 's' : ''}`);
+                }
             }
-        } else if (currentBranch && result.branches.some(b => b.name === currentBranch)) {
-            console.log('\n   ✅ No conflicts with other branches');
         }
 
+        // Active threads
+        if (result.branches.length > 0) {
+            console.log('');
+            console.log('   🕸️  Active Threads:');
+            for (const branch of result.branches.slice(0, 4)) {
+                const isCurrent = branch.name === currentBranch ? ' ← you' : '';
+                const agentInfo = branch.agent && branch.name !== currentBranch ? ` (${branch.agent})` : '';
+                console.log(`      • ${branch.name}${agentInfo}${isCurrent}`);
+            }
+            if (result.branches.length > 4) {
+                console.log(`      • ...and ${result.branches.length - 4} more`);
+            }
+        }
+
+        // Messages
         if (result.mycmailCalled) {
-            console.log('\n   📬 Myceliumail: Session started');
-        } else if (!options.skipMail && !hasMycmail()) {
-            console.log('\n   💡 Install mycmail for messaging: npm i -g myceliumail');
+            console.log('');
+            if (result.inboxCount > 0) {
+                console.log(`   📬 ${result.inboxCount} message${result.inboxCount !== 1 ? 's' : ''} waiting`);
+            } else {
+                console.log('   📭 No new messages');
+            }
         }
 
-        console.log('\n   Ready to work! 🕷️');
+        // Closing
+        console.log('');
+        if (result.conflicts.length === 0) {
+            console.log('   ╭─────────────────────────────────────╮');
+            console.log('   │  The web is calm. Ready to hunt. 🎯 │');
+            console.log('   ╰─────────────────────────────────────╯');
+        } else {
+            console.log('   ╭─────────────────────────────────────╮');
+            console.log('   │  Tensions on the web. Tread softly. │');
+            console.log('   ╰─────────────────────────────────────╯');
+        }
+        console.log('');
     });
