@@ -24,3 +24,7 @@ export { keysCommand } from './keys.js';
 // License commands
 export { activateCommand } from './activate.js';
 export { statusCommand } from './status.js';
+
+// Session lifecycle commands
+export { wakeCommand } from './wake.js';
+export { closeCommand } from './close.js';
