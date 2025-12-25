@@ -8,6 +8,19 @@
     "bin": {
         "spidersan": "./dist/bin/spidersan.js"
     },
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE",
+        "CHANGELOG.md"
+    ],
+    "publishConfig": {
+        "access": "public"
+    },
+    "funding": {
+        "type": "individual",
+        "url": "https://github.com/sponsors/treebird7"
+    },
     "scripts": {
         "build": "tsc",
         "dev": "tsc --watch",
