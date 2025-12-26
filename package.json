@@ -27,6 +27,7 @@
         "start": "node dist/bin/spidersan.js",
         "test": "vitest",
         "test:run": "vitest run",
+        "test:coverage": "vitest run --coverage",
         "lint": "eslint src/",
         "typecheck": "tsc --noEmit",
         "prepublishOnly": "npm run typecheck && npm run lint && npm run build",

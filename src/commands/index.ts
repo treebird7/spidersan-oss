@@ -31,3 +31,7 @@ export { closeCommand } from './close.js';
 
 // Collab command
 export { registerCollabCommand as collabCommand } from './collab.js';
+
+// Diagnostics
+export { doctorCommand } from './doctor.js';
+export { completionsCommand } from './completions.js';
