@@ -46,16 +46,55 @@ export class SupabaseStorage implements StorageAdapter {
 
     private async fetch(endpoint: string, options: RequestInit = {}): Promise<Response> {
         const url = `${this.url}/rest/v1/${endpoint}`;
-        return fetch(url, {
-            ...options,
-            headers: {
-                'apikey': this.key,
-                'Authorization': `Bearer ${this.key}`,
-                'Content-Type': 'application/json',
-                'Prefer': 'return=representation',
-                ...options.headers,
-            },
-        });
+        try {
+            const response = await fetch(url, {
+                ...options,
+                headers: {
+                    'apikey': this.key,
+                    'Authorization': `Bearer ${this.key}`,
+                    'Content-Type': 'application/json',
+                    'Prefer': 'return=representation',
+                    ...options.headers,
+                },
+            });
+
+            // Check for common errors and provide helpful messages
+            if (!response.ok) {
+                const text = await response.text();
+                let parsed: { message?: string; hint?: string } = {};
+                try { parsed = JSON.parse(text); } catch { /* ignore */ }
+
+                if (parsed.message?.includes('Invalid API key')) {
+                    throw new Error(
+                        'Invalid Supabase API key.\n' +
+                        '  Hint: Check your SUPABASE_KEY environment variable.\n' +
+                        '  Note: A local .env file may be overriding your mycmail config.'
+                    );
+                }
+
+                if (response.status === 401 || response.status === 403) {
+                    throw new Error(
+                        'Supabase authentication failed.\n' +
+                        '  • Check SUPABASE_URL and SUPABASE_KEY are correct\n' +
+                        '  • Verify RLS policies allow access\n' +
+                        '  • Check for .env conflicts in current directory'
+                    );
+                }
+
+                throw new Error(`Supabase error (${response.status}): ${parsed.message || text}`);
+            }
+
+            return response;
+        } catch (error) {
+            if (error instanceof TypeError && error.message.includes('fetch')) {
+                throw new Error(
+                    'Network error connecting to Supabase.\n' +
+                    '  • Check your internet connection\n' +
+                    '  • Verify SUPABASE_URL is correct'
+                );
+            }
+            throw error;
+        }
     }
 
     private rowToBranch(row: SupabaseBranchRow): Branch {

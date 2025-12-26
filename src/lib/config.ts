@@ -52,6 +52,57 @@ const DEFAULT_CONFIG: SpidersanConfig = {
 
 const CONFIG_FILES = ['.spidersanrc', '.spidersanrc.json', '.spidersan.config.json'];
 
+interface ValidationError {
+    path: string;
+    message: string;
+}
+
+function validateConfig(config: unknown): ValidationError[] {
+    const errors: ValidationError[] = [];
+
+    if (typeof config !== 'object' || config === null) {
+        errors.push({ path: '', message: 'Config must be an object' });
+        return errors;
+    }
+
+    const obj = config as Record<string, unknown>;
+
+    // Validate readyCheck
+    if (obj.readyCheck !== undefined) {
+        if (typeof obj.readyCheck !== 'object' || obj.readyCheck === null) {
+            errors.push({ path: 'readyCheck', message: 'Must be an object' });
+        } else {
+            const rc = obj.readyCheck as Record<string, unknown>;
+            if (rc.wipPatterns !== undefined && !Array.isArray(rc.wipPatterns)) {
+                errors.push({ path: 'readyCheck.wipPatterns', message: 'Must be an array of strings' });
+            }
+            if (rc.excludeFiles !== undefined && !Array.isArray(rc.excludeFiles)) {
+                errors.push({ path: 'readyCheck.excludeFiles', message: 'Must be an array of strings' });
+            }
+            if (rc.enableWipDetection !== undefined && typeof rc.enableWipDetection !== 'boolean') {
+                errors.push({ path: 'readyCheck.enableWipDetection', message: 'Must be a boolean' });
+            }
+        }
+    }
+
+    // Validate storage
+    if (obj.storage !== undefined) {
+        if (typeof obj.storage !== 'object' || obj.storage === null) {
+            errors.push({ path: 'storage', message: 'Must be an object' });
+        } else {
+            const st = obj.storage as Record<string, unknown>;
+            if (st.type !== undefined && !['local', 'supabase'].includes(st.type as string)) {
+                errors.push({ path: 'storage.type', message: 'Must be "local" or "supabase"' });
+            }
+            if (st.environment !== undefined && !['production', 'staging', 'local'].includes(st.environment as string)) {
+                errors.push({ path: 'storage.environment', message: 'Must be "production", "staging", or "local"' });
+            }
+        }
+    }
+
+    return errors;
+}
+
 export async function loadConfig(basePath: string = process.cwd()): Promise<SpidersanConfig> {
     // Try each config file name
     for (const filename of CONFIG_FILES) {
@@ -60,9 +111,22 @@ export async function loadConfig(basePath: string = process.cwd()): Promise<Spid
             try {
                 const content = await readFile(configPath, 'utf-8');
                 const userConfig = JSON.parse(content);
+
+                // Validate config
+                const errors = validateConfig(userConfig);
+                if (errors.length > 0) {
+                    console.warn(`⚠️  Config validation warnings in ${filename}:`);
+                    errors.forEach(e => console.warn(`   ${e.path}: ${e.message}`));
+                }
+
                 return deepMerge(DEFAULT_CONFIG, userConfig);
             } catch (error) {
-                console.warn(`Warning: Failed to parse ${filename}:`, error);
+                if (error instanceof SyntaxError) {
+                    console.error(`❌ Invalid JSON in ${filename}: ${error.message}`);
+                    console.error('   Using default configuration instead.');
+                } else {
+                    console.warn(`Warning: Failed to read ${filename}:`, error);
+                }
             }
         }
     }

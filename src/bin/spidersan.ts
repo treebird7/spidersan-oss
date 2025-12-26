@@ -7,6 +7,7 @@
 
 import 'dotenv/config';
 import { Command } from 'commander';
+import { createRequire } from 'module';
 import {
     initCommand,
     registerCommand,
@@ -35,14 +36,21 @@ import {
     wakeCommand,
     closeCommand,
     collabCommand,
+    // Diagnostics
+    doctorCommand,
+    completionsCommand,
 } from '../commands/index.js';
+
+// Read version from package.json dynamically
+const require = createRequire(import.meta.url);
+const pkg = require('../../package.json');
 
 const program = new Command();
 
 program
     .name('spidersan')
     .description('🕷️ Branch coordination for AI coding agents')
-    .version('0.1.0');
+    .version(pkg.version);
 
 // Core commands (Free tier)
 program.addCommand(initCommand);
@@ -78,6 +86,10 @@ program.addCommand(statusCommand);
 program.addCommand(wakeCommand);
 program.addCommand(closeCommand);
 collabCommand(program);
+
+// Diagnostics
+program.addCommand(doctorCommand);
+program.addCommand(completionsCommand);
 
 // Check for updates (non-blocking)
 import { checkForUpdates } from '../lib/update-check.js';
