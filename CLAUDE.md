@@ -43,6 +43,8 @@ spidersan sync                    # Sync registry with git
 ```bash
 spidersan wake                    # Start session: sync, conflicts, announce presence
 spidersan wake --skip-mail        # Start session without mycmail
+spidersan pulse                   # Check web health and registry completeness
+spidersan pulse --quiet           # One-line health summary
 spidersan close                   # End session: show status, broadcast sign-off
 spidersan close --mark-stale      # End session and mark branches as stale
 spidersan close -m "Done for now" # Custom sign-off message

@@ -34,4 +34,5 @@ export { registerCollabCommand as collabCommand } from './collab.js';
 
 // Diagnostics
 export { doctorCommand } from './doctor.js';
+export { pulseCommand } from './pulse.js';
 export { completionsCommand } from './completions.js';
