@@ -38,6 +38,7 @@ import {
     collabCommand,
     // Diagnostics
     doctorCommand,
+    pulseCommand,
     completionsCommand,
 } from '../commands/index.js';
 
@@ -89,6 +90,7 @@ collabCommand(program);
 
 // Diagnostics
 program.addCommand(doctorCommand);
+program.addCommand(pulseCommand);
 program.addCommand(completionsCommand);
 
 // Check for updates (non-blocking)
