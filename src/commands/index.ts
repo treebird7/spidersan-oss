@@ -36,3 +36,7 @@ export { registerCollabCommand as collabCommand } from './collab.js';
 export { doctorCommand } from './doctor.js';
 export { pulseCommand } from './pulse.js';
 export { completionsCommand } from './completions.js';
+
+// Security Pipeline (ssan + srlk)
+export { tensionCommand } from './tension.js';
+export { auditMarkCommand } from './audit-mark.js';
