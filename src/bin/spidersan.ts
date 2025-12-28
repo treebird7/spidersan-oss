@@ -40,6 +40,9 @@ import {
     doctorCommand,
     pulseCommand,
     completionsCommand,
+    // Security Pipeline
+    tensionCommand,
+    auditMarkCommand,
 } from '../commands/index.js';
 
 // Read version from package.json dynamically
@@ -92,6 +95,10 @@ collabCommand(program);
 program.addCommand(doctorCommand);
 program.addCommand(pulseCommand);
 program.addCommand(completionsCommand);
+
+// Security Pipeline (ssan + srlk)
+program.addCommand(tensionCommand);
+program.addCommand(auditMarkCommand);
 
 // Check for updates (non-blocking)
 import { checkForUpdates } from '../lib/update-check.js';
