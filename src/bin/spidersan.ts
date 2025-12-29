@@ -43,6 +43,8 @@ import {
     // Security Pipeline
     tensionCommand,
     auditMarkCommand,
+    // Session logging
+    logCommand,
 } from '../commands/index.js';
 
 // Read version from package.json dynamically
@@ -99,6 +101,9 @@ program.addCommand(completionsCommand);
 // Security Pipeline (ssan + srlk)
 program.addCommand(tensionCommand);
 program.addCommand(auditMarkCommand);
+
+// Session logging
+program.addCommand(logCommand);
 
 // Check for updates (non-blocking)
 import { checkForUpdates } from '../lib/update-check.js';
