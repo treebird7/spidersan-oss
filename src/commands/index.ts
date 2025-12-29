@@ -40,3 +40,6 @@ export { completionsCommand } from './completions.js';
 // Security Pipeline (ssan + srlk)
 export { tensionCommand } from './tension.js';
 export { auditMarkCommand } from './audit-mark.js';
+
+// Session logging
+export { logCommand } from './log.js';
