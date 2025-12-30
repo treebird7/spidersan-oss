@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `spidersan watch` - Start watching files in current repo
   - `--agent <id>` - Tag registrations with agent identifier
   - `--hub` - Connect to Treebird Hub for real-time conflict warnings
+  - `--hub-sync` - Post conflicts to Hub chat via REST API
   - `--quiet` - Only show conflicts, not file changes
   - `--dir <path>` - Watch specific directory
   - Debounced file detection (1s) to prevent spam

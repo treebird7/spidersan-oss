@@ -13,7 +13,13 @@ interface WatchOptions {
     dir?: string;
     agent?: string;
     hub?: boolean;
+    hubSync?: boolean;
     quiet?: boolean;
+}
+
+interface ConflictInfo {
+    branch: string;
+    files: string[];
 }
 
 function getCurrentBranch(): string {
@@ -32,11 +38,40 @@ function getRepoRoot(): string {
     }
 }
 
+// Post conflict warning to Hub chat API
+async function postConflictToChat(branch: string, agent: string, conflicts: ConflictInfo[]): Promise<void> {
+    const conflictDetails = conflicts
+        .map(c => `• **${c.branch}**: ${c.files.join(', ')}`)
+        .join('\n');
+
+    const message = `🕷️⚠️ **CONFLICT DETECTED** on branch \`${branch}\`\n\n${conflictDetails}`;
+
+    try {
+        const response = await fetch(`${HUB_URL}/api/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                agent: 'ssan',
+                name: 'Spidersan',
+                message,
+                glyph: '🕷️'
+            })
+        });
+
+        if (!response.ok) {
+            console.log(`⚠️ Failed to post to Hub chat: ${response.status}`);
+        }
+    } catch (err) {
+        // Silently fail - Hub might not be running
+    }
+}
+
 export const watchCommand = new Command('watch')
     .description('🕷️ Watch files and auto-register changes (daemon mode)')
     .option('-d, --dir <directory>', 'Directory to watch (default: current repo)')
     .option('-a, --agent <agent>', 'Agent identifier for registration')
     .option('--hub', 'Connect to Hub and emit real-time conflict warnings')
+    .option('--hub-sync', 'Post conflicts to Hub chat via REST API')
     .option('-q, --quiet', 'Only log conflicts, not file changes')
     .action(async (options: WatchOptions) => {
         const storage = await getStorage();
@@ -57,6 +92,7 @@ Branch:    ${branch}
 Agent:     ${agent}
 Watching:  ${repoRoot}
 Hub:       ${options.hub ? HUB_URL : 'disabled'}
+Hub Sync:  ${options.hubSync ? 'enabled (posts to chat)' : 'disabled'}
 ━━━━━━━━━━━━━━━━━━━━━━━
 Press Ctrl+C to stop.
         `);
@@ -141,7 +177,7 @@ Press Ctrl+C to stop.
                 });
                 console.log('');
 
-                // Emit to Hub if connected
+                // Emit to Hub via socket if connected
                 if (hubSocket?.connected) {
                     hubSocket.emit('conflicts:warning', {
                         branch,
@@ -150,6 +186,12 @@ Press Ctrl+C to stop.
                         conflicts,
                         timestamp: new Date().toISOString()
                     });
+                }
+
+                // Post to Hub chat if --hub-sync enabled
+                if (options.hubSync) {
+                    await postConflictToChat(branch, agent, conflicts);
+                    console.log('📤 Posted conflict to Hub chat');
                 }
             }
         }
