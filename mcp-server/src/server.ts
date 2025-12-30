@@ -285,6 +285,79 @@ Updated:      ${new Date(info.updatedAt).toLocaleString()}`;
     }
 );
 
+// Tool: start_watch
+server.tool(
+    'start_watch',
+    'Start watching files and auto-registering changes (daemon mode)',
+    {
+        agent: z.string().optional().describe('Agent identifier for registrations'),
+        dir: z.string().optional().describe('Directory to watch (default: current repo)'),
+        hub: z.boolean().optional().describe('Connect to Hub for real-time conflict warnings'),
+        quiet: z.boolean().optional().describe('Only show conflicts, not file changes'),
+    },
+    async ({ agent, dir, hub, quiet }) => {
+        // Note: This spawns a background process - the actual watching is done by CLI
+        const { spawn } = await import('child_process');
+        const args = ['watch'];
+
+        if (agent) args.push('--agent', agent);
+        if (dir) args.push('--dir', dir);
+        if (hub) args.push('--hub');
+        if (quiet) args.push('--quiet');
+
+        // Spawn detached process
+        const proc = spawn('spidersan', args, {
+            detached: true,
+            stdio: 'ignore',
+            cwd: dir || process.cwd(),
+        });
+        proc.unref();
+
+        return {
+            content: [{
+                type: 'text',
+                text: `🕷️ Watch mode started (PID: ${proc.pid})
+Agent: ${agent || 'not set'}
+Directory: ${dir || 'current repo'}
+Hub: ${hub ? 'connected' : 'disabled'}
+Quiet: ${quiet ? 'yes' : 'no'}
+
+The watcher is running in the background. Use 'stop_watch' to stop it.`
+            }],
+        };
+    }
+);
+
+// Tool: stop_watch  
+server.tool(
+    'stop_watch',
+    'Stop the background file watcher',
+    {},
+    async () => {
+        const { exec } = await import('child_process');
+
+        return new Promise((resolve) => {
+            exec('pkill -f "spidersan watch"', (error) => {
+                if (error) {
+                    resolve({
+                        content: [{
+                            type: 'text',
+                            text: '⚠️ No watch process found or unable to stop. It may not be running.'
+                        }],
+                    });
+                } else {
+                    resolve({
+                        content: [{
+                            type: 'text',
+                            text: '✅ Watch mode stopped.'
+                        }],
+                    });
+                }
+            });
+        });
+    }
+);
+
 // Start the server
 async function main() {
     // Verify Pro license before starting

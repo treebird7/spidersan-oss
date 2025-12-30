@@ -1,6 +1,6 @@
 {
     "name": "spidersan",
-    "version": "0.1.1",
+    "version": "0.2.1",
     "description": "Branch coordination for AI coding agents",
     "type": "module",
     "main": "dist/index.js",
@@ -63,9 +63,11 @@
         "node": ">=18.0.0"
     },
     "dependencies": {
+        "chokidar": "^5.0.0",
         "commander": "^12.0.0",
         "dotenv": "^17.2.3",
         "minimatch": "^10.1.1",
+        "socket.io-client": "^4.8.3",
         "tweetnacl": "^1.0.3",
         "tweetnacl-util": "^0.15.1"
     },

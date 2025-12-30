@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2025-12-30
+
+### Added
+- **Watch mode (daemon)** - Real-time file monitoring and auto-registration
+  - `spidersan watch` - Start watching files in current repo
+  - `--agent <id>` - Tag registrations with agent identifier
+  - `--hub` - Connect to Treebird Hub for real-time conflict warnings
+  - `--quiet` - Only show conflicts, not file changes
+  - `--dir <path>` - Watch specific directory
+  - Debounced file detection (1s) to prevent spam
+  - Auto-register files to current branch on change
+  - Real-time conflict detection across active branches
+  - Hub integration via `conflicts:warning` socket event
+
+### Dependencies
+- Added `chokidar` for file system watching
+- Added `socket.io-client` for Hub real-time connection
+
+## [0.2.0] - 2025-12-29
+
 ### Added
 - **Session lifecycle commands** - Myceliumail ecosystem integration
   - `spidersan wake` - Start session: sync registry, check conflicts, call `mycmail wake`

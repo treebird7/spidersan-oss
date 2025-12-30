@@ -81,6 +81,28 @@ spidersan merge-order
 | `spidersan conflicts` | Show file conflicts between branches |
 | `spidersan merge-order` | Get topologically-sorted merge order |
 | `spidersan ready-check` | Verify branch is ready (no WIP, no conflicts) |
+| `spidersan watch` | **NEW!** Daemon mode - watch files and auto-register |
+
+### Watch Mode (Daemon)
+
+Real-time file monitoring with auto-registration:
+
+```bash
+# Start watching (auto-registers file changes)
+spidersan watch --agent myagent
+
+# With Hub integration for real-time conflict warnings
+spidersan watch --agent myagent --hub
+
+# Quiet mode (only show conflicts)
+spidersan watch --agent myagent --hub --quiet
+```
+
+**Features:**
+- 📁 Auto-registers files when you edit them
+- ⚠️ Real-time conflict detection
+- 🔌 Hub integration for team visibility
+- 🕐 Debounced (1s) to prevent spam
 
 ### Pro (License Required)
 

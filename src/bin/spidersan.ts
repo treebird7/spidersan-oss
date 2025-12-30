@@ -45,6 +45,10 @@ import {
     auditMarkCommand,
     // Session logging
     logCommand,
+    // Daemon mode
+    watchCommand,
+    // Demo/Onboarding
+    demoCommand,
 } from '../commands/index.js';
 
 // Read version from package.json dynamically
@@ -104,6 +108,12 @@ program.addCommand(auditMarkCommand);
 
 // Session logging
 program.addCommand(logCommand);
+
+// Daemon mode
+program.addCommand(watchCommand);
+
+// Demo/Onboarding
+program.addCommand(demoCommand);
 
 // Check for updates (non-blocking)
 import { checkForUpdates } from '../lib/update-check.js';
