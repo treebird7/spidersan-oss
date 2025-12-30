@@ -48,6 +48,8 @@ spidersan pulse --quiet           # One-line health summary
 spidersan close                   # End session: show status, broadcast sign-off
 spidersan close --mark-stale      # End session and mark branches as stale
 spidersan close -m "Done for now" # Custom sign-off message
+spidersan watch                   # Watch files, auto-register, detect conflicts
+spidersan watch --hub-sync        # Post conflicts to Hub chat 🆕
 ```
 
 ### Dependencies (Supabase only)

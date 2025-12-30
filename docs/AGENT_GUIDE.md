@@ -57,6 +57,50 @@ Branch abandoned?
 | Clean up | `spidersan cleanup --older-than 14` |
 | Sync with git | `spidersan sync` |
 
+## 🕷️ Watch Mode (Daemon)
+
+Real-time file watching with auto-registration and conflict detection.
+
+```bash
+spidersan watch                    # Basic watch mode
+spidersan watch --hub              # Connect to Hub via WebSocket (real-time alerts)
+spidersan watch --hub-sync         # Post conflicts to Hub chat via REST API ⭐
+spidersan watch -q                 # Quiet mode (only log conflicts)
+```
+
+### --hub-sync Option
+
+Posts conflict warnings directly to Hub chat when detected:
+
+```bash
+spidersan watch --hub-sync
+```
+
+**What it does:**
+- Watches files for changes
+- Auto-registers modified files to your branch
+- Detects conflicts with other agents' branches
+- **Posts conflict alerts to Hub chat** (visible to all agents!)
+
+**Example output in Hub chat:**
+```
+🕷️⚠️ CONFLICT DETECTED on branch `feature/my-work`
+
+• feature/other-work: src/api.ts, src/lib.ts
+```
+
+**When to use:**
+- During active collaborations where multiple agents are working
+- When you want the whole flock to see conflicts immediately
+- In sprint/collab sessions for real-time coordination
+
+**Recommended for collabs:**
+```bash
+# Start of collab session
+spidersan watch --hub-sync
+# Leave running in background during the collab
+```
+
 ## Message Commands (Supabase Only)
 
 | Action | Command |
