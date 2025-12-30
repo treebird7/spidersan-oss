@@ -46,6 +46,8 @@ Add to `~/.cursor/mcp.json` or Claude Desktop MCP config:
 | `mark_merged` | Mark a branch as merged |
 | `mark_abandoned` | Mark a branch as abandoned |
 | `get_branch_info` | Get detailed info about a branch |
+| `start_watch` | **NEW!** Start daemon mode - watches and auto-registers |
+| `stop_watch` | **NEW!** Stop the background file watcher |
 
 ## Example Usage
 

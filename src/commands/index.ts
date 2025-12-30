@@ -43,3 +43,9 @@ export { auditMarkCommand } from './audit-mark.js';
 
 // Session logging
 export { logCommand } from './log.js';
+
+// Daemon mode
+export { watchCommand } from './watch.js';
+
+// Demo/Onboarding
+export { demoCommand } from './demo.js';
