@@ -1,0 +1,22 @@
+{
+  "folders": [
+    {
+      "name": "\ud83d\udd77\ufe0f Spidersan",
+      "path": "."
+    },
+    {
+      "name": "\ud83d\udcda treebird-internal",
+      "path": "../treebird-internal"
+    }
+  ],
+  "settings": {
+    "workbench.colorCustomizations": {
+      "titleBar.activeBackground": "#1e3a5f",
+      "titleBar.activeForeground": "#ffffff",
+      "titleBar.inactiveBackground": "#162b45",
+      "titleBar.inactiveForeground": "#cccccc",
+      "activityBar.background": "#1a324f",
+      "statusBar.background": "#1e3a5f"
+    }
+  }
+}
