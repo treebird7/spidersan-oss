@@ -6,7 +6,7 @@ import * as path from 'path';
 import { io, Socket } from 'socket.io-client';
 
 // Config
-const HUB_URL = process.env.HUB_URL || 'http://localhost:3000';
+const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
 const DEBOUNCE_MS = 1000;  // Debounce file changes
 
 interface WatchOptions {

@@ -200,9 +200,17 @@ mycmail key-import ssan AJiuvd49I8uY819nnIZE4DoIugVnD/lA/2xksH5JtVo=
 
 ## Session Startup
 
+> [!IMPORTANT]
+> **On session start, FIRST check for pending tasks:**
+> ```bash
+> cat .pending_task.md 2>/dev/null && rm .pending_task.md
+> ```
+> If a pending task exists, complete it before other work. Then check your inbox.
+
+
 **On session start, announce in Hub chat:**
 ```bash
-curl -s -X POST http://localhost:3000/api/chat \
+curl -s -X POST https://hub.treebird.uk/api/chat \
   -H "Content-Type: application/json" \
   -d '{"sender":"Spidersan","text":"🕷️ Web active. Scanning for conflicts...","glyph":"🕷️"}'
 ```
