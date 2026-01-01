@@ -104,6 +104,27 @@ spidersan watch --agent myagent --hub --quiet
 - 🔌 Hub integration for team visibility
 - 🕐 Debounced (1s) to prevent spam
 
+### 🦺 Rescue Mode
+
+Got a repo with 10+ abandoned branches? Let Spidersan clean up the mess:
+
+```bash
+# 1. Start rescue mission
+spidersan rescue
+
+# 2. Scan and categorize all branches
+spidersan scan --all
+spidersan triage   # → MERGE / SALVAGE / ABANDON
+
+# 3. Extract good code from broken branches
+spidersan salvage feature/old-auth --components src/auth/jwt.ts
+
+# 4. See your progress
+spidersan rescue-status
+```
+
+**Perfect for:** Post-hackathon cleanup, onboarding to chaotic repos, AI agent disasters.
+
 ### Pro (License Required)
 
 | Feature | Description |
