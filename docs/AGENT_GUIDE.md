@@ -16,6 +16,27 @@ spidersan merged --pr <num>                         # After merge
 spidersan list                                       # See all branches
 ```
 
+## 🚀 Session Startup (Do This First!)
+
+When you wake up in a Spidersan-enabled repo:
+
+```bash
+# 1. Quick health check
+spidersan pulse --quiet
+
+# 2. Check for conflicts
+spidersan conflicts
+
+# 3. If working on a collab, start watch mode
+spidersan watch --hub-sync
+```
+
+**The `pulse` command checks:**
+- ✅ Supabase connection
+- ✅ Branch registry health
+- ✅ Your agent identity
+- ✅ Any stale branches needing cleanup
+
 ## The Golden Rules
 
 1. **REGISTER FIRST** - Before editing any files, register them
