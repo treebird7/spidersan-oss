@@ -78,6 +78,31 @@ Branch abandoned?
 | Clean up | `spidersan cleanup --older-than 14` |
 | Sync with git | `spidersan sync` |
 
+## 🤝 Collab Workflow
+
+When joining a multi-agent collaboration:
+
+**Pre-Collab:**
+```bash
+spidersan init                  # If not initialized
+spidersan conflicts             # Check current state
+spidersan watch --hub-sync      # Start real-time monitoring
+```
+
+**During Collab:**
+```bash
+spidersan register --files "your-files" --agent your-id
+# Work on your task...
+# Spidersan auto-detects conflicts and posts to Hub
+```
+
+**Post-Collab (before merge):**
+```bash
+spidersan conflicts             # Final conflict check
+spidersan ready-check           # Verify no WIP markers
+spidersan merge-order           # Get optimal merge sequence
+```
+
 ## 🕷️ Watch Mode (Daemon)
 
 Real-time file watching with auto-registration and conflict detection.
