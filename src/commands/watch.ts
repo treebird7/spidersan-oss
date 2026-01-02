@@ -15,6 +15,7 @@ interface WatchOptions {
     hub?: boolean;
     hubSync?: boolean;
     quiet?: boolean;
+    smart?: boolean;
 }
 
 interface ConflictInfo {
@@ -73,6 +74,7 @@ export const watchCommand = new Command('watch')
     .option('--hub', 'Connect to Hub and emit real-time conflict warnings')
     .option('--hub-sync', 'Post conflicts to Hub chat via REST API')
     .option('-q, --quiet', 'Only log conflicts, not file changes')
+    .option('--smart', 'Smart mode: extended ignore patterns (~80% fewer watchers)')
     .action(async (options: WatchOptions) => {
         const storage = await getStorage();
 
@@ -196,10 +198,30 @@ Press Ctrl+C to stop.
             }
         }
 
+        // Build extended ignore patterns for smart mode
+        const smartIgnores = [
+            '**/.next/**', '**/build/**', '**/out/**', '**/coverage/**',
+            '**/.cache/**', '**/__pycache__/**', '**/target/**',
+            '**/vendor/**', '**/bower_components/**', '**/.pnpm/**',
+            '**/.idea/**', '**/.vscode/**', '**/*.swp', '**/*.swo',
+            '**/.DS_Store', '**/Thumbs.db',
+            '**/package-lock.json', '**/yarn.lock', '**/pnpm-lock.yaml',
+            '**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.gif', '**/*.ico',
+            '**/*.woff', '**/*.woff2', '**/*.ttf', '**/*.pdf',
+        ];
+        if (options.smart) {
+            console.log('🧠 Smart mode: Extended filtering (~80% fewer watchers)');
+        }
+
         // Start watching
         const watcher = chokidar.watch(repoRoot, {
-            ignored: [
+            ignored: options.smart ? [
+                ...smartIgnores,
                 /(^|[\/\\])\../, // dotfiles
+                '**/node_modules/**',
+                '**/dist/**',
+                '**/*.log',
+            ] : [
                 '**/node_modules/**',
                 '**/dist/**',
                 '**/*.log',

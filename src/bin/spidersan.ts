@@ -47,6 +47,7 @@ import {
     logCommand,
     // Daemon mode
     watchCommand,
+    radarCommand,
     // Demo/Onboarding
     demoCommand,
 } from '../commands/index.js';
@@ -111,6 +112,7 @@ program.addCommand(logCommand);
 
 // Daemon mode
 program.addCommand(watchCommand);
+program.addCommand(radarCommand);
 
 // Demo/Onboarding
 program.addCommand(demoCommand);

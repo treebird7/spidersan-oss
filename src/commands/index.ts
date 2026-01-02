@@ -46,6 +46,7 @@ export { logCommand } from './log.js';
 
 // Daemon mode
 export { watchCommand } from './watch.js';
+export { radarCommand } from './radar.js';
 
 // Demo/Onboarding
 export { demoCommand } from './demo.js';
