@@ -69,13 +69,14 @@ async function postConflictToChat(branch: string, agent: string, conflicts: Conf
 
 export const watchCommand = new Command('watch')
     .description('🕷️ Watch files and auto-register changes (daemon mode)')
-    .option('-d, --dir <directory>', 'Directory to watch (default: current repo)')
+    .argument('[directory]', 'Directory to watch (default: current repo)')
+    .option('-d, --dir <directory>', 'Directory to watch (alias for positional arg)')
     .option('-a, --agent <agent>', 'Agent identifier for registration')
     .option('--hub', 'Connect to Hub and emit real-time conflict warnings')
     .option('--hub-sync', 'Post conflicts to Hub chat via REST API')
     .option('-q, --quiet', 'Only log conflicts, not file changes')
     .option('--smart', 'Smart mode: extended ignore patterns (~80% fewer watchers)')
-    .action(async (options: WatchOptions) => {
+    .action(async (directory: string | undefined, options: WatchOptions) => {
         const storage = await getStorage();
 
         if (!await storage.isInitialized()) {
@@ -84,7 +85,7 @@ export const watchCommand = new Command('watch')
         }
 
         const branch = getCurrentBranch();
-        const repoRoot = options.dir || getRepoRoot();
+        const repoRoot = directory || options.dir || getRepoRoot();
         const agent = options.agent || process.env.SPIDERSAN_AGENT || 'unknown';
 
         console.log(`
