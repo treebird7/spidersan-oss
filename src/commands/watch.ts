@@ -214,6 +214,7 @@ Press Ctrl+C to stop.
         }
 
         // Start watching
+        // SECURITY FIX: Always limit depth to prevent EMFILE errors (Sherlocksan 2026-01-02)
         const watcher = chokidar.watch(repoRoot, {
             ignored: options.smart ? [
                 ...smartIgnores,
@@ -226,6 +227,7 @@ Press Ctrl+C to stop.
                 '**/node_modules/**',
                 '**/dist/**',
                 '**/*.log',
+                '**/.git/**',  // ALWAYS ignore .git
             ],
             persistent: true,
             ignoreInitial: true,
@@ -233,12 +235,13 @@ Press Ctrl+C to stop.
                 stabilityThreshold: 500,
                 pollInterval: 100
             },
+            // ALWAYS limit depth to prevent EMFILE (default: 10, smart: 5)
+            depth: options.smart ? 5 : 10,
             // Smart mode: use polling to reduce file descriptor usage
             ...(options.smart && {
                 usePolling: true,
                 interval: 1000,  // Check every 1 second
                 binaryInterval: 3000,
-                depth: 5  // Limit depth even more aggressively
             })
         });
 
