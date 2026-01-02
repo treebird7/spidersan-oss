@@ -222,6 +222,7 @@ Press Ctrl+C to stop.
                 '**/dist/**',
                 '**/*.log',
             ] : [
+                /(^|[\/\\])\../, // dotfiles (ALWAYS ignore)
                 '**/node_modules/**',
                 '**/dist/**',
                 '**/*.log',
@@ -231,7 +232,14 @@ Press Ctrl+C to stop.
             awaitWriteFinish: {
                 stabilityThreshold: 500,
                 pollInterval: 100
-            }
+            },
+            // Smart mode: use polling to reduce file descriptor usage
+            ...(options.smart && {
+                usePolling: true,
+                interval: 1000,  // Check every 1 second
+                binaryInterval: 3000,
+                depth: 5  // Limit depth even more aggressively
+            })
         });
 
         watcher.on('change', (filePath: string) => {
