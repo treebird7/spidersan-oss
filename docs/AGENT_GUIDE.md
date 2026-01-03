@@ -216,3 +216,47 @@ spidersan key-import <other-agent-key>     # Import recipient's public key
 
 **Full documentation:** `docs/USE_CASES.md`
 **Project context:** `CLAUDE.md`
+
+---
+
+## 🎓 Lessons Learned (Perpetual Dance Collab - 2026-01-03)
+
+### EMFILE Error Prevention
+**Problem:** `EMFILE: too many open files` on macOS  
+**Solution:** Always use `--smart` flag for collabs:
+```bash
+spidersan watch --smart collab/   # ✅ Use this
+spidersan watch collab/           # ❌ Can hit file limits
+```
+
+### Canonical Paths for Collabs
+When working in multi-agent workspaces, always use canonical paths:
+```bash
+# ✅ Correct - use absolute canonical path
+/Users/freedbird/Dev/treebird-internal/collab/COLLAB_*.md
+
+# ❌ Wrong - symlinks can cause identity confusion
+~/work/internal/collab/COLLAB_*.md
+```
+
+### MCP Health Monitoring
+Keep MCP servers healthy for launch readiness:
+```bash
+spidersan mcp-health              # Check all MCPs
+spidersan mcp-health --kill-zombies  # Clean up duplicates
+```
+
+### Coordination Roles
+| Role | Owner | Ask For |
+|------|-------|---------|
+| Task catalog | Mappersan | "What tasks exist?" |
+| Sprint execution | Birdsan | "What are we building?" |
+| Launch readiness | Marksan | "Are we ready?" |
+
+### Tiered Conflict Response
+| Tier | Action | When |
+|------|--------|------|
+| 1 WARN | Log + notify | Same file, different areas |
+| 2 PAUSE | 30s delay | Same function/block |
+| 3 BLOCK | Stop push | Direct overlap |
+
