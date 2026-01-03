@@ -50,6 +50,8 @@ import {
     radarCommand,
     // Demo/Onboarding
     demoCommand,
+    // MCP Health
+    mcpHealthCommand,
 } from '../commands/index.js';
 
 // Read version from package.json dynamically
@@ -116,6 +118,9 @@ program.addCommand(radarCommand);
 
 // Demo/Onboarding
 program.addCommand(demoCommand);
+
+// MCP Health
+program.addCommand(mcpHealthCommand);
 
 // Check for updates (non-blocking)
 import { checkForUpdates } from '../lib/update-check.js';

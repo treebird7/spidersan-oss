@@ -50,3 +50,6 @@ export { radarCommand } from './radar.js';
 
 // Demo/Onboarding
 export { demoCommand } from './demo.js';
+
+// MCP Health
+export { mcpHealthCommand } from './mcp-health.js';
