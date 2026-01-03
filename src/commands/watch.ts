@@ -15,7 +15,7 @@ interface WatchOptions {
     hub?: boolean;
     hubSync?: boolean;
     quiet?: boolean;
-    smart?: boolean;
+    legacy?: boolean;  // Use old behavior (more file descriptors)
 }
 
 interface ConflictInfo {
@@ -75,7 +75,7 @@ export const watchCommand = new Command('watch')
     .option('--hub', 'Connect to Hub and emit real-time conflict warnings')
     .option('--hub-sync', 'Post conflicts to Hub chat via REST API')
     .option('-q, --quiet', 'Only log conflicts, not file changes')
-    .option('--smart', 'Smart mode: extended ignore patterns (~80% fewer watchers)')
+    .option('--legacy', 'Legacy mode: use old watcher settings (more file descriptors)')
     .action(async (directory: string | undefined, options: WatchOptions) => {
         const storage = await getStorage();
 
@@ -210,19 +210,20 @@ Press Ctrl+C to stop.
             '**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.gif', '**/*.ico',
             '**/*.woff', '**/*.woff2', '**/*.ttf', '**/*.pdf',
         ];
-        if (options.smart) {
-            console.log('🧠 Smart mode: Extended filtering (~80% fewer watchers)');
+        if (options.legacy) {
+            console.log('⚠️ Legacy mode: Using old watcher settings (more file descriptors)');
         }
 
         // Start watching
         // SECURITY FIX: Always limit depth to prevent EMFILE errors (Sherlocksan 2026-01-02)
         const watcher = chokidar.watch(repoRoot, {
-            ignored: options.smart ? [
+            ignored: !options.legacy ? [
                 ...smartIgnores,
                 /(^|[\/\\])\../, // dotfiles
                 '**/node_modules/**',
                 '**/dist/**',
                 '**/*.log',
+                '**/.git/**',  // ALWAYS ignore .git
             ] : [
                 /(^|[\/\\])\../, // dotfiles (ALWAYS ignore)
                 '**/node_modules/**',
@@ -236,10 +237,10 @@ Press Ctrl+C to stop.
                 stabilityThreshold: 500,
                 pollInterval: 100
             },
-            // ALWAYS limit depth to prevent EMFILE (default: 10, smart: 5)
-            depth: options.smart ? 5 : 10,
-            // Smart mode: use polling to reduce file descriptor usage
-            ...(options.smart && {
+            // ALWAYS limit depth to prevent EMFILE (default: 5, legacy: 10)
+            depth: !options.legacy ? 5 : 10,
+            // Smart mode (default): use polling to reduce file descriptor usage
+            ...(!options.legacy && {
                 usePolling: true,
                 interval: 1000,  // Check every 1 second
                 binaryInterval: 3000,
