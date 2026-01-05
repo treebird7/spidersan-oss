@@ -1,8 +1,59 @@
 import { Command } from 'commander';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 // Config
 const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
+const MCP_CONFIG_PATH = path.join(os.homedir(), '.gemini', 'antigravity', 'mcp_config.json');
+
+interface McpServerConfig {
+    command: string;
+    args: string[];
+    env?: Record<string, string>;
+}
+
+interface McpConfig {
+    mcpServers: Record<string, McpServerConfig>;
+}
+
+/**
+ * Read MCP config from Antigravity config file
+ */
+function readMcpConfig(): McpConfig | null {
+    try {
+        if (!fs.existsSync(MCP_CONFIG_PATH)) {
+            console.log(`⚠️ MCP config not found: ${MCP_CONFIG_PATH}`);
+            return null;
+        }
+        const content = fs.readFileSync(MCP_CONFIG_PATH, 'utf-8');
+        return JSON.parse(content) as McpConfig;
+    } catch (err) {
+        console.log(`⚠️ Failed to read MCP config: ${err}`);
+        return null;
+    }
+}
+
+/**
+ * Start an MCP server from config
+ */
+function startMcpServer(name: string, config: McpServerConfig): boolean {
+    try {
+        const env = { ...process.env, ...config.env };
+        const child = spawn(config.command, config.args, {
+            detached: true,
+            stdio: 'ignore',
+            env
+        });
+        child.unref();
+        console.log(`🚀 Started ${name} (PID: ${child.pid})`);
+        return true;
+    } catch (err) {
+        console.log(`❌ Failed to start ${name}: ${err}`);
+        return false;
+    }
+}
 
 // Known MCP servers in the Treebird ecosystem
 const KNOWN_MCP_SERVERS = [
@@ -134,7 +185,8 @@ export const mcpHealthCommand = new Command('mcp-health')
     .option('--json', 'Output as JSON for Hub events')
     .option('--hub', 'Post health report to Hub chat')
     .option('--kill-zombies', 'Kill duplicate MCP processes (keep only newest)')
-    .action(async (options: { json?: boolean; hub?: boolean; killZombies?: boolean }) => {
+    .option('--auto-restart', 'Automatically restart stopped required MCP servers')
+    .action(async (options: { json?: boolean; hub?: boolean; killZombies?: boolean; autoRestart?: boolean }) => {
         console.log(`
 🩺 MCP Health Check
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -144,6 +196,11 @@ export const mcpHealthCommand = new Command('mcp-health')
         const healthReport: Record<string, { status: string; pids: number[]; zombieCount: number }> = {};
         let hasIssues = false;
         let zombiesKilled = 0;
+        let serversRestarted = 0;
+        const stoppedServers: string[] = [];
+
+        // Load MCP config for potential restart
+        const mcpConfig = options.autoRestart ? readMcpConfig() : null;
 
         // Check each known server
         for (const server of KNOWN_MCP_SERVERS) {
@@ -155,9 +212,25 @@ export const mcpHealthCommand = new Command('mcp-health')
 
             if (count === 0) {
                 if (server.required) {
-                    status = 'NOT RUNNING';
-                    icon = '❌';
-                    hasIssues = true;
+                    stoppedServers.push(server.name);
+
+                    // Try to auto-restart if flag is set
+                    if (options.autoRestart && mcpConfig?.mcpServers[server.name]) {
+                        const serverConfig = mcpConfig.mcpServers[server.name];
+                        if (startMcpServer(server.name, serverConfig)) {
+                            serversRestarted++;
+                            status = 'RESTARTED';
+                            icon = '🚀';
+                        } else {
+                            status = 'RESTART FAILED';
+                            icon = '❌';
+                            hasIssues = true;
+                        }
+                    } else {
+                        status = 'NOT RUNNING';
+                        icon = '❌';
+                        hasIssues = true;
+                    }
                 } else {
                     status = 'not running (optional)';
                     icon = '⚪';
@@ -225,10 +298,19 @@ export const mcpHealthCommand = new Command('mcp-health')
                 console.log(`🧹 Killed ${zombiesKilled} zombie processes`);
             }
 
+            if (serversRestarted > 0) {
+                console.log(`🚀 Restarted ${serversRestarted} MCP server(s)`);
+            }
+
             if (hasIssues) {
+                const hints: string[] = [];
+                if (stoppedServers.length > 0 && !options.autoRestart) {
+                    hints.push('spidersan mcp-health --auto-restart');
+                }
+                hints.push('spidersan mcp-health --kill-zombies');
                 console.log(`
-⚠️ Issues found! To clean up zombies:
-   spidersan mcp-health --kill-zombies
+⚠️ Issues found! Try:
+   ${hints.join('\n   ')}
 `);
             } else {
                 console.log(`
