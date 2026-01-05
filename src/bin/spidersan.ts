@@ -52,6 +52,7 @@ import {
     demoCommand,
     // MCP Health
     mcpHealthCommand,
+    mcpRestartCommand,
     // Task Torrenting
     torrentCommand,
 } from '../commands/index.js';
@@ -123,6 +124,7 @@ program.addCommand(demoCommand);
 
 // MCP Health
 program.addCommand(mcpHealthCommand);
+program.addCommand(mcpRestartCommand);
 
 // Task Torrenting
 program.addCommand(torrentCommand);
