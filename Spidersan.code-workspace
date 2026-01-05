@@ -1,12 +1,63 @@
 {
   "folders": [
     {
-      "name": "\ud83d\udd77\ufe0f Spidersan",
+      "name": "🕷️ Spidersan",
       "path": "."
     },
     {
-      "name": "\ud83d\udcda treebird-internal",
+      "name": "📚 treebird-internal",
       "path": "../treebird-internal"
+    },
+    {
+      "path": "../Artisan"
+    },
+    {
+      "path": "../Birdsan"
+    },
+    {
+      "path": "../ChatGpt-agent"
+    },
+    {
+      "path": "../Cosan"
+    },
+    {
+      "path": "../Docs"
+    },
+    {
+      "path": "../Drive"
+    },
+    {
+      "path": "../env"
+    },
+    {
+      "path": "../mappersan"
+    },
+    {
+      "path": "../Marksan"
+    },
+    {
+      "path": "../myceliumail"
+    },
+    {
+      "path": "../node_modules"
+    },
+    {
+      "path": "../Obsidian"
+    },
+    {
+      "path": "../Recovery-Tree-New"
+    },
+    {
+      "path": "../Sasusan"
+    },
+    {
+      "path": "../Sherlocksan"
+    },
+    {
+      "path": "../Watsan"
+    },
+    {
+      "path": "../Yosef"
     }
   ],
   "settings": {
