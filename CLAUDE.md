@@ -64,7 +64,9 @@ spidersan close -m "Done for now" # Custom sign-off message
 spidersan watch                   # Watch files, auto-register, detect conflicts
 spidersan watch --hub-sync        # Post conflicts to Hub chat
 spidersan mcp-health              # Check MCP server health
-spidersan mcp-health --hub        # Post health report to Hub chat 🆕
+spidersan mcp-health --hub        # Post health report to Hub chat
+spidersan mcp-health --kill-zombies   # Kill duplicate zombie MCP processes 🆕
+spidersan mcp-health --auto-restart   # Restart stopped required MCPs 🆕
 ```
 
 ### Task Torrenting (Branch-per-Task) 🆕
