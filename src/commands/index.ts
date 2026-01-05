@@ -53,6 +53,7 @@ export { demoCommand } from './demo.js';
 
 // MCP Health
 export { mcpHealthCommand } from './mcp-health.js';
+export { mcpRestartCommand } from './mcp-restart.js';
 
 // Task Torrenting
 export { torrentCommand } from './torrent.js';
