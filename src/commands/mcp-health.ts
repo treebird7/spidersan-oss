@@ -1,6 +1,9 @@
 import { Command } from 'commander';
 import { execSync } from 'child_process';
 
+// Config
+const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
+
 // Known MCP servers in the Treebird ecosystem
 const KNOWN_MCP_SERVERS = [
     { name: 'watsan-mcp', pattern: 'watsan.*mcp', required: true },
@@ -84,11 +87,54 @@ function getProcessUptime(pid: number): string {
     }
 }
 
+/**
+ * Post MCP health summary to Hub chat
+ */
+async function postToHubChat(healthReport: Record<string, { status: string; pids: number[]; zombieCount: number }>, hasIssues: boolean): Promise<void> {
+    const running = Object.entries(healthReport).filter(([_, v]) => v.status === 'running').length;
+    const stopped = Object.entries(healthReport).filter(([_, v]) => v.status === 'stopped').length;
+    const zombies = Object.entries(healthReport).filter(([_, v]) => v.status === 'zombie').length;
+
+    const statusIcon = hasIssues ? '⚠️' : '✅';
+    const statusText = hasIssues ? 'Issues detected' : 'All healthy';
+
+    const serverLines = Object.entries(healthReport)
+        .map(([name, info]) => {
+            const icon = info.status === 'running' ? '✅' : info.status === 'zombie' ? '⚠️' : '❌';
+            return `${icon} ${name}: ${info.status}`;
+        })
+        .join('\n');
+
+    const message = `🩺 **MCP Health Report** ${statusIcon}\n\n${serverLines}\n\n**Summary:** ${running} running, ${stopped} stopped, ${zombies} zombies`;
+
+    try {
+        const response = await fetch(`${HUB_URL}/api/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                agent: 'ssan',
+                name: 'Spidersan',
+                message,
+                glyph: '🕷️'
+            })
+        });
+
+        if (response.ok) {
+            console.log('📤 Posted health report to Hub chat');
+        } else {
+            console.log(`⚠️ Failed to post to Hub: ${response.status}`);
+        }
+    } catch {
+        console.log('⚠️ Could not connect to Hub');
+    }
+}
+
 export const mcpHealthCommand = new Command('mcp-health')
     .description('🩺 Check health of MCP servers in the ecosystem')
     .option('--json', 'Output as JSON for Hub events')
+    .option('--hub', 'Post health report to Hub chat')
     .option('--kill-zombies', 'Kill duplicate MCP processes (keep only newest)')
-    .action(async (options: { json?: boolean; killZombies?: boolean }) => {
+    .action(async (options: { json?: boolean; hub?: boolean; killZombies?: boolean }) => {
         console.log(`
 🩺 MCP Health Check
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -203,5 +249,10 @@ export const mcpHealthCommand = new Command('mcp-health')
                 emitter: 'spidersan'
             };
             console.log(JSON.stringify(event, null, 2));
+        }
+
+        // Post to Hub if --hub flag is set
+        if (options.hub) {
+            await postToHubChat(healthReport, hasIssues);
         }
     });

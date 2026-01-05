@@ -52,6 +52,8 @@ import {
     demoCommand,
     // MCP Health
     mcpHealthCommand,
+    // Task Torrenting
+    torrentCommand,
 } from '../commands/index.js';
 
 // Read version from package.json dynamically
@@ -121,6 +123,9 @@ program.addCommand(demoCommand);
 
 // MCP Health
 program.addCommand(mcpHealthCommand);
+
+// Task Torrenting
+program.addCommand(torrentCommand);
 
 // Check for updates (non-blocking)
 import { checkForUpdates } from '../lib/update-check.js';

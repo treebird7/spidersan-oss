@@ -23,12 +23,25 @@ spidersan register --files <f>    # Register files you'll modify
 spidersan list                    # List all registered branches
 ```
 
-### Conflict Detection
+### Conflict Detection (Tiered)
 ```bash
-spidersan conflicts               # Show all file conflicts
+spidersan conflicts               # Show all file conflicts with tier levels
+spidersan conflicts --tier 2      # Filter: TIER 2+ only (PAUSE, BLOCK)
+spidersan conflicts --tier 3      # Filter: TIER 3 only (BLOCK - security critical)
+spidersan conflicts --strict      # Exit 1 if TIER 2+ conflicts found
+spidersan conflicts --notify      # Post conflicts to Hub chat
+spidersan conflicts --wake        # Wake conflicting agents via Hub + mycmail
+spidersan conflicts --retry 60    # Re-check after 60s when using --wake
 spidersan merge-order             # Get optimal merge sequence
 spidersan ready-check             # Validate branch is merge-ready (no WIP markers)
 ```
+
+**Conflict Tiers:**
+| Tier | Icon | Action | Examples |
+|------|------|--------|----------|
+| 1 WARN | 🟡 | Proceed with caution | .md, .json, .css |
+| 2 PAUSE | 🟠 | Coordinate first | tests, migrations, API |
+| 3 BLOCK | 🔴 | Must resolve | CLAUDE.md, .env, package.json |
 
 ### Lifecycle Management
 ```bash
@@ -49,7 +62,21 @@ spidersan close                   # End session: show status, broadcast sign-off
 spidersan close --mark-stale      # End session and mark branches as stale
 spidersan close -m "Done for now" # Custom sign-off message
 spidersan watch                   # Watch files, auto-register, detect conflicts
-spidersan watch --hub-sync        # Post conflicts to Hub chat 🆕
+spidersan watch --hub-sync        # Post conflicts to Hub chat
+spidersan mcp-health              # Check MCP server health
+spidersan mcp-health --hub        # Post health report to Hub chat 🆕
+```
+
+### Task Torrenting (Branch-per-Task) 🆕
+```bash
+spidersan torrent create <task-id>      # Create branch for task (e.g., DASH-001)
+spidersan torrent create SEC-001 -a srlk # Claim task for agent
+spidersan torrent status                # Show all active task branches
+spidersan torrent status --parent DASH  # Filter by parent task
+spidersan torrent complete <task-id>    # Mark task complete, check conflicts
+spidersan torrent merge-order           # Optimal merge sequence for tasks
+spidersan torrent tree                  # Nested task tree visualization
+spidersan torrent decompose PARENT -c 3 # Create 3 child tasks (A, B, C)
 ```
 
 ### Dependencies (Supabase only)
