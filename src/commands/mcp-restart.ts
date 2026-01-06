@@ -54,10 +54,12 @@ function validateConfig(config: McpConfig): { valid: boolean; errors: string[] }
 }
 
 /**
- * Kill all MCP processes
+ * Kill all MCP processes (excluding self)
  */
 function killMcpProcesses(dryRun: boolean = false): number {
     let killed = 0;
+    const currentPid = process.pid;
+    const parentPid = process.ppid;
 
     try {
         // Find all MCP-related processes
@@ -79,6 +81,14 @@ function killMcpProcesses(dryRun: boolean = false): number {
 
             const pid = parseInt(parts[1], 10);
             const command = parts.slice(10).join(' ').substring(0, 60);
+
+            // Skip self and parent to avoid killing the executing process
+            if (pid === currentPid || pid === parentPid) {
+                if (dryRun) {
+                    console.log(`   Skipping PID ${pid} (self/parent): ${command}...`);
+                }
+                continue;
+            }
 
             if (dryRun) {
                 console.log(`   Would kill PID ${pid}: ${command}...`);
