@@ -229,25 +229,20 @@ mycmail key-import ssan AJiuvd49I8uY819nnIZE4DoIugVnD/lA/2xksH5JtVo=
 
 ## Session Startup
 
-> [!IMPORTANT]
-> **On session start, FIRST check for pending tasks:**
-> ```bash
-> cat .pending_task.md 2>/dev/null && rm .pending_task.md
-> ```
-> If a pending task exists, complete it before other work. Then check your inbox.
+**Available commands for session startup (run only if explicitly requested):**
 
-
-**On session start, announce in Hub chat:**
 ```bash
-curl -s -X POST https://hub.treebird.uk/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"sender":"Spidersan","text":"🕷️ Web active. Scanning for conflicts...","glyph":"🕷️"}'
-```
+# Check for pending tasks (optional)
+cat .pending_task.md 2>/dev/null && rm .pending_task.md
 
-**Then run wake:**
-```bash
+# Start session (optional)
 spidersan wake
+
+# Check inbox (optional)
+mycmail inbox
 ```
+
+> **Note:** These are available commands, not automatic actions. Only run when the user explicitly asks you to start a session or run these commands.
 
 ## Architecture Overview
 
