@@ -7,6 +7,7 @@
 
 import { Command } from 'commander';
 import { execSync } from 'child_process';
+import { execa } from 'execa';
 import { getStorage } from '../storage/index.js';
 
 function getCurrentBranch(): string | null {
@@ -69,14 +70,20 @@ export const closeCommand = new Command('close')
             }
         }
 
-        // Call mycmail close
+        // Call mycmail close (with timeout protection!)
         if (!options.silent && hasMycmail()) {
             try {
-                const msgPart = options.message ? ` -m "${options.message}"` : '';
-                execSync(`mycmail close --quiet${msgPart} 2>/dev/null || true`, { encoding: 'utf-8' });
+                const args = ['close', '--quiet'];
+                if (options.message) {
+                    args.push('-m', options.message);
+                }
+                await execa('mycmail', args, {
+                    timeout: 30000, // 30 second timeout - prevents hanging!
+                    reject: false,  // Don't throw on non-zero exit
+                });
                 result.mycmailCalled = true;
             } catch {
-                // Ignore mycmail errors
+                // Ignore mycmail errors - but we won't hang!
             }
         }
 
