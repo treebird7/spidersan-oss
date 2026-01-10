@@ -7,6 +7,7 @@
 
 import { Command } from 'commander';
 import { execSync } from 'child_process';
+import { execa } from 'execa';
 import { getStorage } from '../storage/index.js';
 
 function getCurrentBranch(): string | null {
@@ -35,10 +36,13 @@ function hasMycmail(): boolean {
     }
 }
 
-function getInboxCount(): number {
+async function getInboxCount(): Promise<number> {
     try {
-        const output = execSync('mycmail inbox --count 2>/dev/null || echo "0"', { encoding: 'utf-8' });
-        const match = output.match(/(\d+)/);
+        const result = await execa('mycmail', ['inbox', '--count'], {
+            timeout: 10000, // 10 second timeout
+            reject: false,
+        });
+        const match = result.stdout?.match(/(\d+)/);
         return match ? parseInt(match[1], 10) : 0;
     } catch {
         return 0;
@@ -100,14 +104,17 @@ export const wakeCommand = new Command('wake')
             }
         }
 
-        // Step 3: Call mycmail wake
+        // Step 3: Call mycmail wake (with timeout protection!)
         if (!options.skipMail && hasMycmail()) {
             try {
-                execSync('mycmail wake --quiet 2>/dev/null || true', { encoding: 'utf-8' });
+                await execa('mycmail', ['wake', '--quiet'], {
+                    timeout: 30000, // 30 second timeout - prevents hanging!
+                    reject: false,  // Don't throw on non-zero exit
+                });
                 result.mycmailCalled = true;
-                result.inboxCount = getInboxCount();
+                result.inboxCount = await getInboxCount();
             } catch {
-                // Ignore mycmail errors
+                // Ignore mycmail errors - but we won't hang!
             }
         }
 
