@@ -5,7 +5,7 @@
  */
 
 import { Command } from 'commander';
-import { existsSync, statSync } from 'fs';
+import { existsSync, statSync, readFileSync } from 'fs';
 import { execSync } from 'child_process';
 import { homedir } from 'os';
 import { join } from 'path';
@@ -49,7 +49,7 @@ function checkEnvConflict(): Check {
     const localEnv = join(process.cwd(), '.env');
     if (existsSync(localEnv)) {
         try {
-            const content = require('fs').readFileSync(localEnv, 'utf-8');
+            const content = readFileSync(localEnv, 'utf-8');
 
             // Check for concatenation bug (missing newlines between vars)
             // Pattern: VALUE without newline before next KEY=
@@ -134,6 +134,50 @@ async function checkStaleBranches(): Promise<Check> {
     }
 }
 
+function checkGitignore(): Check {
+    const gitignorePath = join(process.cwd(), '.gitignore');
+    if (!existsSync(gitignorePath)) {
+        return { name: '.gitignore Check', status: 'warn', message: 'No .gitignore file found' };
+    }
+
+    try {
+        const content = readFileSync(gitignorePath, 'utf-8');
+        const missing: string[] = [];
+
+        // Essential patterns that should be in .gitignore
+        const essentialPatterns = [
+            { pattern: '.env', description: 'env files' },
+            { pattern: 'node_modules', description: 'node_modules' },
+            { pattern: '*.key', description: 'key files' },
+        ];
+
+        for (const { pattern, description } of essentialPatterns) {
+            // Check if pattern or similar is present
+            const hasPattern = content.split('\n').some((line: string) => {
+                const trimmed = line.trim();
+                return !trimmed.startsWith('#') &&
+                    (trimmed === pattern ||
+                        trimmed.startsWith(pattern) ||
+                        trimmed.includes(pattern));
+            });
+            if (!hasPattern) {
+                missing.push(description);
+            }
+        }
+
+        if (missing.length > 0) {
+            return {
+                name: '.gitignore Check',
+                status: 'warn',
+                message: `Missing patterns: ${missing.join(', ')}`
+            };
+        }
+        return { name: '.gitignore Check', status: 'ok', message: 'Essential patterns present' };
+    } catch {
+        return { name: '.gitignore Check', status: 'error', message: 'Could not read .gitignore' };
+    }
+}
+
 export const doctorCommand = new Command('doctor')
     .description('Diagnose common Spidersan issues')
     .option('--json', 'Output as JSON')
@@ -143,6 +187,7 @@ export const doctorCommand = new Command('doctor')
             checkLocalStorage(),
             checkGlobalStorage(),
             checkEnvConflict(),
+            checkGitignore(),
             checkMycmail(),
             checkLicense(),
             await checkStaleBranches(),
