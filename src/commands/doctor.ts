@@ -5,7 +5,7 @@
  */
 
 import { Command } from 'commander';
-import { existsSync, statSync, readFileSync } from 'fs';
+import { existsSync, statSync, readFileSync, readdirSync } from 'fs';
 import { execSync } from 'child_process';
 import { homedir } from 'os';
 import { join } from 'path';
@@ -178,6 +178,59 @@ function checkGitignore(): Check {
     }
 }
 
+function checkErrorLogs(): Check {
+    const errorsDir = join(homedir(), '.agent-errors');
+    if (!existsSync(errorsDir)) {
+        return { name: 'Error Logs', status: 'ok', message: 'No agent errors logged' };
+    }
+
+    try {
+        const files = readdirSync(errorsDir).filter(f => f.endsWith('.log') && !f.includes('.log.'));
+        if (files.length === 0) {
+            return { name: 'Error Logs', status: 'ok', message: 'No agent errors logged' };
+        }
+
+        let totalErrors = 0;
+        let recentErrors = 0;
+        const now = Date.now();
+        const oneHour = 60 * 60 * 1000;
+
+        for (const file of files) {
+            const content = readFileSync(join(errorsDir, file), 'utf-8');
+            const lines = content.trim().split('\n').filter(l => l);
+            totalErrors += lines.length;
+
+            // Count recent errors (last hour)
+            for (const line of lines.slice(-20)) {
+                try {
+                    const entry = JSON.parse(line);
+                    if (now - new Date(entry.timestamp).getTime() < oneHour) {
+                        recentErrors++;
+                    }
+                } catch {
+                    // Skip malformed lines
+                }
+            }
+        }
+
+        if (recentErrors > 0) {
+            return {
+                name: 'Error Logs',
+                status: 'warn',
+                message: `${recentErrors} error(s) in last hour (${totalErrors} total in ${files.length} agent(s))`
+            };
+        }
+
+        return {
+            name: 'Error Logs',
+            status: 'ok',
+            message: `${totalErrors} logged error(s) across ${files.length} agent(s)`
+        };
+    } catch {
+        return { name: 'Error Logs', status: 'error', message: 'Could not read error logs' };
+    }
+}
+
 export const doctorCommand = new Command('doctor')
     .description('Diagnose common Spidersan issues')
     .option('--json', 'Output as JSON')
@@ -188,6 +241,7 @@ export const doctorCommand = new Command('doctor')
             checkGlobalStorage(),
             checkEnvConflict(),
             checkGitignore(),
+            checkErrorLogs(),
             checkMycmail(),
             checkLicense(),
             await checkStaleBranches(),
