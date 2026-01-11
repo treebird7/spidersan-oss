@@ -48,12 +48,41 @@ function checkGlobalStorage(): Check {
 function checkEnvConflict(): Check {
     const localEnv = join(process.cwd(), '.env');
     if (existsSync(localEnv)) {
-        // Check if it might conflict with mycmail/supabase
         try {
             const content = require('fs').readFileSync(localEnv, 'utf-8');
+
+            // Check for concatenation bug (missing newlines between vars)
+            // Pattern: VALUE without newline before next KEY=
+            const lines = content.split('\n');
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                // Check for multiple = on same line (concatenation bug)
+                const equalSigns = (line.match(/=/g) || []).length;
+                if (equalSigns > 1 && !line.startsWith('#')) {
+                    return {
+                        name: '.env Lint',
+                        status: 'error',
+                        message: `.env line ${i + 1} has multiple '=' - likely missing newline (concatenation bug)`
+                    };
+                }
+                // Check for vars that look concatenated (e.g., VALUE_WITHOUT_NEWLINENEXT_VAR=)
+                if (line.includes('://') && line.includes('=') && line.indexOf('=') < line.indexOf('://')) {
+                    // URL in value is fine, but check if there's another = after
+                    const afterUrl = line.substring(line.indexOf('://') + 3);
+                    if (afterUrl.includes('=') && !afterUrl.startsWith('=')) {
+                        return {
+                            name: '.env Lint',
+                            status: 'error',
+                            message: `.env line ${i + 1} appears corrupted - check for missing newlines`
+                        };
+                    }
+                }
+            }
+
+            // Check Supabase conflict
             if (content.includes('SUPABASE_URL') || content.includes('SUPABASE_KEY')) {
                 return {
-                    name: '.env Conflict',
+                    name: '.env Lint',
                     status: 'warn',
                     message: 'Local .env has Supabase vars - may conflict with mycmail'
                 };
@@ -62,7 +91,7 @@ function checkEnvConflict(): Check {
             // Ignore read errors
         }
     }
-    return { name: '.env Conflict', status: 'ok', message: 'No conflicting .env detected' };
+    return { name: '.env Lint', status: 'ok', message: 'No .env issues detected' };
 }
 
 function checkMycmail(): Check {
