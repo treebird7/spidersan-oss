@@ -1,3 +1,7 @@
+---
+tags: [agent/spidersan]
+---
+
 # Spidersan Limitations
 
 > **What Spidersan Cannot Do - Setting Clear Expectations**

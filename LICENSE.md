@@ -1,3 +1,7 @@
+---
+tags: [agent/spidersan, topic/mcp]
+---
+
 # Spidersan Licensing
 
 ## Open Core + Business Source License

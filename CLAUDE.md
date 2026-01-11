@@ -1,3 +1,8 @@
+---
+aliases: ["Spidersan Identity"]
+tags: [agent/myceliumail, type/identity]
+---
+
 # Spidersan - AI Agent Context
 
 > **Quick Load Context for Claude Code and AI Agents**

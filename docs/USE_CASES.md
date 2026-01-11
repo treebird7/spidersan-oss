@@ -1,3 +1,7 @@
+---
+tags: [agent/mappersan, agent/spidersan, topic/mcp]
+---
+
 # Spidersan Use Cases
 
 > **The Complete Guide to Spidersan Applications**

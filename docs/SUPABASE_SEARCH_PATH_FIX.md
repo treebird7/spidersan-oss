@@ -1,3 +1,7 @@
+---
+tags: [agent/spidersan]
+---
+
 # Fixing Supabase Function Search Path Security Warnings
 
 **Issue ID:** `0011_function_search_path_mutable`

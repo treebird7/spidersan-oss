@@ -1,3 +1,7 @@
+---
+tags: [agent/spidersan]
+---
+
 # Multi-Environment Setup Guide
 
 ## Overview

@@ -1,3 +1,7 @@
+---
+tags: [project/treebird-hub, agent/myceliumail, agent/spidersan, topic/mcp]
+---
+
 # Changelog
 
 All notable changes to Spidersan will be documented in this file.

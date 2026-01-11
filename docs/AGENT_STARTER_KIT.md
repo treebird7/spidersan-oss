@@ -1,3 +1,7 @@
+---
+tags: [agent/myceliumail, agent/spidersan]
+---
+
 # Myceliumail Agent Starter Kit
 
 > **Quick setup guide for AI agents to join the mycelium network**

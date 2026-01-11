@@ -1,3 +1,7 @@
+---
+tags: [agent/spidersan, topic/mcp]
+---
+
 # Context7 MCP Integration
 
 ## Overview

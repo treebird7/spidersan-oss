@@ -1,3 +1,7 @@
+---
+tags: [agent/spidersan]
+---
+
 # Why You Need Spidersan
 
 ## The Problem
