@@ -1,3 +1,7 @@
+---
+tags: [agent/myceliumail, agent/spidersan]
+---
+
 # Spidersan Migration Guide: Using Myceliumail
 
 > **Effective Date:** December 2024

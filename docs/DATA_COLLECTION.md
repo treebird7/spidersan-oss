@@ -1,3 +1,7 @@
+---
+tags: [agent/spidersan]
+---
+
 # Data Collection Policy
 
 ## Overview

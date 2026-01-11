@@ -1,3 +1,8 @@
+---
+aliases: ["Spidersan Lessons"]
+tags: [agent/spidersan, type/lesson]
+---
+
 # Spidersan Lessons Learned
 
 ## 1. Idempotent Migrations (Critical)

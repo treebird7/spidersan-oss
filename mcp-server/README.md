@@ -1,3 +1,8 @@
+---
+aliases: ["Spidersan MCP Server"]
+tags: [agent/spidersan, type/readme]
+---
+
 # Spidersan MCP Server
 
 MCP Server for Spidersan - Branch coordination for AI coding agents.

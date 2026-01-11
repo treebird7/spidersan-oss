@@ -1,3 +1,7 @@
+---
+tags: [agent/spidersan]
+---
+
 # GitHub Secrets Setup for Spidersan
 
 ## Required Secrets

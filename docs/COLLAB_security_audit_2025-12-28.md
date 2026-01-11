@@ -1,3 +1,7 @@
+---
+tags: [agent/myceliumail, agent/spidersan, type/collab]
+---
+
 # 🕵️ Security Audit: Spidersan
 
 > **Audit Date:** 2025-12-28  

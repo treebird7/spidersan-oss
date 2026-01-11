@@ -1,3 +1,7 @@
+---
+tags: [agent/mappersan, agent/myceliumail, agent/spidersan, topic/mcp]
+---
+
 # Spidersan Agent Quick Reference
 
 > **TL;DR for AI Agents - Read this in 30 seconds**

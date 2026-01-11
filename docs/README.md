@@ -1,3 +1,8 @@
+---
+aliases: ["Spidersan Docs"]
+tags: [agent/spidersan, type/readme]
+---
+
 # 🕷️ Spidersan
 
 **Branch coordination for AI coding agents**

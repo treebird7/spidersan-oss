@@ -1,3 +1,7 @@
+---
+tags: [project/envoak, agent/mappersan, agent/myceliumail]
+---
+
 # T-017: Final Merge Coordination Report
 **Date:** 2026-01-08  
 **Coordinator:** Spidersan  

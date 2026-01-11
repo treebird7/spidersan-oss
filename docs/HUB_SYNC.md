@@ -1,3 +1,7 @@
+---
+tags: [project/treebird-hub, agent/spidersan]
+---
+
 # Hub Sync Feature
 
 > **`spidersan watch --hub-sync`** — Post conflicts to Hub chat in real-time
