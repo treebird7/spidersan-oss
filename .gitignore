@@ -141,6 +141,7 @@ dist
 node_modules
 .spidersan
 treebird-internal
+repos/
 
 # License signing keys (NEVER COMMIT)
 license-keys.json
