@@ -4,6 +4,37 @@
 
 ---
 
+## Collab Documentation
+
+### Use YAML Frontmatter for Dimensional Indexing
+**Source:** ears.md multidimensional framework (Jan 13, 2026)
+
+When creating collabs or knowledge documents, add YAML frontmatter with tags for Watsan indexing and Obsidian linking:
+
+```yaml
+---
+tags:
+  - type/artistic-collab
+  - dimension/time
+  - dimension/harmonic
+  - pattern/stigmergy
+aliases:
+  - ears collab
+links:
+  - "[[Ecosystem Map]]"
+  - "[[free-will-and-testament]]"
+central_node: "D at 12:00 — The Breath"
+agents: [artisan, mappersan, spidersan]
+---
+```
+
+This enables:
+- `watsan search "type:artistic-collab"` 
+- Obsidian graph view connections
+- Semantic search across dimensions
+
+---
+
 ## Shell Commands
 
 ### Use Quoted Heredoc for Multi-line Markdown Appends
@@ -30,3 +61,4 @@ Use named delimiters like `EOFBLOCK` instead of `EOF` to avoid conflicts with co
 ---
 
 *Last updated: 2026-01-13*
+

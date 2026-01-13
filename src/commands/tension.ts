@@ -37,6 +37,7 @@ interface TensionFile {
 interface TensionReport {
     timestamp: string;
     branch: string;
+    repo: string;  // Added for security pipeline schema compliance
     tensions: TensionFile[];
     health_score: number;
     trigger_reason: string;
@@ -54,6 +55,16 @@ function getCurrentBranch(): string {
         return execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim();
     } catch {
         throw new Error('Not in a git repository');
+    }
+}
+
+function getRepoName(): string {
+    try {
+        const remote = execSync('git remote get-url origin 2>/dev/null', { encoding: 'utf-8' }).trim();
+        const match = remote.match(/\/([^/]+?)(?:\.git)?$/);
+        return match ? match[1] : process.cwd().split('/').pop() || 'unknown';
+    } catch {
+        return process.cwd().split('/').pop() || 'unknown';
     }
 }
 
@@ -133,6 +144,7 @@ export const tensionCommand = new Command('tension')
         const report: TensionReport = {
             timestamp: now.toISOString(),
             branch: targetBranch,
+            repo: getRepoName(),
             tensions: [],
             health_score: 100,
             trigger_reason: 'manual check',
