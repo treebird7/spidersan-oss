@@ -1396,6 +1396,67 @@ spidersan archive --all-except fresh-start
 
 ---
 
+---
+
+## 6. Spidersan + Mappersan Integration
+
+### 6.1 Remote Branch Investigation & Documentation Rescue
+
+**Scenario:** User mentions a remote branch that needs review, but it's unclear what's on it or if there are uncommitted changes.
+
+**Problem Solved:** Manually checking out branches, running `git status`, and analyzing codebases is time-consuming and error-prone.
+
+**Spidersan + Mappersan Solution:**
+
+```bash
+# 1. Spidersan: Fetch and locate the branch
+cd /Users/freedbird/Dev/Envoak
+git fetch origin
+git branch -r | grep spidersan
+# Found: origin/spidersan-check-these
+
+# 2. Spidersan: Check out and investigate
+git checkout spidersan-check-these
+git status
+# Discovered: Untracked file ENVAULT_VS_PLAINTEXT.md
+
+# 3. Mappersan: Analyze both repos (verify identity)
+mappersan analyze  # in Envoak
+mappersan analyze  # in Envault
+# Result: Both repos identical (986 lines, 13 files)
+# Confirms: Envault → Envoak rename is complete
+
+# 4. Mappersan: Generate agent-ready documentation
+mappersan generate
+# Updates: CLAUDE.md, AGENT_GUIDE.md, LIMITATIONS.md, USE_CASES.md
+
+# 5. Spidersan: Commit the rescued documentation
+git add ENVAULT_VS_PLAINTEXT.md
+git commit -m "docs: Add competitive analysis from Multi-Sherlock session"
+git push origin spidersan-check-these
+```
+
+**Results:**
+- ✅ Found untracked competitive analysis doc (145 lines)
+- ✅ Verified repo identity across two directories
+- ✅ Generated complete agent documentation suite
+- ✅ Rescued valuable documentation from untracked state
+- ✅ Committed and pushed to remote branch
+
+**Time:** ~5 minutes  
+**Manual Alternative:** 20-30 minutes of investigation  
+**Value:** Prevented loss of Multi-Sherlock session documentation
+
+**Real Example:** January 11, 2026 - Rescued `ENVAULT_VS_PLAINTEXT.md` containing:
+- Competitive analysis vs traditional plaintext config
+- Security comparison (AES-256-GCM encryption details)
+- Workflow examples and best practices
+- Sherlocksan security audit (✅ PASS)
+
+**Hashtags:** `#branch-investigation` `#documentation-rescue` `#mappersan-integration` `#repo-analysis` `#untracked-files` `#multi-repo` `#agent-collaboration` `#knowledge-preservation`
+
+---
+
 # Quick Reference: All Hashtags
 
 ## By Category

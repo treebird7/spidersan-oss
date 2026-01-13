@@ -17,7 +17,7 @@ import { requireProLicense } from './lib/license.js';
 // Create the MCP server
 const server = new McpServer({
     name: 'spidersan',
-    version: '1.0.0',
+    version: '1.2.3',
 });
 
 // Tool: list_branches
@@ -355,6 +355,43 @@ server.tool(
                 }
             });
         });
+    }
+);
+
+// Tool: list_tools (for version discovery)
+server.tool(
+    'list_tools',
+    'List all available Spidersan MCP tools with version info',
+    {},
+    async () => {
+        const tools = [
+            { name: 'list_branches', desc: 'List registered branches by status', args: 'status?: all|active|merged|abandoned' },
+            { name: 'check_conflicts', desc: 'Detect file conflicts between active branches', args: 'none' },
+            { name: 'get_merge_order', desc: 'Recommend safe merge sequence', args: 'none' },
+            { name: 'register_branch', desc: 'Register branch with files you are modifying', args: 'branch, files[], description?, agent?, repo?' },
+            { name: 'mark_merged', desc: 'Mark branch as merged', args: 'branch?' },
+            { name: 'mark_abandoned', desc: 'Mark branch as abandoned', args: 'branch?' },
+            { name: 'get_branch_info', desc: 'Get detailed info about a branch', args: 'branch?' },
+            { name: 'start_watch', desc: 'Start background file watcher daemon', args: 'agent?, dir?, hub?, quiet?' },
+            { name: 'stop_watch', desc: 'Stop the background file watcher', args: 'none' },
+            { name: 'list_tools', desc: 'This command - list available tools', args: 'none' },
+        ];
+
+        const formatted = tools.map(t => `• ${t.name}\n  ${t.desc}\n  Args: ${t.args}`).join('\n\n');
+
+        return {
+            content: [{
+                type: 'text',
+                text: `🕷️ Spidersan MCP Server v1.2.3
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+${formatted}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Total: ${tools.length} tools available
+Pro License: Required for full functionality`
+            }],
+        };
     }
 );
 

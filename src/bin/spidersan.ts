@@ -63,10 +63,45 @@ const pkg = require('../../package.json');
 
 const program = new Command();
 
+// Global debug mode flag
+let debugMode = false;
+export const isDebugMode = () => debugMode;
+
+// Global error handler for debug mode
+process.on('uncaughtException', (error) => {
+    if (debugMode) {
+        console.error('\n🔴 UNCAUGHT EXCEPTION:');
+        console.error(error.stack || error.message);
+    } else {
+        console.error(`❌ ${error.message}`);
+        console.error('   Run with --debug for full stack trace');
+    }
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+    if (debugMode) {
+        console.error('\n🔴 UNHANDLED REJECTION:');
+        console.error(reason);
+    } else {
+        console.error(`❌ Unhandled error: ${reason}`);
+        console.error('   Run with --debug for full stack trace');
+    }
+    process.exit(1);
+});
+
 program
     .name('spidersan')
     .description('🕷️ Branch coordination for AI coding agents')
-    .version(pkg.version);
+    .version(pkg.version)
+    .option('-D, --debug', 'Enable verbose debug output with stack traces')
+    .hook('preAction', (thisCommand) => {
+        const opts = thisCommand.opts();
+        if (opts.debug) {
+            debugMode = true;
+            console.log('🐛 Debug mode enabled\n');
+        }
+    });
 
 // Core commands (Free tier)
 program.addCommand(initCommand);
