@@ -88,5 +88,84 @@ When analyzing signals, prioritize **structural changes** (bass, foundation, CLA
 
 *For ears-specific patterns, see:* [[ears-lessons-learned]] in treebird-internal/ears/
 
-*Last updated: 2026-01-15*
+*Last updated: 2026-01-16*
 
+---
+
+## CI/CD Patterns
+
+### Make Tests Mandatory, Not Optional
+**Source:** CI audit (Jan 16, 2026)  
+**Confidence:** HIGH
+
+The pattern `run: npm test || true` with `continue-on-error: true` is a common anti-pattern. It means CI passes even when tests fail.
+
+**Fix:**
+```yaml
+# ❌ Wrong - tests don't block
+- name: Test
+  run: npm test || true
+  continue-on-error: true
+
+# ✅ Correct - tests must pass
+- name: Run Tests
+  run: npm test -- --run
+```
+
+**Implication:** Always verify CI actually enforces what you think it enforces.
+
+---
+
+## Vitest 4 Migration
+
+### Pool Options Moved to Top Level
+**Source:** Vitest 4 deprecation warning (Jan 15, 2026)  
+**Confidence:** HIGH
+
+Vitest 4 changed the configuration structure. `poolOptions` is deprecated.
+
+**Old format (deprecated):**
+```typescript
+test: {
+  pool: 'forks',
+  poolOptions: {
+    forks: { maxForks: 1 }
+  }
+}
+```
+
+**New format (Vitest 4):**
+```typescript
+test: {
+  pool: 'forks',
+  forks: {
+    maxForks: 1,
+    minForks: 1
+  }
+}
+```
+
+---
+
+## Task Delegation
+
+### Stigmergy-Based Task Delegation
+**Source:** Maintenance sweep (Jan 15, 2026)  
+**Confidence:** HIGH (ecosystem-wide pattern)
+
+Instead of assigning tasks directly, create a structured document (substrate) and let agents self-select:
+
+1. Create `MAINTENANCE_TASKS.md` with clear sections
+2. Assign tasks to agents based on specialty
+3. Include acceptance criteria for each task
+4. Let agents claim and complete autonomously
+
+**Key elements:**
+- Clear ownership per task
+- Acceptance criteria (testable)
+- Priority levels (P0, P1, P2, P3)
+- Progress tracker
+
+**Implication:** The coordinator provides structure; the flock provides execution.
+
+---

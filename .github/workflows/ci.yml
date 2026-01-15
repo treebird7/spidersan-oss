@@ -25,13 +25,12 @@ jobs:
       - name: Build
         run: npm run build
       
-      - name: Lint (if configured)
+      - name: Lint (optional)
         run: npm run lint || true
         continue-on-error: true
       
-      - name: Test (if configured)
-        run: npm test || true
-        continue-on-error: true
+      - name: Run Tests
+        run: npm test -- --run
 
   test-cli:
     runs-on: ubuntu-latest
