@@ -14,11 +14,11 @@ export default defineConfig({
 
         // Increase memory limit to prevent OOM on larger tests
         pool: 'forks',
-        poolOptions: {
-            forks: {
-                maxForks: 1,
-                minForks: 1
-            }
+
+        // Vitest 4 format - forks config at top level
+        forks: {
+            maxForks: 1,
+            minForks: 1
         },
 
         // Timeout settings
