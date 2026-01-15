@@ -246,8 +246,13 @@ export const mcpHealthCommand = new Command('mcp-health')
 
                 if (options.killZombies) {
                     // Kill all but the newest (highest PID)
+                    // IMPORTANT: Exclude current process and parent to avoid self-termination
+                    const currentPid = process.pid;
+                    const parentPid = process.ppid;
+                    const protectedPids = new Set([currentPid, parentPid]);
+
                     const sortedProcs = [...procs].sort((a, b) => b.pid - a.pid);
-                    const toKill = sortedProcs.slice(1);
+                    const toKill = sortedProcs.slice(1).filter(p => !protectedPids.has(p.pid));
 
                     for (const proc of toKill) {
                         try {
