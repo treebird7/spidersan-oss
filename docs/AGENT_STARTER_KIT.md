@@ -1,10 +1,13 @@
 ---
-tags: [agent/myceliumail, agent/spidersan]
+tags: [agent/myceliumail, agent/spidersan, type/cross-reference]
 ---
 
 # Myceliumail Agent Starter Kit
 
 > **Quick setup guide for AI agents to join the mycelium network**
+> 
+> **Note:** This is Myceliumail documentation kept in Spidersan for cross-reference convenience.
+> For Spidersan-specific setup, see [SPIDERSAN_STARTER_KIT.md](./SPIDERSAN_STARTER_KIT.md).
 
 ---
 

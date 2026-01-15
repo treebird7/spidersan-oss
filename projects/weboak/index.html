@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>weboak - Force-Directed Birdsong Web</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            overflow: hidden;
+        }
+
+        #weboak-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        .node {
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .node:hover {
+            stroke-width: 4px;
+            filter: brightness(1.3);
+        }
+
+        .link {
+            stroke: #4a5568;
+            stroke-opacity: 0.3;
+            transition: all 0.3s ease;
+        }
+
+        .link.active {
+            stroke: #ffd60a;
+            stroke-opacity: 0.8;
+        }
+
+        .node-label {
+            font-size: 12px;
+            fill: #e0e0e0;
+            text-anchor: middle;
+            pointer-events: none;
+            font-weight: 500;
+        }
+
+        .controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(26, 26, 26, 0.9);
+            padding: 20px;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .controls h2 {
+            margin: 0 0 15px 0;
+            font-size: 18px;
+            color: #ffd60a;
+        }
+
+        .controls button {
+            background: #2d6a4f;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px 0;
+            width: 100%;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .controls button:hover {
+            background: #40916c;
+            transform: translateY(-1px);
+        }
+
+        .info-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(26, 26, 26, 0.9);
+            padding: 20px;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            max-width: 300px;
+        }
+
+        .info-panel h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: #ffd60a;
+        }
+
+        .info-panel p {
+            margin: 5px 0;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div id="weboak-container"></div>
+    
+    <div class="controls">
+        <h2>🕷️ weboak</h2>
+        <button id="toggle-animation">Start Animation</button>
+        <button id="toggle-gravity">Toggle Gravity</button>
+        <button id="reset">Reset</button>
+    </div>
+
+    <div class="info-panel">
+        <h3>Force-Directed Birdsong Web</h3>
+        <p><strong>Nodes:</strong> Bird species from dawn chorus</p>
+        <p><strong>Edges:</strong> Harmonic similarity (frequency overlap)</p>
+        <p><strong>Gravity:</strong> Center shifts with audio playback</p>
+        <p id="node-count"></p>
+    </div>
+
+    <script>
+        // Based on delegated task result from i7 invoak
+        // Adapted from Python NetworkX to D3.js force simulation
+        
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        // Bird data from Birdsan's spectrogram.json
+        const birds = [
+            { id: "robin", name: "Robin", freq_min: 2000, freq_max: 9000, color: "#E85D04", x: 0, y: -50 },
+            { id: "blackbird", name: "Blackbird", freq_min: 500, freq_max: 7000, color: "#5A189A", x: -80, y: 30 },
+            { id: "sparrow", name: "Sparrow", freq_min: 1500, freq_max: 8500, color: "#A68A64", x: 80, y: 30 },
+            { id: "woodpigeon", name: "Woodpigeon", freq_min: 200, freq_max: 2000, color: "#2D6A4F", x: 0, y: 90 },
+            { id: "wren", name: "Wren", freq_min: 3500, freq_max: 8000, color: "#FF6B35", x: -50, y: -30 },
+            { id: "great-tit", name: "Great Tit", freq_min: 2500, freq_max: 7500, color: "#FFD60A", x: 50, y: -30 },
+        ];
+
+        // Calculate frequency overlap for edges
+        function calculateOverlap(bird1, bird2) {
+            const overlapStart = Math.max(bird1.freq_min, bird2.freq_min);
+            const overlapEnd = Math.min(bird1.freq_max, bird2.freq_max);
+            const overlap = Math.max(0, overlapEnd - overlapStart);
+            const range1 = bird1.freq_max - bird1.freq_min;
+            const range2 = bird2.freq_max - bird2.freq_min;
+            return overlap / Math.min(range1, range2);
+        }
+
+        // Generate links based on harmonic similarity
+        const links = [];
+        for (let i = 0; i < birds.length; i++) {
+            for (let j = i + 1; j < birds.length; j++) {
+                const overlap = calculateOverlap(birds[i], birds[j]);
+                if (overlap > 0.1) { // Only link if >10% overlap
+                    links.push({
+                        source: birds[i].id,
+                        target: birds[j].id,
+                        strength: overlap
+                    });
+                }
+            }
+        }
+
+        // Create SVG
+        const svg = d3.select("#weboak-container")
+            .append("svg")
+            .attr("width", width)
+            .attr("height", height);
+
+        // Define arrow markers for directed edges
+        svg.append("defs").selectAll("marker")
+            .data(["arrow"])
+            .enter().append("marker")
+            .attr("id", d => d)
+            .attr("viewBox", "0 -5 10 10")
+            .attr("refX", 25)
+            .attr("refY", 0)
+            .attr("markerWidth", 6)
+            .attr("markerHeight", 6)
+            .attr("orient", "auto")
+            .append("path")
+            .attr("d", "M0,-5L10,0L0,5")
+            .attr("fill", "#4a5568");
+
+        // Create force simulation (inspired by NetworkX spring_layout)
+        const simulation = d3.forceSimulation(birds)
+            .force("link", d3.forceLink(links).id(d => d.id).distance(d => 100 / d.strength))
+            .force("charge", d3.forceManyBody().strength(-300))
+            .force("center", d3.forceCenter(width / 2, height / 2))
+            .force("collision", d3.forceCollide(30));
+
+        // Create links (edges)
+        const link = svg.append("g")
+            .selectAll("line")
+            .data(links)
+            .enter().append("line")
+            .attr("class", "link")
+            .attr("stroke-width", d => d.strength * 5);
+
+        // Create nodes
+        const node = svg.append("g")
+            .selectAll("circle")
+            .data(birds)
+            .enter().append("circle")
+            .attr("class", "node")
+            .attr("r", 20)
+            .attr("fill", d => d.color)
+            .attr("stroke", "#fff")
+            .attr("stroke-width", 2)
+            .call(d3.drag()
+                .on("start", dragstarted)
+                .on("drag", dragged)
+                .on("end", dragended));
+
+        // Create labels
+        const labels = svg.append("g")
+            .selectAll("text")
+            .data(birds)
+            .enter().append("text")
+            .attr("class", "node-label")
+            .attr("dy", 35)
+            .text(d => d.name);
+
+        // Update positions on simulation tick
+        simulation.on("tick", () => {
+            link
+                .attr("x1", d => d.source.x)
+                .attr("y1", d => d.source.y)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+
+            node
+                .attr("cx", d => d.x)
+                .attr("cy", d => d.y);
+
+            labels
+                .attr("x", d => d.x)
+                .attr("y", d => d.y);
+        });
+
+        // Drag functions
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+
+        // Controls
+        let animating = false;
+        let gravityEnabled = true;
+
+        document.getElementById("toggle-animation").addEventListener("click", () => {
+            animating = !animating;
+            document.getElementById("toggle-animation").textContent = 
+                animating ? "Stop Animation" : "Start Animation";
+            
+            if (animating) {
+                animate();
+            }
+        });
+
+        document.getElementById("toggle-gravity").addEventListener("click", () => {
+            gravityEnabled = !gravityEnabled;
+            if (gravityEnabled) {
+                simulation.force("center", d3.forceCenter(width / 2, height / 2));
+            } else {
+                simulation.force("center", null);
+            }
+            simulation.alpha(0.3).restart();
+        });
+
+        document.getElementById("reset").addEventListener("click", () => {
+            simulation.alpha(1).restart();
+        });
+
+        // Animation loop (shifts center over time - "gravity without a center")
+        let time = 0;
+        function animate() {
+            if (!animating) return;
+            
+            time += 0.01;
+            const cx = width / 2 + Math.sin(time) * 100;
+            const cy = height / 2 + Math.cos(time) * 100;
+            
+            simulation.force("center", d3.forceCenter(cx, cy));
+            simulation.alpha(0.05).restart();
+            
+            requestAnimationFrame(animate);
+        }
+
+        // Update info panel
+        document.getElementById("node-count").textContent = 
+            `${birds.length} nodes, ${links.length} edges`;
+
+        // Tooltip on hover
+        node.on("mouseover", (event, d) => {
+            d3.select(event.currentTarget)
+                .transition()
+                .duration(200)
+                .attr("r", 25);
+            
+            // Highlight connected links
+            link.classed("active", l => 
+                l.source.id === d.id || l.target.id === d.id
+            );
+        })
+        .on("mouseout", (event) => {
+            d3.select(event.currentTarget)
+                .transition()
+                .duration(200)
+                .attr("r", 20);
+            
+            link.classed("active", false);
+        });
+
+        console.log("🕷️ weboak initialized");
+        console.log("Based on delegated task from i7 invoak (codex)");
+        console.log("Birds:", birds.length, "Links:", links.length);
+    </script>
+</body>
+</html>

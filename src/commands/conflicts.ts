@@ -187,8 +187,15 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Prompt user for Y/N confirmation (prevents Ralph Wiggum loops)
+ * @param prompt - The question to ask
+ * @param autoConfirm - If true, skip prompt and return true (for --auto mode)
  */
-async function confirmAction(prompt: string): Promise<boolean> {
+async function confirmAction(prompt: string, autoConfirm: boolean = false): Promise<boolean> {
+    if (autoConfirm) {
+        console.log(`${prompt} [Y/n]: Y (auto)`);
+        return true;
+    }
+
     const readline = await import('readline');
     const rl = readline.createInterface({
         input: process.stdin,
@@ -354,7 +361,7 @@ export const conflictsCommand = new Command('conflicts')
                 console.log('  1. Send wake signal via Hub');
                 console.log('  2. Send mycmail with conflict details\n');
 
-                const confirmed = await confirmAction('Wake these agents?');
+                const confirmed = await confirmAction('Wake these agents?', options.auto);
 
                 if (confirmed) {
                     console.log('\n🔔 WAKING AGENTS...\n');
@@ -366,7 +373,7 @@ export const conflictsCommand = new Command('conflicts')
                     // If --retry is set, ask before waiting
                     if (options.retry) {
                         const waitSeconds = parseInt(options.retry, 10);
-                        const retryConfirmed = await confirmAction(`\nWait ${waitSeconds}s and re-check conflicts?`);
+                        const retryConfirmed = await confirmAction(`\nWait ${waitSeconds}s and re-check conflicts?`, options.auto);
 
                         if (retryConfirmed) {
                             console.log(`\n⏳ Waiting ${waitSeconds}s for agents to resolve conflicts...`);
