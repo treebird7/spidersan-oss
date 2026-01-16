@@ -55,6 +55,8 @@ import {
     mcpRestartCommand,
     // Task Torrenting
     torrentCommand,
+    // Collab Sync
+    collabSyncCommand,
 } from '../commands/index.js';
 
 // Read version from package.json dynamically
@@ -163,6 +165,9 @@ program.addCommand(mcpRestartCommand);
 
 // Task Torrenting
 program.addCommand(torrentCommand);
+
+// Collab Sync (prevents merge conflicts)
+program.addCommand(collabSyncCommand);
 
 // Check for updates (non-blocking)
 import { checkForUpdates } from '../lib/update-check.js';
