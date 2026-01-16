@@ -57,3 +57,6 @@ export { mcpRestartCommand } from './mcp-restart.js';
 
 // Task Torrenting
 export { torrentCommand } from './torrent.js';
+
+// Collab Sync (prevents merge conflicts)
+export { collabSyncCommand } from './collab-sync.js';
