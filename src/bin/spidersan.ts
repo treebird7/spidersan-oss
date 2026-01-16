@@ -57,6 +57,8 @@ import {
     torrentCommand,
     // Collab Sync
     collabSyncCommand,
+    // Global Sync
+    syncAllCommand,
 } from '../commands/index.js';
 
 // Read version from package.json dynamically
@@ -168,6 +170,9 @@ program.addCommand(torrentCommand);
 
 // Collab Sync (prevents merge conflicts)
 program.addCommand(collabSyncCommand);
+
+// Global Sync (all repos)
+program.addCommand(syncAllCommand);
 
 // Check for updates (non-blocking)
 import { checkForUpdates } from '../lib/update-check.js';
