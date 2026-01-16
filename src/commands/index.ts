@@ -60,3 +60,6 @@ export { torrentCommand } from './torrent.js';
 
 // Collab Sync (prevents merge conflicts)
 export { collabSyncCommand } from './collab-sync.js';
+
+// Global Sync (all repos)
+export { syncAllCommand } from './sync-all.js';
