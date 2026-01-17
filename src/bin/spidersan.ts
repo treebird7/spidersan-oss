@@ -59,6 +59,9 @@ import {
     collabSyncCommand,
     // Global Sync
     syncAllCommand,
+    // Layer 3+4 Conflict Detection
+    intentScanCommand,
+    activeWindowsCommand,
 } from '../commands/index.js';
 
 // Read version from package.json dynamically
@@ -173,6 +176,10 @@ program.addCommand(collabSyncCommand);
 
 // Global Sync (all repos)
 program.addCommand(syncAllCommand);
+
+// Layer 3+4 Conflict Detection
+program.addCommand(intentScanCommand);
+program.addCommand(activeWindowsCommand);
 
 // Check for updates (non-blocking)
 import { checkForUpdates } from '../lib/update-check.js';
