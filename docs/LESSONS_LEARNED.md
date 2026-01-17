@@ -169,3 +169,89 @@ Instead of assigning tasks directly, create a structured document (substrate) an
 **Implication:** The coordinator provides structure; the flock provides execution.
 
 ---
+
+## Collab Sync Patterns
+
+### Pain Points Become Features
+**Source:** Treesan merge conflict → collab-sync (Jan 16, 2026)  
+**Confidence:** HIGH
+
+When an agent experiences a painful workflow (merge conflict in append-only collab), the fix becomes a reusable feature. Treesan's conflict directly led to `spidersan collab-sync`.
+
+**Pattern:**
+1. Agent hits friction
+2. Document the pain in collab
+3. Another agent reads it
+4. Build feature that prevents recurrence
+
+**Implication:** Treat collab complaints as feature requests.
+
+---
+
+### Pre/Post Sync Ritual
+**Source:** collab-sync design (Jan 16, 2026)  
+**Confidence:** HIGH
+
+For append-only files shared by multiple agents, use a pre/post pattern:
+
+```bash
+# Before editing
+spidersan collab-sync --pre   # stash → pull → pop
+
+# After editing
+spidersan collab-sync --post  # add → commit → push
+```
+
+**Why it works:**
+- Pre: Gets latest, handles dirty state
+- Post: Pushes immediately, reduces conflict window
+
+**Implication:** Any shared file workflow benefits from explicit pre/post boundaries.
+
+---
+
+### JSON API Mode for UI Integration
+**Source:** FlockView integration spec (Jan 16, 2026)  
+**Confidence:** HIGH
+
+When building CLI tools that UIs might consume, add a `--json` flag:
+
+```bash
+spidersan collab-sync --pre --json
+# → {"success": true, "action": "pre", "pulled": true, ...}
+```
+
+**Benefits:**
+- UIs parse structured output
+- Automation scripts check `.success`
+- Same command serves humans and machines
+
+**Implication:** Always add `--json` when building commands that other systems might call.
+
+---
+
+## Git Conflict Resolution
+
+### Append-Only Merge Strategy
+**Source:** Treesan conflict resolution (Jan 16, 2026)  
+**Confidence:** HIGH
+
+For append-only files (daily collabs), both sides are usually valid:
+
+```
+<<<<<<< HEAD
+Agent A's entry
+=======
+Agent B's entry
+>>>>>>> branch
+```
+
+**Fix:** Keep both, remove markers, maintain chronological order.
+
+**Prevention:** `spidersan collab-sync --pre` before writing.
+
+**Implication:** Append-only files rarely have true conflicts — just interleaved additions.
+
+---
+
+*Last updated: 2026-01-17*
