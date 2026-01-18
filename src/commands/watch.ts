@@ -219,13 +219,13 @@ Press Ctrl+C to stop.
         const watcher = chokidar.watch(repoRoot, {
             ignored: !options.legacy ? [
                 ...smartIgnores,
-                /(^|[\/\\])\../, // dotfiles
+                /(^|[/\\])\../, // dotfiles
                 '**/node_modules/**',
                 '**/dist/**',
                 '**/*.log',
                 '**/.git/**',  // ALWAYS ignore .git
             ] : [
-                /(^|[\/\\])\../, // dotfiles (ALWAYS ignore)
+                /(^|[/\\])\../, // dotfiles (ALWAYS ignore)
                 '**/node_modules/**',
                 '**/dist/**',
                 '**/*.log',
