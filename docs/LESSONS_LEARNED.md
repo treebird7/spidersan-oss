@@ -255,3 +255,121 @@ Agent B's entry
 ---
 
 *Last updated: 2026-01-17*
+
+---
+
+## Conflict Detection Architecture
+
+### Reactive vs Proactive Conflict Detection
+**Source:** Formation incident analysis (Jan 17-18, 2026)  
+**Confidence:** HIGH (root cause of duplicate work)
+
+**Problem:** Git conflict detection is reactive — it only triggers after multiple agents have both committed conflicting changes.
+
+**Solution:** Add proactive layers that detect overlapping work before code is written:
+
+```
+REACTIVE (Git-based):
+Agent A edits → Agent B edits → Git conflict → Manual resolution
+
+PROACTIVE (Intent-based):
+Agent A declares intent → Detection → Coordination → No conflict
+```
+
+**Layers built:**
+- L3: Intent Detection (`spidersan intent-scan`)
+- L4: Temporal Windows (`spidersan active-windows`)
+
+**Implication:** Shift conflict detection earlier in the workflow. Intent > Files.
+
+---
+
+### Parse Collab Entries for Intent Signals
+**Source:** Formation incident (Jan 17, 2026)  
+**Confidence:** HIGH
+
+Two agents built the same formation MVP without knowing the other was working on it. Both had collab entries saying they were building it — but neither read the other's entry.
+
+**Pattern extraction:**
+```typescript
+// Intent signals to detect
+const INTENT_VERBS = [
+  'building', 'implementing', 'creating', 'starting', 'working on'
+];
+
+// When these + project keywords overlap → conflict alert
+```
+
+**Usage:**
+```bash
+spidersan intent-scan --days 2 --verbose
+# → 🔴 CONFLICT: Overlapping intent (85% match)
+#   Birdsan: "building formation MVP"
+#   RemoteAgent: "implementing formation package"
+```
+
+**Implication:** Collab entries contain intent signals. Parse them before letting agents start work.
+
+---
+
+### Temporal Windows for Session Overlap
+**Source:** Multi-machine coordination (Jan 17, 2026)  
+**Confidence:** HIGH
+
+When agents work during overlapping time windows on different machines, TreeSync lag can cause both to see stale state.
+
+**Pattern:**
+```bash
+spidersan active-windows --all-repos --hours 24
+# → 🟢 Currently Active: treebird7 on formation/
+# → 🟠 SESSION OVERLAP: Birdsan (M2) ↔ RemoteAgent (i7)
+#     Duration: 70 min
+#     Shared areas: formation/
+```
+
+**Implication:** Track when agents are active, not just what they commit. Overlap + shared area = high conflict risk.
+
+---
+
+### 7-Layer Conflict Detection Model
+**Source:** Architecture design (Jan 18, 2026)  
+**Confidence:** HIGH (implemented 2 of 7)
+
+| Layer | Detection Scope | Built? |
+|-------|-----------------|--------|
+| L1 | File-level (git) | ✅ Exists |
+| L2 | Semantic (AST, deps) | 🟡 Planned |
+| **L3** | **Intent (collab parsing)** | **✅ Built** |
+| **L4** | **Temporal (session windows)** | **✅ Built** |
+| L5 | Cross-repo (breaking changes) | 🟡 Planned |
+| L6 | Predictive (historical zones) | 🟡 Planned |
+| L7 | Resolution (auto-merge) | 🟡 Planned |
+
+**Implication:** Conflict detection should expand beyond git. Each layer catches different types of overlapping work.
+
+---
+
+### Git Commits as Atomic Locks
+**Source:** Task pool design (Jan 18, 2026)  
+**Confidence:** MEDIUM (proposed, not yet implemented)
+
+Use git commits as the source of truth for task claims:
+
+```bash
+# Claim workflow
+spidersan claim-check task-001     # Check for conflicts
+formation claim task-001 --as birdsan
+git commit -m "claim: birdsan starting task-001"
+git push                           # Atomic claim
+```
+
+**Why it works:**
+- Git push is atomic — either you push first or you don't
+- Other machines see the claim immediately via TreeSync
+- No external database needed
+
+**Implication:** Git is a distributed lock. Use commits as coordination signals.
+
+---
+
+*Last updated: 2026-01-18*
