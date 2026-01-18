@@ -160,7 +160,9 @@ function buildWorkWindows(repoPath: string, hours: number): WorkWindow[] {
     let machine = 'Unknown';
     try {
         machine = execSync('hostname', { encoding: 'utf-8' }).trim();
-    } catch (e) { }
+    } catch {
+        // Ignore errors getting hostname
+    }
 
     for (const [author, commits] of activity) {
         if (commits.length === 0) continue;
