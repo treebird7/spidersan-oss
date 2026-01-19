@@ -1,0 +1,83 @@
+{
+    "name": "spidersan",
+    "version": "0.2.1",
+    "description": "Branch coordination for AI coding agents",
+    "type": "module",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "bin": {
+        "spidersan": "./dist/bin/spidersan.js"
+    },
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE",
+        "CHANGELOG.md"
+    ],
+    "publishConfig": {
+        "access": "public"
+    },
+    "funding": {
+        "type": "individual",
+        "url": "https://github.com/sponsors/treebird7"
+    },
+    "scripts": {
+        "build": "tsc",
+        "dev": "tsc --watch",
+        "start": "node dist/bin/spidersan.js",
+        "test": "vitest",
+        "test:run": "vitest run",
+        "test:coverage": "vitest run --coverage",
+        "lint": "eslint 'src/**/*.ts'",
+        "typecheck": "tsc --noEmit",
+        "prepublishOnly": "npm run typecheck && npm run lint && npm run build",
+        "stress-test": "node scripts/stress-test.js",
+        "stress-test:clean": "node scripts/stress-test.js --clean",
+        "stress-test:report": "node scripts/stress-test.js --report"
+    },
+    "keywords": [
+        "ai",
+        "agents",
+        "git",
+        "branch",
+        "coordination",
+        "merge",
+        "conflicts",
+        "claude",
+        "cursor",
+        "copilot",
+        "mcp",
+        "cli"
+    ],
+    "author": "treebird7",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/treebird7/Spidersan.git"
+    },
+    "bugs": {
+        "url": "https://github.com/treebird7/Spidersan/issues"
+    },
+    "homepage": "https://github.com/treebird7/Spidersan#readme",
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "dependencies": {
+        "chokidar": "^5.0.0",
+        "commander": "^12.0.0",
+        "dotenv": "^17.2.3",
+        "execa": "^9.6.1",
+        "minimatch": "^10.1.1",
+        "socket.io-client": "^4.8.3",
+        "tweetnacl": "^1.0.3",
+        "tweetnacl-util": "^0.15.1"
+    },
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "@typescript-eslint/eslint-plugin": "^6.0.0",
+        "@typescript-eslint/parser": "^6.0.0",
+        "eslint": "^8.0.0",
+        "typescript": "^5.3.0",
+        "vitest": "^4.0.17"
+    }
+}

@@ -1,0 +1,52 @@
+# Source files (dist is published)
+src/
+tsconfig.json
+
+# Development files
+.git/
+.github/
+.vscode/
+.claude/
+.spidersan/
+
+# Test files
+*.test.ts
+*.spec.ts
+__tests__/
+coverage/
+
+# Documentation (keep README)
+docs/
+*.md
+!README.md
+!LICENSE.md
+!CHANGELOG.md
+
+# Development configs
+.editorconfig
+.eslintrc*
+.prettierrc*
+vitest.config.*
+
+# Environment files
+.env
+.env.*
+supabase-config.env
+
+# Scripts not needed in package
+scripts/
+
+# MCP server (separate package)
+mcp-server/
+
+# Migrations (not needed for npm users)
+migrations/
+
+# Supabase config (development only)
+supabase/
+
+# Misc
+*.log
+*.tgz
+.DS_Store
+node_modules/

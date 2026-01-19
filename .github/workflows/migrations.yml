@@ -1,0 +1,45 @@
+name: Apply Migrations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'migrations/*.sql'
+  workflow_dispatch:
+
+jobs:
+  apply-migrations:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      
+      - name: Check secrets
+        run: |
+          if [ -z "${{ secrets.SUPABASE_URL }}" ]; then
+            echo "❌ SUPABASE_URL secret required"
+            exit 1
+          fi
+          echo "✅ Secrets configured"
+      
+      - name: Link to project
+        run: |
+          supabase link --project-ref $(echo "${{ secrets.SUPABASE_URL }}" | sed 's|https://||' | sed 's|.supabase.co||')
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      
+      - name: Push migrations
+        run: supabase db push
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      
+      - name: Summary
+        run: |
+          echo "## ✅ Migrations Applied" >> $GITHUB_STEP_SUMMARY
+          echo "Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
