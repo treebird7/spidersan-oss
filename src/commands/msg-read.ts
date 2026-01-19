@@ -1,5 +1,23 @@
 import { Command } from 'commander';
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
+
+// Security: Input validation
+const VALID_AGENT_ID = /^[a-z0-9][a-z0-9_-]{0,30}$/i;
+const VALID_MESSAGE_ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,64}$/;
+
+function validateAgentId(agentId: string): string {
+    if (!VALID_AGENT_ID.test(agentId)) {
+        throw new Error(`Invalid agent ID: "${agentId.slice(0, 20)}..."`);
+    }
+    return agentId;
+}
+
+function validateMessageId(id: string): string {
+    if (!VALID_MESSAGE_ID.test(id)) {
+        throw new Error(`Invalid message ID: "${id.slice(0, 20)}..."`);
+    }
+    return id;
+}
 
 export const msgReadCommand = new Command('read')
     .description('Read a specific message (via Myceliumail)')
@@ -7,7 +25,18 @@ export const msgReadCommand = new Command('read')
     .option('--no-mark-read', 'Don\'t mark the message as read (handled by mycmail)')
     .option('--json', 'Output as JSON')
     .action(async (id, options) => {
-        const agentId = process.env.SPIDERSAN_AGENT || 'cli-agent';
+        const rawAgentId = process.env.SPIDERSAN_AGENT || 'cli-agent';
+
+        // Security: Validate inputs
+        let agentId: string;
+        let messageId: string;
+        try {
+            agentId = validateAgentId(rawAgentId);
+            messageId = validateMessageId(id);
+        } catch (error: any) {
+            console.error(`❌ ${error.message}`);
+            process.exit(1);
+        }
 
         try {
             execSync('which mycmail', { stdio: 'ignore' });
@@ -17,22 +46,22 @@ export const msgReadCommand = new Command('read')
             process.exit(1);
         }
 
-        const cmdParts = [
-            `MYCELIUMAIL_AGENT_ID=${agentId}`,
-            'mycmail',
-            'read',
-            id
-        ];
-
+        // Security: Use spawnSync with argument array instead of string interpolation
         try {
-            // Note: mycmail read implicitly marks as read usually.
-            // Spidersan's --no-mark-read might not map directly unless mycmail supports it.
+            const result = spawnSync('mycmail', ['read', messageId], {
+                encoding: 'utf-8',
+                env: { ...process.env, MYCELIUMAIL_AGENT_ID: agentId }
+            });
 
-            const output = execSync(cmdParts.join(' '), { encoding: 'utf-8' });
+            if (result.error) {
+                throw result.error;
+            }
+
+            const output = result.stdout || '';
 
             if (options.json) {
                 console.log(JSON.stringify({
-                    id,
+                    id: messageId,
                     output: output.trim()
                 }, null, 2));
             } else {

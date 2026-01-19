@@ -5,7 +5,7 @@
  * Matches Recovery-Tree's branch_registry schema.
  */
 
-import type { StorageAdapter, Branch, BranchRegistry } from './adapter.js';
+import type { StorageAdapter, Branch } from './adapter.js';
 
 interface SupabaseConfig {
     url: string;
@@ -203,13 +203,15 @@ export class SupabaseStorage implements StorageAdapter {
     }
 
     async findByFiles(files: string[]): Promise<Branch[]> {
-        const response = await this.fetch(`active_branches?files_changed=ov.{${files.join(',')}}`);
+        // Security: URL-encode file paths to prevent query injection
+        const safeFiles = files.map(f => encodeURIComponent(f.replace(/[,{}]/g, '_')));
+        const response = await this.fetch(`active_branches?files_changed=ov.{${safeFiles.join(',')}}`);
         if (!response.ok) throw new Error(`Failed to find by files: ${await response.text()}`);
         const rows = await response.json() as SupabaseBranchRow[];
         return rows.map(r => this.rowToBranch(r));
     }
 
-    async cleanup(olderThan: Date): Promise<number> {
+    async cleanup(_olderThan: Date): Promise<number> {
         const response = await this.fetch('stale_branches?select=id');
         if (!response.ok) throw new Error(`Failed to get stale: ${await response.text()}`);
 
