@@ -10,7 +10,9 @@
 
 import { Command } from 'commander';
 import { execSync } from 'child_process';
+import { readFileSync } from 'fs';
 import { getStorage } from '../storage/index.js';
+import { ASTParser, SymbolConflict } from '../lib/ast.js';
 
 // Security: Input validation patterns
 const VALID_AGENT_ID = /^[a-z0-9][a-z0-9_-]{0,30}$/i;
@@ -247,6 +249,7 @@ export const conflictsCommand = new Command('conflicts')
     .option('--retry <seconds>', 'After waking, wait N seconds and re-check conflicts')
     .option('--auto', 'Auto mode: skip confirmations (enables Ralph Wiggum loop)')
     .option('--max-retries <count>', 'Maximum retry attempts in auto mode (default: 5)', '5')
+    .option('--semantic', 'Use semantic (AST) analysis for symbol-level conflict detection')
     .action(async (options) => {
         const storage = await getStorage();
 
@@ -289,6 +292,35 @@ export const conflictsCommand = new Command('conflicts')
                         tier: maxTier.tier,
                         tierInfo: maxTier
                     });
+                }
+            }
+        }
+
+        // SEMANTIC ANALYSIS with AST parser
+        let semanticConflicts: SymbolConflict[] = [];
+        if (options.semantic && conflicts.length > 0) {
+            console.log('\n🔬 Running semantic (AST) analysis...');
+            const astParser = new ASTParser();
+
+            for (const conflict of conflicts) {
+                for (const file of conflict.files) {
+                    // Only analyze TypeScript/JavaScript files
+                    if (!/\.(ts|js|tsx|jsx)$/.test(file)) continue;
+
+                    try {
+                        // Get file content from both branches
+                        const currentContent = execSync(`git show HEAD:${file}`, { encoding: 'utf-8' });
+                        const otherContent = execSync(`git show ${conflict.branch}:${file}`, { encoding: 'utf-8' });
+
+                        const symbolConflicts = astParser.findSymbolConflicts(
+                            currentContent, `${targetBranch}:${file}`,
+                            otherContent, `${conflict.branch}:${file}`
+                        );
+
+                        semanticConflicts.push(...symbolConflicts);
+                    } catch {
+                        // File might not exist in one branch, skip
+                    }
                 }
             }
         }
@@ -345,6 +377,23 @@ export const conflictsCommand = new Command('conflicts')
 
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log(`📊 Summary: 🔴 ${tier3Count} BLOCK | 🟠 ${tier2Count} PAUSE | 🟡 ${conflicts.filter(c => c.tier === 1).length} WARN`);
+
+        // Show semantic analysis results
+        if (options.semantic && semanticConflicts.length > 0) {
+            console.log(`\n🔬 SEMANTIC CONFLICTS DETECTED (${semanticConflicts.length} symbols):`);
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            for (const sc of semanticConflicts) {
+                console.log(`  ⚡ ${sc.symbolType} '${sc.symbolName}'`);
+                console.log(`     Modified in BOTH branches (different content)`);
+            }
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            console.log('\n💡 TIP: Coordinate on these specific functions/classes,');
+            console.log('   not just the files. One of you should rebase.');
+        } else if (options.semantic && semanticConflicts.length === 0) {
+            console.log('\n🔬 SEMANTIC ANALYSIS: No symbol-level conflicts!');
+            console.log('   Files overlap, but different functions were modified.');
+            console.log('   ✅ Likely safe to merge (git will auto-merge).');
+        }
 
         if (tier3Count > 0) {
             console.log(`
