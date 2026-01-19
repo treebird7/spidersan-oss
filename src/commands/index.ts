@@ -70,3 +70,6 @@ export { activeWindowsCommand } from './active-windows.js';
 
 // Semantic Locking (CRDT-based)
 export { lockCommand } from './lock.js';
+
+// Terminal UI
+export { tuiCommand } from './tui.js';

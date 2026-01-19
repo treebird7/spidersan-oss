@@ -118,4 +118,15 @@ export const patterns = {
     VALID_TASK_ID,
     VALID_FILE_PATH,
     SHELL_METACHARACTERS,
-};
+}
+
+// Test-compatible aliases for vitest security tests
+export const sanitizeAgentId = validateAgentId;
+export const sanitizeBranchName = validateBranchName;
+export const sanitizeFilePath = validateFilePath;
+
+// Message ID validation (for mycmail commands)
+const VALID_MESSAGE_ID = /^[a-z0-9][a-z0-9_-]{0,64}$/i;
+export function isValidMessageId(messageId: string): boolean {
+    return typeof messageId === 'string' && VALID_MESSAGE_ID.test(messageId);
+}
