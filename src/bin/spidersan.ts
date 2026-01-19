@@ -62,6 +62,8 @@ import {
     // Layer 3+4 Conflict Detection
     intentScanCommand,
     activeWindowsCommand,
+    // Semantic Locking (CRDT)
+    lockCommand,
 } from '../commands/index.js';
 
 // Read version from package.json dynamically
@@ -180,6 +182,9 @@ program.addCommand(syncAllCommand);
 // Layer 3+4 Conflict Detection
 program.addCommand(intentScanCommand);
 program.addCommand(activeWindowsCommand);
+
+// Semantic Locking (CRDT-based)
+program.addCommand(lockCommand);
 
 // Check for updates (non-blocking)
 import { checkForUpdates } from '../lib/update-check.js';
