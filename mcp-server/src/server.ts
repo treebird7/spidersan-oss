@@ -13,6 +13,30 @@ import { z } from 'zod';
 
 import * as storage from './lib/storage.js';
 import { requireProLicense } from './lib/license.js';
+import { existsSync, realpathSync } from 'fs';
+import { resolve, isAbsolute } from 'path';
+
+// Security: Validate directory is safe to watch
+function validateWatchDirectory(dir: string | undefined): string {
+    const targetDir = dir || process.cwd();
+    const absPath = isAbsolute(targetDir) ? targetDir : resolve(process.cwd(), targetDir);
+
+    // Security checks
+    if (!existsSync(absPath)) {
+        throw new Error(`Directory does not exist: ${absPath}`);
+    }
+
+    // Prevent watching sensitive system directories
+    const sensitivePatterns = ['/etc', '/var', '/usr', '/bin', '/sbin', '/root', '/home/root'];
+    const realPath = realpathSync(absPath);
+    for (const pattern of sensitivePatterns) {
+        if (realPath.startsWith(pattern)) {
+            throw new Error(`Cannot watch system directory: ${pattern}`);
+        }
+    }
+
+    return realPath;
+}
 
 // Create the MCP server
 const server = new McpServer({
@@ -296,12 +320,27 @@ server.tool(
         quiet: z.boolean().optional().describe('Only show conflicts, not file changes'),
     },
     async ({ agent, dir, hub, quiet }) => {
-        // Note: This spawns a background process - the actual watching is done by CLI
+        // Security: Validate directory before spawning watcher
+        let safeDir: string;
+        try {
+            safeDir = validateWatchDirectory(dir);
+        } catch (error: unknown) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: `❌ ${(error as Error).message}`
+                }],
+            };
+        }
+
+        // Security: Validate agent ID
+        const safeAgent = agent?.replace(/[^a-zA-Z0-9_-]/g, '') || undefined;
+
         const { spawn } = await import('child_process');
         const args = ['watch'];
 
-        if (agent) args.push('--agent', agent);
-        if (dir) args.push('--dir', dir);
+        if (safeAgent) args.push('--agent', safeAgent);
+        args.push('--dir', safeDir);
         if (hub) args.push('--hub');
         if (quiet) args.push('--quiet');
 
@@ -309,7 +348,7 @@ server.tool(
         const proc = spawn('spidersan', args, {
             detached: true,
             stdio: 'ignore',
-            cwd: dir || process.cwd(),
+            cwd: safeDir,
         });
         proc.unref();
 
@@ -317,8 +356,8 @@ server.tool(
             content: [{
                 type: 'text',
                 text: `🕷️ Watch mode started (PID: ${proc.pid})
-Agent: ${agent || 'not set'}
-Directory: ${dir || 'current repo'}
+Agent: ${safeAgent || 'not set'}
+Directory: ${safeDir}
 Hub: ${hub ? 'connected' : 'disabled'}
 Quiet: ${quiet ? 'yes' : 'no'}
 
@@ -334,10 +373,12 @@ server.tool(
     'Stop the background file watcher',
     {},
     async () => {
-        const { exec } = await import('child_process');
+        const { execFile } = await import('child_process');
 
         return new Promise((resolve) => {
-            exec('pkill -f "spidersan watch"', (error) => {
+            // Security: Use execFile with explicit arguments instead of shell command
+            // This prevents command injection and only targets spidersan watch processes
+            execFile('pkill', ['-f', 'spidersan watch'], (error) => {
                 if (error) {
                     resolve({
                         content: [{
