@@ -11,6 +11,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-01-19 (Security Release)
+
+This release addresses several critical security vulnerabilities. Users are strongly encouraged to upgrade immediately.
+
+### Security
+- **Fixed:** Resolved a shell injection vulnerability in `conflicts.ts`. Improper sanitization of user-provided input could allow arbitrary command execution via `--wake` flag.
+- **Fixed:** Implemented stricter input validation across 8 mycmail wrapper commands (send.ts, inbox.ts, msg-read.ts, keys.ts, keygen.ts, key-import.ts, collab.ts) to prevent injection attacks.
+- **Fixed:** Sanitized Supabase queries to prevent potential SQL injection vulnerabilities.
+- **Added:** Implemented MCP server Access Control Lists (ACLs) to restrict process control and validate watch directories.
+- **Added:** Centralized security validation utilities in `src/lib/security.ts`.
+
+### Changed
+- Replaced `execSync` with `execFileSync` and `spawnSync` for safer command execution using argument arrays instead of string interpolation.
+- Added input validation patterns: `VALID_AGENT_ID` (`[a-z0-9_-]{1,32}`), `VALID_BRANCH_NAME` (`[a-zA-Z0-9/_.-]{1,128}`), `VALID_MESSAGE_ID`.
+- Hardened file path handling in all commands.
+
+### Added
+- **AST semantic detection** - `spidersan conflicts --semantic` for symbol-level conflict analysis using Tree-sitter
+- **CRDT symbol locking** - `spidersan lock` for distributed coordination
+- **GitHub Action template** for auto-registration on push
+
 ## [0.2.1] - 2025-12-30
 
 ### Added

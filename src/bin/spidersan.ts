@@ -64,6 +64,8 @@ import {
     activeWindowsCommand,
     // Semantic Locking (CRDT)
     lockCommand,
+    // Terminal UI
+    tuiCommand,
 } from '../commands/index.js';
 
 // Read version from package.json dynamically
@@ -185,6 +187,9 @@ program.addCommand(activeWindowsCommand);
 
 // Semantic Locking (CRDT-based)
 program.addCommand(lockCommand);
+
+// Terminal UI
+program.addCommand(tuiCommand);
 
 // Check for updates (non-blocking)
 import { checkForUpdates } from '../lib/update-check.js';
