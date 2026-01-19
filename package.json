@@ -69,8 +69,11 @@
         "execa": "^9.6.1",
         "minimatch": "^10.1.1",
         "socket.io-client": "^4.8.3",
+        "tree-sitter": "^0.21.1",
+        "tree-sitter-typescript": "^0.23.2",
         "tweetnacl": "^1.0.3",
-        "tweetnacl-util": "^0.15.1"
+        "tweetnacl-util": "^0.15.1",
+        "yjs": "^13.6.29"
     },
     "devDependencies": {
         "@types/node": "^20.0.0",
