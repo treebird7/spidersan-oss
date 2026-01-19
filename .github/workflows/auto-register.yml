@@ -1,0 +1,92 @@
+# 🕷️ Spidersan Auto-Registration
+# Automatically registers branches + files when agents push
+# Part of Codex 5.2 Proposal #1: Auto-registration
+
+name: Spidersan Auto-Register
+
+on:
+  push:
+    branches-ignore:
+      - main  # Don't register main branch
+      - staging/*  # Don't register staging branches
+
+env:
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+
+jobs:
+  auto-register:
+    runs-on: ubuntu-latest
+    name: Register branch with Spidersan
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for file detection
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install Spidersan
+        run: npm install -g spidersan
+      
+      - name: Extract commit info
+        id: commit
+        run: |
+          # Get agent name from commit author or branch prefix
+          AUTHOR="${{ github.actor }}"
+          BRANCH="${{ github.ref_name }}"
+          
+          # Try to extract agent from branch name (e.g., sherlocksan/feature-x)
+          if [[ "$BRANCH" == */* ]]; then
+            AGENT=$(echo "$BRANCH" | cut -d'/' -f1)
+          else
+            AGENT="$AUTHOR"
+          fi
+          
+          # Get changed files in this push
+          FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | tr '\n' ',' | sed 's/,$//')
+          
+          echo "agent=$AGENT" >> $GITHUB_OUTPUT
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          echo "files=$FILES" >> $GITHUB_OUTPUT
+          
+          echo "🕷️ Detected:"
+          echo "   Agent: $AGENT"
+          echo "   Branch: $BRANCH"
+          echo "   Files: $FILES"
+      
+      - name: Register with Spidersan
+        if: steps.commit.outputs.files != ''
+        run: |
+          echo "🕷️ Auto-registering branch..."
+          spidersan register \
+            --agent "${{ steps.commit.outputs.agent }}" \
+            --branch "${{ steps.commit.outputs.branch }}" \
+            --files "${{ steps.commit.outputs.files }}" \
+            --description "Auto-registered via GitHub Actions"
+          
+          echo "✅ Branch registered with Spidersan"
+      
+      - name: Check for conflicts
+        if: steps.commit.outputs.files != ''
+        run: |
+          echo "🕷️ Checking for conflicts..."
+          spidersan conflicts --branch "${{ steps.commit.outputs.branch }}" --json || true
+      
+      - name: Notify on TIER 2+ conflicts
+        if: steps.commit.outputs.files != ''
+        run: |
+          # Check for serious conflicts
+          CONFLICTS=$(spidersan conflicts --branch "${{ steps.commit.outputs.branch }}" --tier 2 --json 2>/dev/null || echo '{"conflicts":[]}')
+          COUNT=$(echo "$CONFLICTS" | jq '.conflicts | length')
+          
+          if [ "$COUNT" -gt 0 ]; then
+            echo "⚠️ TIER 2+ conflicts detected!"
+            echo "::warning::Spidersan detected $COUNT potential conflicts. Run 'spidersan conflicts' locally to review."
+          else
+            echo "✅ No blocking conflicts detected"
+          fi
