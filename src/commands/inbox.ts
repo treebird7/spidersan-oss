@@ -1,5 +1,15 @@
 import { Command } from 'commander';
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
+
+// Security: Input validation
+const VALID_AGENT_ID = /^[a-z0-9][a-z0-9_-]{0,30}$/i;
+
+function validateAgentId(agentId: string): string {
+    if (!VALID_AGENT_ID.test(agentId)) {
+        throw new Error(`Invalid agent ID: "${agentId.slice(0, 20)}..." (must be alphanumeric with - or _)`);
+    }
+    return agentId;
+}
 
 export const inboxCommand = new Command('inbox')
     .description('View messages sent to you (via Myceliumail)')
@@ -9,7 +19,16 @@ export const inboxCommand = new Command('inbox')
     .option('--sent', 'Show sent messages instead of inbox (check mycmail docs for support)')
     .option('--json', 'Output as JSON')
     .action(async (options) => {
-        const agentId = options.agent || process.env.SPIDERSAN_AGENT || 'cli-agent';
+        const rawAgentId = options.agent || process.env.SPIDERSAN_AGENT || 'cli-agent';
+
+        // Security: Validate agent ID
+        let agentId: string;
+        try {
+            agentId = validateAgentId(rawAgentId);
+        } catch (error: any) {
+            console.error(`❌ ${error.message}`);
+            process.exit(1);
+        }
 
         try {
             // Check if mycmail is available
@@ -20,25 +39,18 @@ export const inboxCommand = new Command('inbox')
             process.exit(1);
         }
 
-        const cmdParts = [
-            `MYCELIUMAIL_AGENT_ID=${agentId}`,
-            'mycmail',
-            'inbox'
-        ];
-
-        // Pass through flags if mycmail supports them (assuming standard CLI pattern)
-        // If mycmail 1.1.0 doesn't support them, it might error or ignore. 
-        // We act as a pass-through wrapper.
-
-        if (options.limit) {
-            // Check usage: often --limit or -n
-            // We pass it blindly? Or just let mycmail default?
-            // mycmail 1.0.0 help showed [options]. 
-        }
-
-        // Just run inbox
+        // Security: Use spawnSync with argument array instead of string interpolation
         try {
-            const output = execSync(cmdParts.join(' '), { encoding: 'utf-8' });
+            const result = spawnSync('mycmail', ['inbox'], {
+                encoding: 'utf-8',
+                env: { ...process.env, MYCELIUMAIL_AGENT_ID: agentId }
+            });
+
+            if (result.error) {
+                throw result.error;
+            }
+
+            const output = result.stdout || '';
 
             if (options.json) {
                 // Return structured data if possible

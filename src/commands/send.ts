@@ -1,5 +1,20 @@
 import { Command } from 'commander';
-import { execSync } from 'child_process';
+import { execSync, execFileSync, spawnSync } from 'child_process';
+
+// Security: Input validation
+const VALID_AGENT_ID = /^[a-z0-9][a-z0-9_-]{0,30}$/i;
+
+function validateAgentId(agentId: string): string {
+    if (!VALID_AGENT_ID.test(agentId)) {
+        throw new Error(`Invalid agent ID: "${agentId.slice(0, 20)}..." (must be alphanumeric with - or _)`);
+    }
+    return agentId;
+}
+
+function sanitizeText(text: string): string {
+    // Remove shell metacharacters but allow normal text
+    return text.replace(/[`$(){}\[\]|;&<>]/g, '');
+}
 
 function getMessageFromStdin(): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -87,8 +102,28 @@ export const sendCommand = new Command('send')
         }
 
         // Execute
+        // Execute using execFileSync with argument array (prevents shell injection)
         try {
-            const output = execSync(cmdParts.join(' '), { encoding: 'utf-8' });
+            // Security: Validate and sanitize inputs
+            const safeTo = validateAgentId(to);
+            const safeSubject = sanitizeText(subject);
+            const safeMessage = sanitizeText(fullMessage);
+
+            const args = ['send', safeTo, safeSubject, '--message', safeMessage];
+            if (options.encrypt) {
+                args.push('--encrypt');
+            }
+
+            const result = spawnSync('mycmail', args, {
+                encoding: 'utf-8',
+                env: { ...process.env, MYCELIUMAIL_AGENT_ID: sender }
+            });
+
+            if (result.error) {
+                throw result.error;
+            }
+
+            const output = result.stdout || '';
 
             if (options.json) {
                 // Try to parse mycmail output or create synthetic JSON

@@ -1,11 +1,30 @@
 import { Command } from 'commander';
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
+
+// Security: Input validation
+const VALID_AGENT_ID = /^[a-z0-9][a-z0-9_-]{0,30}$/i;
+
+function validateAgentId(agentId: string): string {
+    if (!VALID_AGENT_ID.test(agentId)) {
+        throw new Error(`Invalid agent ID: "${agentId.slice(0, 20)}..."`);
+    }
+    return agentId;
+}
 
 export const keysCommand = new Command('keys')
     .description('List known public keys (via Myceliumail)')
     .option('--json', 'Output as JSON')
     .action(async (options) => {
-        const agentId = process.env.SPIDERSAN_AGENT || 'cli-agent';
+        const rawAgentId = process.env.SPIDERSAN_AGENT || 'cli-agent';
+
+        // Security: Validate agent ID
+        let agentId: string;
+        try {
+            agentId = validateAgentId(rawAgentId);
+        } catch (error: any) {
+            console.error(`❌ ${error.message}`);
+            process.exit(1);
+        }
 
         try {
             execSync('which mycmail', { stdio: 'ignore' });
@@ -14,12 +33,19 @@ export const keysCommand = new Command('keys')
             process.exit(1);
         }
 
-        const cmd = `MYCELIUMAIL_AGENT_ID=${agentId} mycmail keys`;
-
+        // Security: Use spawnSync with argument array
         try {
-            const output = execSync(cmd, { encoding: 'utf-8' });
+            const result = spawnSync('mycmail', ['keys'], {
+                encoding: 'utf-8',
+                env: { ...process.env, MYCELIUMAIL_AGENT_ID: agentId }
+            });
+
+            if (result.error) {
+                throw result.error;
+            }
+
+            const output = result.stdout || '';
             if (options.json) {
-                // Return synthetic JSON structure if mycmail doesn't output JSON natively yet
                 console.log(JSON.stringify({
                     command: 'keys',
                     output: output.trim()

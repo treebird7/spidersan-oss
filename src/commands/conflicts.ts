@@ -9,8 +9,26 @@
  */
 
 import { Command } from 'commander';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
+
+// Security: Input validation patterns
+const VALID_AGENT_ID = /^[a-z0-9][a-z0-9_-]{0,30}$/i;
+const VALID_BRANCH_NAME = /^[a-zA-Z0-9][a-zA-Z0-9/_.-]{0,99}$/;
+
+function validateAgentId(agentId: string): string {
+    if (!VALID_AGENT_ID.test(agentId)) {
+        throw new Error(`Invalid agent ID: "${agentId.slice(0, 20)}..." (must be alphanumeric with - or _)`);
+    }
+    return agentId;
+}
+
+function validateBranchName(branch: string): string {
+    if (!VALID_BRANCH_NAME.test(branch)) {
+        throw new Error(`Invalid branch name: "${branch.slice(0, 20)}..."`);
+    }
+    return branch;
+}
 
 // Config
 const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
@@ -146,27 +164,34 @@ async function wakeConflictingAgent(
 
     // 2. Send a detailed mycmail message
     try {
-        const { execSync } = await import('child_process');
-        const subject = `🕷️ Conflict Alert: ${theirBranch}`;
+        const { execFileSync } = await import('child_process');
+        
+        // Security: Validate inputs before shell execution
+        const safeAgentId = validateAgentId(agentId);
+        const safeBranch = validateBranchName(theirBranch);
+        const safeMyBranch = validateBranchName(myBranch);
+        
+        const subject = `🕷️ Conflict Alert: ${safeBranch}`;
         const body = [
-            `Hey ${agentId}!`,
+            `Hey ${safeAgentId}!`,
             ``,
             `Spidersan detected a conflict between our branches:`,
             ``,
-            `  My branch: ${myBranch}`,
-            `  Your branch: ${theirBranch}`,
+            `  My branch: ${safeMyBranch}`,
+            `  Your branch: ${safeBranch}`,
             ``,
             `Conflicting files: ${fileList}${more}`,
             ``,
             `Action needed:`,
             `  1. Check your changes on these files`,
             `  2. Coordinate with me or rebase`,
-            `  3. Run: spidersan conflicts --branch ${theirBranch}`,
+            `  3. Run: spidersan conflicts --branch ${safeBranch}`,
             ``,
             `Let's sync up! 🕷️`
         ].join('\n');
 
-        execSync(`mycmail send ${agentId} "${subject}" -m "${body.replace(/"/g, "'")}"`, {
+        // Security: Use execFileSync with argument array instead of string interpolation
+        execFileSync('mycmail', ['send', safeAgentId, subject, '-m', body], {
             encoding: 'utf-8',
             stdio: 'pipe'
         });
@@ -380,9 +405,12 @@ export const conflictsCommand = new Command('conflicts')
                             await sleep(waitSeconds * 1000);
 
                             console.log('\n🔄 RE-CHECKING CONFLICTS...\n');
-                            const { execSync } = await import('child_process');
+                            const { execFileSync } = await import('child_process');
                             try {
-                                execSync(`node ${process.argv[1]} conflicts --branch "${targetBranch}" --tier ${options.tier || '1'}`, {
+                                // Security: Use execFileSync with argument array
+                                const safeBranch = validateBranchName(targetBranch);
+                                const tierArg = String(parseInt(options.tier, 10) || 1);
+                                execFileSync('node', [process.argv[1], 'conflicts', '--branch', safeBranch, '--tier', tierArg], {
                                     encoding: 'utf-8',
                                     stdio: 'inherit'
                                 });
