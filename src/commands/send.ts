@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { execSync, execFileSync, spawnSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 
 // Security: Input validation
 const VALID_AGENT_ID = /^[a-z0-9][a-z0-9_-]{0,30}$/i;
@@ -13,7 +13,7 @@ function validateAgentId(agentId: string): string {
 
 function sanitizeText(text: string): string {
     // Remove shell metacharacters but allow normal text
-    return text.replace(/[`$(){}\[\]|;&<>]/g, '');
+    return text.replace(/[`$(){}[\]|;&<>]/g, '');
 }
 
 function getMessageFromStdin(): Promise<string> {

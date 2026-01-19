@@ -9,7 +9,7 @@
  */
 
 import { Command } from 'commander';
-import { execSync, execFileSync } from 'child_process';
+import { execSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 
 // Security: Input validation patterns
@@ -165,12 +165,12 @@ async function wakeConflictingAgent(
     // 2. Send a detailed mycmail message
     try {
         const { execFileSync } = await import('child_process');
-        
+
         // Security: Validate inputs before shell execution
         const safeAgentId = validateAgentId(agentId);
         const safeBranch = validateBranchName(theirBranch);
         const safeMyBranch = validateBranchName(myBranch);
-        
+
         const subject = `🕷️ Conflict Alert: ${safeBranch}`;
         const body = [
             `Hey ${safeAgentId}!`,
