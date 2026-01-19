@@ -9,8 +9,12 @@
  */
 
 import { Command } from 'commander';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
+
+// Input validation for agent IDs (prevents shell injection)
+const VALID_AGENT_ID = /^[a-z0-9_-]{1,32}$/i;
+const VALID_BRANCH_NAME = /^[a-zA-Z0-9/_.-]{1,128}$/;
 
 // Config
 const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
@@ -146,7 +150,16 @@ async function wakeConflictingAgent(
 
     // 2. Send a detailed mycmail message
     try {
-        const { execSync } = await import('child_process');
+        // Validate inputs to prevent shell injection
+        if (!VALID_AGENT_ID.test(agentId)) {
+            console.log(`  ⚠️ Invalid agent ID format: ${agentId}`);
+            return false;
+        }
+        if (!VALID_BRANCH_NAME.test(myBranch) || !VALID_BRANCH_NAME.test(theirBranch)) {
+            console.log(`  ⚠️ Invalid branch name format`);
+            return false;
+        }
+
         const subject = `🕷️ Conflict Alert: ${theirBranch}`;
         const body = [
             `Hey ${agentId}!`,
@@ -166,7 +179,8 @@ async function wakeConflictingAgent(
             `Let's sync up! 🕷️`
         ].join('\n');
 
-        execSync(`mycmail send ${agentId} "${subject}" -m "${body.replace(/"/g, "'")}"`, {
+        // Use execFileSync with argument array to prevent shell injection
+        execFileSync('mycmail', ['send', agentId, subject, '-m', body], {
             encoding: 'utf-8',
             stdio: 'pipe'
         });
@@ -380,9 +394,20 @@ export const conflictsCommand = new Command('conflicts')
                             await sleep(waitSeconds * 1000);
 
                             console.log('\n🔄 RE-CHECKING CONFLICTS...\n');
-                            const { execSync } = await import('child_process');
                             try {
-                                execSync(`node ${process.argv[1]} conflicts --branch "${targetBranch}" --tier ${options.tier || '1'}`, {
+                                // Validate inputs before building command
+                                if (!VALID_BRANCH_NAME.test(targetBranch)) {
+                                    throw new Error('Invalid branch name');
+                                }
+                                const tier = Math.max(1, Math.min(3, parseInt(options.tier, 10) || 1));
+
+                                // Use execFileSync with argument array to prevent shell injection
+                                execFileSync('node', [
+                                    process.argv[1],
+                                    'conflicts',
+                                    '--branch', targetBranch,
+                                    '--tier', String(tier)
+                                ], {
                                     encoding: 'utf-8',
                                     stdio: 'inherit'
                                 });
