@@ -67,3 +67,6 @@ export { syncAllCommand } from './sync-all.js';
 // Layer 3+4 Conflict Detection
 export { intentScanCommand } from './intent-scan.js';
 export { activeWindowsCommand } from './active-windows.js';
+
+// Semantic Locking (CRDT-based)
+export { lockCommand } from './lock.js';
