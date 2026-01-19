@@ -1,0 +1,18 @@
+{
+  "name": "crdt-sync",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^25.0.9",
+    "typescript": "^5.9.3",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.29"
+  }
+}
