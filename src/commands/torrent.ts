@@ -6,8 +6,9 @@
  */
 
 import { Command } from 'commander';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
+import { validateBranchName, validateTaskId } from '../lib/security.js';
 import type { Branch } from '../storage/adapter.js';
 
 // Config
@@ -29,22 +30,23 @@ interface TorrentClaimOptions {
 
 function getCurrentBranch(): string {
     try {
-        return execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim();
+        return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' }).trim();
     } catch {
         throw new Error('Not in a git repository');
     }
 }
 
 function createBranchForTask(taskId: string): void {
-    const branchName = `task/${taskId}`;
+    const safeTaskId = validateTaskId(taskId);
+    const branchName = validateBranchName(`task/${safeTaskId}`);
     try {
         // Check if branch exists
-        execSync(`git rev-parse --verify ${branchName}`, { encoding: 'utf-8', stdio: 'pipe' });
+        execFileSync('git', ['rev-parse', '--verify', branchName], { encoding: 'utf-8', stdio: 'pipe' });
         console.log(`   Branch ${branchName} already exists, checking out...`);
-        execSync(`git checkout ${branchName}`, { encoding: 'utf-8' });
+        execFileSync('git', ['checkout', branchName], { encoding: 'utf-8' });
     } catch {
         // Branch doesn't exist, create it
-        execSync(`git checkout -b ${branchName}`, { encoding: 'utf-8' });
+        execFileSync('git', ['checkout', '-b', branchName], { encoding: 'utf-8' });
     }
 }
 
@@ -100,9 +102,17 @@ torrentCommand
             process.exit(1);
         }
 
-        const branchName = `task/${taskId}`;
+        let safeTaskId: string;
+        try {
+            safeTaskId = validateTaskId(taskId);
+        } catch (error: any) {
+            console.error(`❌ ${error.message}`);
+            process.exit(1);
+        }
+
+        const branchName = `task/${safeTaskId}`;
         const agent = options.agent || process.env.SPIDERSAN_AGENT || 'unknown';
-        const parentTaskId = options.parent || getParentTaskId(taskId);
+        const parentTaskId = options.parent || getParentTaskId(safeTaskId);
 
         console.log(`
 🔄 TASK TORRENTING: Create Branch
@@ -115,7 +125,7 @@ Parent: ${parentTaskId || '(none)'}
         `);
 
         // Create git branch
-        createBranchForTask(taskId);
+        createBranchForTask(safeTaskId);
         console.log(`✅ Created and checked out: ${branchName}`);
 
         // Register in Spidersan
@@ -240,7 +250,15 @@ torrentCommand
     .option('-a, --agent <agent>', 'Agent completing this task')
     .action(async (taskId: string, options: TorrentClaimOptions) => {
         const storage = await getStorage();
-        const branchName = `task/${taskId}`;
+        let safeTaskId: string;
+        try {
+            safeTaskId = validateTaskId(taskId);
+        } catch (error: any) {
+            console.error(`❌ ${error.message}`);
+            process.exit(1);
+        }
+
+        const branchName = `task/${safeTaskId}`;
         const agent = options.agent || process.env.SPIDERSAN_AGENT || 'unknown';
 
         const branch = await storage.get(branchName);
@@ -477,15 +495,23 @@ torrentCommand
         const agent = options.agent || process.env.SPIDERSAN_AGENT || 'unknown';
         const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
+        let safeParentId: string;
+        try {
+            safeParentId = validateTaskId(parentId);
+        } catch (error: any) {
+            console.error(`❌ ${error.message}`);
+            process.exit(1);
+        }
+
         console.log(`
-🔀 DECOMPOSING: ${parentId}
+🔀 DECOMPOSING: ${safeParentId}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Creating ${count} child tasks...
         `);
 
         const created: string[] = [];
         for (let i = 0; i < Math.min(count, 26); i++) {
-            const childId = `${parentId}-${letters[i]}`;
+            const childId = `${safeParentId}-${letters[i]}`;
             const branchName = `task/${childId}`;
 
             // Register child task (don't create git branch, just register)

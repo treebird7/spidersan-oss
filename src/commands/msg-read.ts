@@ -1,16 +1,9 @@
 import { Command } from 'commander';
 import { execSync, spawnSync } from 'child_process';
+import { validateAgentId } from '../lib/security.js';
 
 // Security: Input validation
-const VALID_AGENT_ID = /^[a-z0-9][a-z0-9_-]{0,30}$/i;
 const VALID_MESSAGE_ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,64}$/;
-
-function validateAgentId(agentId: string): string {
-    if (!VALID_AGENT_ID.test(agentId)) {
-        throw new Error(`Invalid agent ID: "${agentId.slice(0, 20)}..."`);
-    }
-    return agentId;
-}
 
 function validateMessageId(id: string): string {
     if (!VALID_MESSAGE_ID.test(id)) {

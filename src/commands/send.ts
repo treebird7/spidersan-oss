@@ -1,20 +1,6 @@
 import { Command } from 'commander';
 import { execSync, spawnSync } from 'child_process';
-
-// Security: Input validation
-const VALID_AGENT_ID = /^[a-z0-9][a-z0-9_-]{0,30}$/i;
-
-function validateAgentId(agentId: string): string {
-    if (!VALID_AGENT_ID.test(agentId)) {
-        throw new Error(`Invalid agent ID: "${agentId.slice(0, 20)}..." (must be alphanumeric with - or _)`);
-    }
-    return agentId;
-}
-
-function sanitizeText(text: string): string {
-    // Remove shell metacharacters but allow normal text
-    return text.replace(/[`$(){}[\]|;&<>]/g, '');
-}
+import { sanitizeText, validateAgentId } from '../lib/security.js';
 
 function getMessageFromStdin(): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -87,22 +73,7 @@ export const sendCommand = new Command('send')
             process.exit(1);
         }
 
-        const cmdParts = [
-            `MYCELIUMAIL_AGENT_ID=${sender}`,
-            'mycmail',
-            'send',
-            to,
-            `"${subject}"`, // Subject needs quotes
-            '--message',
-            `"${fullMessage.replace(/"/g, '\\"')}"` // Escape quotes in message
-        ];
-
-        if (options.encrypt) {
-            cmdParts.push('--encrypt');
-        }
-
-        // Execute
-        // Execute using execFileSync with argument array (prevents shell injection)
+        // Execute using spawnSync with argument array (prevents shell injection)
         try {
             // Security: Validate and sanitize inputs
             const safeTo = validateAgentId(to);

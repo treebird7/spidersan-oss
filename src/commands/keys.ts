@@ -1,15 +1,6 @@
 import { Command } from 'commander';
 import { execSync, spawnSync } from 'child_process';
-
-// Security: Input validation
-const VALID_AGENT_ID = /^[a-z0-9][a-z0-9_-]{0,30}$/i;
-
-function validateAgentId(agentId: string): string {
-    if (!VALID_AGENT_ID.test(agentId)) {
-        throw new Error(`Invalid agent ID: "${agentId.slice(0, 20)}..."`);
-    }
-    return agentId;
-}
+import { validateAgentId } from '../lib/security.js';
 
 export const keysCommand = new Command('keys')
     .description('List known public keys (via Myceliumail)')

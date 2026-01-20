@@ -11,7 +11,7 @@
  */
 
 import { Command } from 'commander';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 
 interface SyncOptions {
     pre?: boolean;
@@ -38,12 +38,13 @@ interface SyncResult {
     error?: string;
 }
 
-function runGit(cmd: string, silent = false): string {
+function runGit(args: string[], silent = false): string {
     try {
-        return execSync(`git ${cmd}`, {
+        const output = execFileSync('git', args, {
             encoding: 'utf-8',
             stdio: silent ? 'pipe' : 'inherit'
-        }).trim();
+        });
+        return typeof output === 'string' ? output.trim() : '';
     } catch (error: unknown) {
         if (error instanceof Error && 'stdout' in error) {
             return (error as { stdout: string }).stdout?.trim() || '';
@@ -52,9 +53,9 @@ function runGit(cmd: string, silent = false): string {
     }
 }
 
-function runGitSilent(cmd: string): { success: boolean; output: string } {
+function runGitSilent(args: string[]): { success: boolean; output: string } {
     try {
-        const output = execSync(`git ${cmd}`, {
+        const output = execFileSync('git', args, {
             encoding: 'utf-8',
             stdio: 'pipe'
         }).trim();
@@ -68,17 +69,17 @@ function runGitSilent(cmd: string): { success: boolean; output: string } {
 }
 
 function hasUncommittedChanges(): boolean {
-    const status = runGit('status --porcelain', true);
+    const status = runGit(['status', '--porcelain'], true);
     return status.length > 0;
 }
 
 function hasConflicts(): boolean {
-    const status = runGit('status --porcelain', true);
+    const status = runGit(['status', '--porcelain'], true);
     return status.includes('UU ') || status.includes('AA ') || status.includes('DD ');
 }
 
 function getCurrentBranch(): string {
-    return runGit('rev-parse --abbrev-ref HEAD', true);
+    return runGit(['rev-parse', '--abbrev-ref', 'HEAD'], true);
 }
 
 function getAgentFromEnv(): string {
@@ -153,7 +154,7 @@ FlockView Integration:
             if (dirty) {
                 if (!isJson) console.log('  1. Stashing uncommitted changes...');
                 if (!options.dryRun) {
-                    const stashResult = runGitSilent('stash push -m "spidersan-collab-sync"');
+                    const stashResult = runGitSilent(['stash', 'push', '-m', 'spidersan-collab-sync']);
                     result.stashed = stashResult.success;
                 }
                 if (!isJson) console.log('     ✅ Stashed');
@@ -164,7 +165,7 @@ FlockView Integration:
             // Step 2: Pull with rebase
             if (!isJson) console.log('  2. Pulling latest changes...');
             if (!options.dryRun) {
-                const pullResult = runGitSilent('pull --rebase');
+                const pullResult = runGitSilent(['pull', '--rebase']);
                 result.pulled = pullResult.success;
                 if (!isJson) {
                     console.log(pullResult.success ? '     ✅ Pulled' : '     ⚠️  Pull failed');
@@ -175,7 +176,7 @@ FlockView Integration:
             if (dirty) {
                 if (!isJson) console.log('  3. Restoring your changes...');
                 if (!options.dryRun) {
-                    const popResult = runGitSilent('stash pop');
+                    const popResult = runGitSilent(['stash', 'pop']);
                     result.popped = popResult.success;
                     if (!isJson) {
                         console.log(popResult.success ? '     ✅ Restored' : '     ⚠️  Stash pop failed');
@@ -212,7 +213,7 @@ FlockView Integration:
             result.pushed = false;
 
             // Step 1: Check for changes
-            const status = runGit('status --porcelain', true);
+            const status = runGit(['status', '--porcelain'], true);
             const collabChanges = status.split('\n').filter(line => {
                 const file = line.substring(3);
                 const patternBase = pattern.replace('*.md', '');
@@ -235,7 +236,7 @@ FlockView Integration:
             // Step 2: Add files
             if (!isJson) console.log(`  2. Staging ${pattern}...`);
             if (!options.dryRun) {
-                const addResult = runGitSilent(`add ${pattern}`);
+                const addResult = runGitSilent(['add', pattern]);
                 result.staged = addResult.success;
                 if (!isJson) console.log(addResult.success ? '     ✅ Staged' : '     ⚠️  Stage failed');
             }
@@ -249,7 +250,7 @@ FlockView Integration:
 
             if (!isJson) console.log(`  3. Committing: "${commitMsg}"`);
             if (!options.dryRun) {
-                const commitResult = runGitSilent(`commit -m "${commitMsg}"`);
+                const commitResult = runGitSilent(['commit', '-m', commitMsg]);
                 result.committed = commitResult.success;
                 if (!isJson) {
                     console.log(commitResult.success ? '     ✅ Committed' : '     ⚠️  Nothing to commit');
@@ -259,7 +260,7 @@ FlockView Integration:
             // Step 4: Push
             if (!isJson) console.log('  4. Pushing to remote...');
             if (!options.dryRun) {
-                const pushResult = runGitSilent('push');
+                const pushResult = runGitSilent(['push']);
                 result.pushed = pushResult.success;
                 if (!isJson) {
                     console.log(pushResult.success ? '     ✅ Pushed' : '     ⚠️  Push failed');
