@@ -66,6 +66,7 @@ import {
     lockCommand,
     // Terminal UI
     tuiCommand,
+    monitorCommand,
 } from '../commands/index.js';
 
 // Read version from package.json dynamically
@@ -190,6 +191,7 @@ program.addCommand(lockCommand);
 
 // Terminal UI
 program.addCommand(tuiCommand);
+program.addCommand(monitorCommand);
 
 // Check for updates (non-blocking)
 import { checkForUpdates } from '../lib/update-check.js';
