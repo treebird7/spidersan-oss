@@ -42,20 +42,22 @@ Agent can:
 
 ---
 
-### 3. File-Level Only, Not Semantic
+### 3. File-Level by Default (Semantic Available)
 
 **What it does:** Detects when two branches modify the same file
-**What it does NOT do:** Detect logical/semantic conflicts
+**What it does NOT do (by default):** Detect logical/semantic conflicts
 
 ```
-Example of UNDETECTED conflict:
+Example of UNDETECTED conflict (without --semantic):
 - Branch A: Changes function signature in utils.ts
 - Branch B: Calls that function in api.ts (different file)
 - Spidersan: No conflict detected (different files)
 - Reality: Branch B will break after Branch A merges
 ```
 
-**Why:** Semantic analysis requires code parsing, AST analysis, and language-specific understanding. This is out of scope.
+**NEW in v0.2.2:** Use `spidersan conflicts --semantic` for AST-based symbol-level detection within the same file.
+
+**Why default is file-level:** Full cross-file semantic analysis requires deep code understanding and is computationally expensive.
 
 ---
 

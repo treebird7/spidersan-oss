@@ -1,172 +1,78 @@
----
-aliases: ["Spidersan Docs"]
-tags: [agent/spidersan, type/readme]
----
-
-# 🕷️ Spidersan
+# 🕷️ Spidersan Documentation
 
 **Branch coordination for AI coding agents**
 
 > Stop the merge chaos. Know what every AI session is doing.
 
-[![npm version](https://img.shields.io/npm/v/spidersan.svg)](https://www.npmjs.com/package/spidersan)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
+---
+
+## Quick Links
+
+| Document | Description |
+|----------|-------------|
+| [../README.md](../README.md) | Main project README |
+| [../USAGE.md](../USAGE.md) | Complete command reference |
+| [../CHANGELOG.md](../CHANGELOG.md) | Version history |
+| [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) | Upgrading between versions |
+| [SPIDERSAN_STARTER_KIT.md](SPIDERSAN_STARTER_KIT.md) | Quick start guide |
 
 ---
 
-## The Problem
+## Core Concepts
 
-You're crushing it with AI coding agents (Claude Code, Cursor, GitHub Copilot). But when you run multiple sessions:
+### The Problem
 
-- 🌿 **Branch explosion:** 10-20 branches pile up weekly
-- 💥 **Merge chaos:** Wrong merge order = hours of conflicts
+Multiple AI agents working simultaneously = merge conflict chaos:
+- 🌿 **Branch explosion:** 10-20 branches pile up
+- 💥 **Merge chaos:** Wrong order = hours of conflicts
 - 🤷 **Context loss:** Sessions don't know what others did
-- 🗑️ **Stale branches:** Abandoned work clutters your repo
 
----
+### The Solution
 
-## The Solution
-
-Spidersan gives you a **command center** for all your AI sessions:
-
-```bash
-$ spidersan list
-
-🕷️ Active Branches:
-
-  1. fix-auth-bug         ✅ Ready to merge
-     └─ Last: 5 min ago | Claude Code
-
-  2. refactor-api        ⚠️ Conflicts with #1
-     └─ Last: 2 hours ago | Cursor
-
-  3. new-dashboard        🔄 In progress
-     └─ Last: 30 sec ago | Working on charts
-
-$ spidersan merge-order
-
-📋 Recommended merge sequence:
-  1. fix-auth-bug     (no dependencies)
-  2. new-dashboard    (depends on main)
-  3. refactor-api     (rebase after #1)
-```
+Spidersan provides:
+- **Branch registration** - Track what each agent is working on
+- **Conflict detection** - 4-tier system (BLOCK → PAUSE → WARN → INFO)
+- **Merge ordering** - Topological sort for optimal sequence
+- **Semantic analysis** - AST-based symbol-level detection
 
 ---
 
 ## Quick Start
 
-### Installation
-
 ```bash
+# Install
 npm install -g spidersan
-```
 
-### Initialize
-
-```bash
+# Initialize in your project
 cd your-project
 spidersan init
-```
 
-This creates a `.spidersanrc` config file.
+# Register your branch
+spidersan register --files "src/**/*.ts"
 
-### Usage
-
-```bash
-# Register your current branch
-git checkout -b my-feature
-spidersan register "Building awesome feature"
-
-# See what's happening across all sessions
-spidersan list
+# Check for conflicts
+spidersan conflicts
 
 # Get optimal merge order
 spidersan merge-order
-
-# Mark branch as done
-spidersan complete
-
-# Clean up old branches
-spidersan cleanup --older-than 7d
 ```
 
 ---
 
-## Features
+## Additional Resources
 
-### Free (Open Source)
-
-- ✅ Branch tracking across sessions
-- ✅ Merge order recommendations
-- ✅ Supabase sync (up to 5 branches)
-- ✅ Git integration
-- ✅ Session persistence
-
-### Pro ($15/month)
-
-- ✅ Unlimited branches
-- ✅ Conflict prediction
-- ✅ Team collaboration
-- ✅ GitHub Actions integration
-- ✅ Web dashboard
-- ✅ MCP server for Claude
-- ✅ Priority support
-
----
-
-## How It Works
-
-1. **Register:** Every AI session auto-registers its branch
-2. **Track:** Spidersan records files changed, dependencies, status
-3. **Coordinate:** Get merge order, conflict warnings
-4. **Clean:** Auto-detect stale branches
-
----
-
-## Documentation
-
-- [Installation Guide](docs/installation.md)
-- [Configuration](docs/configuration.md)
-- [Commands](docs/commands.md)
-- [Pro Features](docs/pro.md)
-
----
-
-## License
-
-Dual-licensed:
-- **Core:** MIT License (free forever)
-- **Pro:** Business Source License 1.1
-
-See [LICENSE.md](LICENSE.md) for details.
-
----
-
-## Contributing
-
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md).
+- [LIMITATIONS.md](LIMITATIONS.md) - What Spidersan cannot do
+- [FLOCKVIEW_INTEGRATION.md](FLOCKVIEW_INTEGRATION.md) - UI integration
+- [HUB_SYNC.md](HUB_SYNC.md) - Real-time synchronization
+- [MULTI_ENVIRONMENT_SETUP.md](MULTI_ENVIRONMENT_SETUP.md) - Staging/Production config
 
 ---
 
 ## Support
 
-- 📖 [Documentation](https://github.com/yourname/spidersan/wiki)
-- 💬 [Discussions](https://github.com/yourname/spidersan/discussions)
-- 🐛 [Issues](https://github.com/yourname/spidersan/issues)
-
----
-
-## Roadmap
-
-- [x] Core CLI
-- [x] Supabase sync
-- [ ] Conflict detection (Pro)
-- [ ] MCP server
-- [ ] Web dashboard
-- [ ] GitHub Actions bot
+- 📖 [GitHub Issues](https://github.com/treebird7/spidersan-oss/issues)
+- 💬 [GitHub Discussions](https://github.com/treebird7/spidersan-oss/discussions)
 
 ---
 
 **🕷️ Spidersan — Built for the AI-first developer**
-
-Made with ❤️ by developers tired of merge conflicts.

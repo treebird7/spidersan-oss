@@ -1,12 +1,8 @@
----
-tags: [agent/spidersan]
----
-
 # Spidersan One Pager
 
 ## The Problem
 
-AI coding agents (Claude Code, Cursor, GitHub Copilot Workspace) are revolutionizing development—but they create a new coordination problem:
+AI coding agents (Claude, Cursor, GitHub Copilot) are revolutionizing development—but they create a new coordination problem:
 
 > **Multiple AI agents working simultaneously = merge conflict chaos**
 
@@ -44,36 +40,29 @@ When 3+ agents work on a codebase:
 2. **DevOps Teams** - Managing AI-assisted development workflows
 3. **Solo Developers** - Running multiple AI agents on one project
 
-## Features
+## Key Features
 
-| Free | Pro |
-|------|-----|
-| Branch registration | Unlimited branches |
-| Conflict detection | Conflict prediction |
-| Merge ordering | MCP Server integration |
-| Ready-check validation | Priority support |
-
-## Pricing Model
-
-- **Free Tier**: 5 concurrent branches, core CLI features
-- **Pro Tier**: $29/month per project, unlimited branches + advanced features
-- **Enterprise**: Custom pricing, self-hosted option
+| Feature | Description |
+|---------|-------------|
+| Branch registration | Track what each agent is working on |
+| 4-tier conflict detection | BLOCK → PAUSE → WARN → INFO |
+| Semantic analysis | `--semantic` flag for AST-based conflicts |
+| Merge ordering | Topological sort for optimal sequence |
+| MCP Server | Direct integration with Claude Desktop |
+| GitHub Actions | Auto-register branches on push |
 
 ## Competitive Advantage
 
 - **First mover** in AI agent coordination space
 - **Zero config** - works with any Git workflow
 - **Language agnostic** - not tied to any AI platform
-- **Local-first** - no mandatory cloud dependency
+- **Local-first** - optional cloud sync via Supabase
 
-## Roadmap
+## Open Source
 
-1. **Q1 2025**: CLI v1.0, npm package
-2. **Q2 2025**: MCP server, conflict prediction
-3. **Q3 2025**: VS Code extension, dashboard
-4. **Q4 2025**: Enterprise self-hosted
+Spidersan is **MIT licensed** and free to use.
 
-## Contact
+## Links
 
-- GitHub: [github.com/treebird7/Spidersan](https://github.com/treebird7/Spidersan)
-- Email: [hello@spidersan.dev](mailto:hello@spidersan.dev)
+- GitHub: [github.com/treebird7/spidersan-oss](https://github.com/treebird7/spidersan-oss)
+- npm: `npm install -g spidersan`
