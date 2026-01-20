@@ -66,6 +66,8 @@ import {
     lockCommand,
     // Terminal UI
     tuiCommand,
+    // File History
+    whoTouchedCommand,
 } from '../commands/index.js';
 
 // Read version from package.json dynamically
@@ -190,6 +192,9 @@ program.addCommand(lockCommand);
 
 // Terminal UI
 program.addCommand(tuiCommand);
+
+// File History (forensics)
+program.addCommand(whoTouchedCommand);
 
 // Check for updates (non-blocking)
 import { checkForUpdates } from '../lib/update-check.js';

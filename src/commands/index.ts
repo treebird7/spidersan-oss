@@ -73,3 +73,6 @@ export { lockCommand } from './lock.js';
 
 // Terminal UI
 export { tuiCommand } from './tui.js';
+
+// File History (forensics)
+export { whoTouchedCommand } from './who-touched.js';
