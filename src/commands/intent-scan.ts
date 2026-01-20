@@ -284,7 +284,7 @@ export const intentScanCommand = new Command('intent-scan')
     .option('--verbose', 'Show all detected intents')
     .option('--collab-dir <path>', 'Path to collab directory', process.env.TREEBIRD_INTERNAL
         ? join(process.env.TREEBIRD_INTERNAL, 'collab')
-        : join(process.env.HOME || '', 'Dev', 'treebird-internal', 'collab'))
+        : join(process.env.HOME || '', 'Dev', 'spidersan', 'collab'))
     .addHelpText('after', `
 Examples:
   spidersan intent-scan              # Scan today's collab for overlaps

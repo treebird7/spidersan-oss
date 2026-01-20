@@ -10,7 +10,7 @@
 **Created:** 2025-12-31  
 **Requested by:** Treebird
 
-Change the production Supabase project URL. Current: `iopbbsjdphgctfbqljcf.supabase.co`
+Change the production Supabase project URL. Current: `YOUR_PROJECT.supabase.co`
 
 **Migration Steps:**
 1. [ ] Export existing data from old production

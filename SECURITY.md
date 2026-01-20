@@ -19,4 +19,4 @@ For security issues, please use GitHub's private vulnerability reporting rather 
 
 ---
 
-*See [treebird-internal/SECURITY.md](https://github.com/treebird7/treebird-internal/SECURITY.md) for full ecosystem policy.*
+*See [spidersan/SECURITY.md](https://github.com/treebird7/spidersan/SECURITY.md) for full ecosystem policy.*

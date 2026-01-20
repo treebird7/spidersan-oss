@@ -28,7 +28,7 @@ interface SyncAllOptions {
     repos?: string;
 }
 
-const DEV_DIR = '/Users/freedbird/Dev';
+const DEV_DIR = process.env.HOME + '/Dev';
 
 function runGitInRepo(repoPath: string, cmd: string): { success: boolean; output: string } {
     try {

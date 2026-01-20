@@ -5,7 +5,7 @@
  * Stores audit metadata in the branch description field as JSON prefix.
  * 
  * Part of: Security Pipeline (ssan + srlk)
- * See: treebird-internal/collab/DESIGN_security_pipeline_ssan_srlk.md
+ * See: spidersan/docs/DESIGN_security_pipeline_ssan_srlk.md
  */
 
 import { Command } from 'commander';
