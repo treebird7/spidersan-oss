@@ -73,3 +73,4 @@ export { lockCommand } from './lock.js';
 
 // Terminal UI
 export { tuiCommand } from './tui.js';
+export { monitorCommand } from './monitor.js';
