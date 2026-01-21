@@ -11,7 +11,7 @@
 const VALID_AGENT_ID = /^[a-z0-9][a-z0-9_-]{0,30}$/i;
 const VALID_BRANCH_NAME = /^[a-zA-Z0-9][a-zA-Z0-9/_.-]{0,99}$/;
 const VALID_TASK_ID = /^[a-z0-9][a-z0-9_-]{0,50}$/i;
-const VALID_FILE_PATH = /^[a-zA-Z0-9][a-zA-Z0-9/_.\-@]{0,200}$/;
+const VALID_FILE_PATH = /^[.\/a-zA-Z0-9][a-zA-Z0-9/_.@-]{0,200}$/;
 
 // Shell metacharacters to remove from text
 const SHELL_METACHARACTERS = /[`$(){}[\]|;&<>\\]/g;
@@ -118,4 +118,15 @@ export const patterns = {
     VALID_TASK_ID,
     VALID_FILE_PATH,
     SHELL_METACHARACTERS,
-};
+}
+
+// Test-compatible aliases for vitest security tests
+export const sanitizeAgentId = validateAgentId;
+export const sanitizeBranchName = validateBranchName;
+export const sanitizeFilePath = validateFilePath;
+
+// Message ID validation (for mycmail commands)
+const VALID_MESSAGE_ID = /^[a-z0-9][a-z0-9_-]{0,64}$/i;
+export function isValidMessageId(messageId: string): boolean {
+    return typeof messageId === 'string' && VALID_MESSAGE_ID.test(messageId);
+}

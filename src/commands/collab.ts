@@ -109,7 +109,7 @@ Options:
   -m, --message <msg>  Custom message to add
 
 Examples:
-  spidersan collab --join ./collab/COLLAB_topic.md
+  spidersan collab --join ~/Dev/treebird-internal/collab/COLLAB_topic.md
 `);
                 console.log('─'.repeat(40) + '\n');
             }

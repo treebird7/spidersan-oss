@@ -5,7 +5,7 @@
  * Designed for Sherlocksan audit workflow (srlk).
  * 
  * Part of: Security Pipeline (ssan + srlk)
- * See: spidersan/docs/DESIGN_security_pipeline_ssan_srlk.md
+ * See: treebird-internal/collab/DESIGN_security_pipeline_ssan_srlk.md
  */
 
 import { Command } from 'commander';

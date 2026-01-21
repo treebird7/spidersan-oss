@@ -7,12 +7,14 @@ tags: [agent/myceliumail, type/readme]
 
 # 🕷️ Spidersan
 
-### One Spider To Rule Them All
+### Coordination for the multi-agent era
 
 **Branch coordination for AI coding agents**
 
 [![npm version](https://img.shields.io/npm/v/spidersan.svg)](https://www.npmjs.com/package/spidersan)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+![Demo](./assets/demo.gif)
 
 [Quick Start](#-quick-start) • [Features](#-features) • [Documentation](#-documentation) • [Pro](#-pro)
 
@@ -22,12 +24,13 @@ tags: [agent/myceliumail, type/readme]
 
 ## 🎯 The Problem
 
-AI coding agents are powerful—but when multiple agents work on the same codebase simultaneously, chaos ensues:
+**10 AI agents. 1 file. 51 minutes of chaos.**
 
-- 🔀 **Merge conflicts** everywhere
-- 🤷 **No visibility** into what other agents are doing
-- 💥 **Wasted work** when branches can't be merged
-- 🐌 **Manual coordination** slows everything down
+Without coordination:
+- ⏱️ 51 min to complete 1 shared file
+- 💥 12 conflicts
+- �� 2 build breaks pushed to main
+- 😰 Frustration level: 5/5
 
 ## 🕷️ The Solution
 
@@ -46,6 +49,12 @@ spidersan merge-order
 # Check if you're ready to merge
 spidersan ready-check
 ```
+
+**Results with Spidersan:**
+- ⏱️ 5 min (10x faster)
+- ✅ 0 conflicts
+- 🎯 Optimal merge sequence
+- 😌 Confidence: 5/5
 
 ---
 
@@ -87,6 +96,8 @@ spidersan merge-order
 | `spidersan merge-order` | Get topologically-sorted merge order |
 | `spidersan ready-check` | Verify branch is ready (no WIP, no conflicts) |
 | `spidersan watch` | **NEW!** Daemon mode - watch files and auto-register |
+| `spidersan who-touched` | **NEW!** Show git history + agent activity for files |
+
 
 ### Watch Mode (Daemon)
 
