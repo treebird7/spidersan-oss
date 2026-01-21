@@ -53,12 +53,12 @@
     "license": "MIT",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/treebird7/Spidersan.git"
+        "url": "git+https://github.com/treebird7/spidersan-oss.git"
     },
     "bugs": {
-        "url": "https://github.com/treebird7/Spidersan/issues"
+        "url": "https://github.com/treebird7/spidersan-oss/issues"
     },
-    "homepage": "https://github.com/treebird7/Spidersan#readme",
+    "homepage": "https://github.com/treebird7/spidersan-oss#readme",
     "engines": {
         "node": ">=18.0.0"
     },
