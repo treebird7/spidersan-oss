@@ -297,7 +297,7 @@ export const conflictsCommand = new Command('conflicts')
         }
 
         // SEMANTIC ANALYSIS with AST parser
-        let semanticConflicts: SymbolConflict[] = [];
+        const semanticConflicts: SymbolConflict[] = [];
         if (options.semantic && conflicts.length > 0) {
             console.log('\n🔬 Running semantic (AST) analysis...');
             const astParser = new ASTParser();

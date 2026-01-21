@@ -11,7 +11,7 @@ import Parser from 'tree-sitter';
 import TypeScript from 'tree-sitter-typescript';
 import { createHash } from 'crypto';
 
-export interface Symbol {
+export interface CodeSymbol {
     name: string;
     type: 'function' | 'class' | 'method' | 'variable' | 'interface';
     startLine: number;
@@ -21,11 +21,11 @@ export interface Symbol {
 
 export interface FileSymbols {
     filePath: string;
-    symbols: Symbol[];
+    symbols: CodeSymbol[];
     parseTime: number;
 }
 
-export interface SymbolConflict {
+export interface CodeSymbolConflict {
     symbolName: string;
     symbolType: string;
     fileA: string;
@@ -39,7 +39,7 @@ export class ASTParser {
 
     constructor() {
         this.parser = new Parser();
-        // @ts-ignore - tree-sitter binding quirk
+        // @ts-expect-error - tree-sitter binding quirk
         this.parser.setLanguage(TypeScript.typescript);
     }
 
@@ -61,11 +61,11 @@ export class ASTParser {
     /**
      * Extract all symbols from an AST
      */
-    private extractSymbols(node: Parser.SyntaxNode, code: string): Symbol[] {
-        const symbols: Symbol[] = [];
+    private extractSymbols(node: Parser.SyntaxNode, code: string): CodeSymbol[] {
+        const symbols: CodeSymbol[] = [];
 
         const visit = (n: Parser.SyntaxNode) => {
-            let symbolType: Symbol['type'] | null = null;
+            let symbolType: CodeSymbol['type'] | null = null;
             let nameNode: Parser.SyntaxNode | null = null;
 
             switch (n.type) {
