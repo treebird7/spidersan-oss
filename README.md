@@ -1,7 +1,9 @@
 
 <div align="center">
 
-# 🕷️ Spidersan
+<img src="./assets/glyph_spidersan.png" alt="Spidersan" width="200">
+
+# Spidersan
 
 ### Coordination for the multi-agent era
 
