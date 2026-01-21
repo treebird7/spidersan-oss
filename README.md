@@ -87,6 +87,8 @@ spidersan merge-order
 | `spidersan merge-order` | Get topologically-sorted merge order |
 | `spidersan ready-check` | Verify branch is ready (no WIP, no conflicts) |
 | `spidersan watch` | **NEW!** Daemon mode - watch files and auto-register |
+| `spidersan who-touched` | **NEW!** Show git history + agent activity for files |
+
 
 ### Watch Mode (Daemon)
 

@@ -169,6 +169,23 @@ spidersan intent-scan --json        # Output as JSON
 spidersan active-windows
 ```
 
+### File History & Agent Detection
+
+```bash
+# See who touched a file (git history + agent detection)
+spidersan who-touched src/app.ts
+spidersan who-touched README.md --agents-only    # Only show agent names
+spidersan who-touched lib/auth.ts --since 7d     # Last 7 days
+spidersan who-touched api/* --json               # JSON output for automation
+```
+
+**What it shows:**
+- Git commit history for the file
+- Agent names detected from commit messages (glyphs/names)
+- Timestamps and commit messages
+- Invoakable with `--json` for programmatic use
+
+
 ## 8. Task Torrenting
 
 Parallel task execution with automatic branch management:
