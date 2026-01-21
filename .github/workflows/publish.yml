@@ -18,6 +18,9 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # Required for npm Trusted Publisher (OIDC)
     
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +48,7 @@ jobs:
         run: npm version ${{ inputs.version }} --no-git-tag-version
       
       - name: Publish to npm
-        run: npm publish --access public --tag ${{ inputs.tag || 'latest' }}
+        run: npm publish --provenance --access public --tag ${{ inputs.tag || 'latest' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       
