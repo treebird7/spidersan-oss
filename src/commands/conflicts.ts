@@ -12,7 +12,7 @@ import { Command } from 'commander';
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { getStorage } from '../storage/index.js';
-import { ASTParser, SymbolConflict } from '../lib/ast.js';
+import { ASTParser, CodeSymbolConflict } from '../lib/ast.js';
 
 // Security: Input validation patterns
 const VALID_AGENT_ID = /^[a-z0-9][a-z0-9_-]{0,30}$/i;
@@ -297,7 +297,7 @@ export const conflictsCommand = new Command('conflicts')
         }
 
         // SEMANTIC ANALYSIS with AST parser
-        const semanticConflicts: SymbolConflict[] = [];
+        const semanticConflicts: CodeSymbolConflict[] = [];
         if (options.semantic && conflicts.length > 0) {
             console.log('\n🔬 Running semantic (AST) analysis...');
             const astParser = new ASTParser();

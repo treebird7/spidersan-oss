@@ -39,7 +39,6 @@ export class ASTParser {
 
     constructor() {
         this.parser = new Parser();
-        // @ts-expect-error - tree-sitter binding quirk
         this.parser.setLanguage(TypeScript.typescript);
     }
 
@@ -133,11 +132,11 @@ export class ASTParser {
     findSymbolConflicts(
         codeA: string, fileA: string,
         codeB: string, fileB: string
-    ): SymbolConflict[] {
+    ): CodeSymbolConflict[] {
         const symbolsA = this.parseCode(codeA, fileA);
         const symbolsB = this.parseCode(codeB, fileB);
 
-        const conflicts: SymbolConflict[] = [];
+        const conflicts: CodeSymbolConflict[] = [];
         const mapA = new Map(symbolsA.symbols.map(s => [s.name, s]));
 
         for (const symB of symbolsB.symbols) {
@@ -175,3 +174,7 @@ export class ASTParser {
 
 // Export singleton for convenience
 export const astParser = new ASTParser();
+
+// Export aliases for compatibility
+export type Symbol = CodeSymbol;
+export type SymbolConflict = CodeSymbolConflict;
