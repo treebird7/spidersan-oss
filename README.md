@@ -192,6 +192,13 @@ Contributions welcome! Please read our contributing guidelines first.
 
 **Made with 🕷️ for AI-first development teams**
 
-Part of the [Treebird Ecosystem](https://github.com/treebird7) 🌲
+Part of the [Treebird Ecosystem](https://treebird.uk) 🌲 | [GitHub](https://github.com/treebird7)
+
+---
+
+**Support the project:**
+
+[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub-ea4aaa?logo=github)](https://github.com/sponsors/treebird7)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/treebird7)
 
 </div>
