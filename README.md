@@ -165,40 +165,15 @@ spidersan rescue-status
 
 ---
 
-## 💎 Pro
-
-> **🎉 Early Adopter Period:** All Pro features are FREE until February 28, 2026!
-
-Spidersan Pro unlocks advanced features for teams running multiple AI agents.
-
-| Feature | Free | Pro |
-|---------|------|-------------|
-| Core commands | ✅ All | ✅ All |
-| Concurrent branches | ✅ **Unlimited** (Early Adopter) | ✅ Unlimited |
-| MCP Server | ✅ **Enabled** (Early Adopter) | ✅ |
-| AST Semantic Detection | ✅ **Enabled** (Early Adopter) | ✅ |
-| CRDT Symbol Locking | ✅ **Enabled** (Early Adopter) | ✅ |
-| Priority support | ❌ | ✅ |
-
-**After Feb 2026:** Pro license will be $9/mo
-
-**Activate Pro (optional):**
-```bash
-spidersan activate <your-license-key>
-spidersan status  # Check your plan
-```
-
-> **Note:** One Pro license unlocks the entire Treebird ecosystem (Spidersan + Myceliumail).
-
 ---
 
 ## 🗣️ Feedback & Support
 
 We're building this in public and want to hear from you!
 
-- **Issues & Features:** [GitHub Issues](https://github.com/treebird7/Spidersan/issues)
-- **Email:** treebird7@proton.me
-- **Twitter/X:** [@treebird7](https://twitter.com/treebird7)
+- **Issues & Features:** [GitHub Issues](https://github.com/treebird7/spidersan-oss/issues)
+- **Email:** treebird@treebird.dev
+- **Twitter/X:** [@Treebird_Dev](https://twitter.com/Treebird_Dev)
 
 Tell us what's working, what's broken, and what you'd love to see next.
 
