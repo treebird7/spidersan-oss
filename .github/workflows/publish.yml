@@ -45,10 +45,10 @@ jobs:
       
       - name: Set version (manual dispatch)
         if: github.event_name == 'workflow_dispatch'
-        continue-on-error: true  # Allow to continue if version is already set
+        continue-on-error: true
         run: npm version ${{ inputs.version }} --no-git-tag-version
       
-      - name: Publish to npm
+      - name: Publish to npm (Trusted Publisher)
         run: npm publish --provenance --access public --tag ${{ inputs.tag || 'latest' }}
       
       - name: Summary
