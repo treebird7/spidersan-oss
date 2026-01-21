@@ -1,7 +1,3 @@
----
-aliases: ["Spidersan Overview"]
-tags: [agent/myceliumail, type/readme]
----
 
 <div align="center">
 
