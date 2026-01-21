@@ -19,9 +19,13 @@ const LICENSE_FILE = join(LICENSE_DIR, 'license.key');
 // This is the ONLY key that can sign valid licenses
 const TREEBIRD_PUBLIC_KEY = 'XqIqSlybZGKkKemgLKKl8P9MepnObhcJcxxZHtgG8/o=';
 
-// Free tier limits
+// Early Adopter Period: All features free until Feb 2026!
+// After Feb 2026, paywall may be re-enabled.
+export const EARLY_ADOPTER_END = new Date('2026-02-28');
+
+// Free tier limits (disabled during early adopter period)
 export const FREE_TIER_LIMITS = {
-    maxConcurrentBranches: 5,
+    maxConcurrentBranches: 999,  // Effectively unlimited for early adopters
 };
 
 // Pro features

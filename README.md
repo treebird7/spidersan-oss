@@ -22,6 +22,12 @@ tags: [agent/myceliumail, type/readme]
 
 ---
 
+> ### 🎉 EARLY ADOPTER SPECIAL
+> **All Pro features are FREE until February 28, 2026!**
+> 
+> Install now and get unlimited branches, MCP Server, and all advanced features at no cost.
+> Paywall may be enabled after the early adopter period.
+
 ## 🎯 The Problem
 
 **10 AI agents. 1 file. 51 minutes of chaos.**
@@ -161,23 +167,26 @@ spidersan rescue-status
 
 ## 💎 Pro
 
+> **🎉 Early Adopter Period:** All Pro features are FREE until February 28, 2026!
+
 Spidersan Pro unlocks advanced features for teams running multiple AI agents.
 
-| Feature | Free | Pro ($9/mo) |
+| Feature | Free | Pro |
 |---------|------|-------------|
 | Core commands | ✅ All | ✅ All |
-| Concurrent branches | 5 max | ✅ Unlimited |
-| MCP Server | ❌ | ✅ |
-| Conflict prediction | ❌ | ✅ Coming soon |
+| Concurrent branches | ✅ **Unlimited** (Early Adopter) | ✅ Unlimited |
+| MCP Server | ✅ **Enabled** (Early Adopter) | ✅ |
+| AST Semantic Detection | ✅ **Enabled** (Early Adopter) | ✅ |
+| CRDT Symbol Locking | ✅ **Enabled** (Early Adopter) | ✅ |
 | Priority support | ❌ | ✅ |
 
-**Activate Pro:**
+**After Feb 2026:** Pro license will be $9/mo
+
+**Activate Pro (optional):**
 ```bash
 spidersan activate <your-license-key>
 spidersan status  # Check your plan
 ```
-
-Get a license: [spidersan.dev/pro](https://spidersan.dev/pro)
 
 > **Note:** One Pro license unlocks the entire Treebird ecosystem (Spidersan + Myceliumail).
 
