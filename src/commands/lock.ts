@@ -155,9 +155,8 @@ export const lockCommand = new Command('lock')
                 process.exit(1);
             }
 
-            const code = readFileSync(filePath, 'utf-8');
             const parser = new ASTParser();
-            const fileSymbols = parser.parseCode(code, filePath);
+            const symbols = parser.getSymbols(filePath);
 
             console.log(`\n🕷️ LOCKING SYMBOLS IN ${filePath}:`);
             console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
@@ -165,9 +164,10 @@ export const lockCommand = new Command('lock')
             let acquired = 0;
             let blocked = 0;
 
-            for (const symbol of fileSymbols.symbols) {
+            for (const symbol of symbols) {
                 const id = makeSymbolId(filePath, symbol.name);
-                const success = state.acquireLock(id, symbol.hash, options.intent);
+                const hash = 'auto'; // TODO: Implement AST hashing
+                const success = state.acquireLock(id, hash, options.intent);
 
                 if (success) {
                     console.log(`  🔒 ${symbol.type} '${symbol.name}' — locked`);
@@ -213,12 +213,11 @@ export const lockCommand = new Command('lock')
         // If it's a file:symbol format, try to compute actual hash
         if (parsed && existsSync(parsed.file)) {
             try {
-                const code = readFileSync(parsed.file, 'utf-8');
                 const parser = new ASTParser();
-                const fileSymbols = parser.parseCode(code, parsed.file);
-                const symbol = fileSymbols.symbols.find(s => s.name === parsed.symbol);
+                const symbols = parser.getSymbols(parsed.file);
+                const symbol = symbols.find(s => s.name === parsed.symbol);
                 if (symbol) {
-                    hash = symbol.hash;
+                    hash = 'auto'; // TODO: Implement hashing
                 }
             } catch {
                 // Use manual hash

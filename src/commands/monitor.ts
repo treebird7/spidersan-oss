@@ -2,9 +2,11 @@ import { Command } from 'commander';
 import { io, Socket } from 'socket.io-client';
 import { SpidersanDashboard } from '../tui/dashboard.js';
 import { getStorage } from '../storage/index.js';
+import { createSwarmState, SwarmState } from '../lib/crdt.js';
 
 // Config
 const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
+const AGENT_ID = process.env.SPIDERSAN_AGENT || 'monitor-daemon';
 
 export const monitorCommand = new Command('monitor')
     .description('🕷️ Real-time Hub Monitor Dashboard')
@@ -12,6 +14,19 @@ export const monitorCommand = new Command('monitor')
     .action(async (options: { hub: string }) => {
         const dashboard = new SpidersanDashboard();
         dashboard.render(); // Initial render
+
+        // CRDT State
+        const swarmState = createSwarmState(AGENT_ID);
+
+        // Refresh dashboard when CRDT state changes
+        swarmState.doc.on('update', () => {
+            const locks = swarmState.getAllLocks().map(l => ({
+                symbol: l.symbolId,
+                agent: l.agentId,
+                time: l.timestamp
+            }));
+            dashboard.updateState({ activeLocks: locks });
+        });
 
         try {
             // 1. Connect to Hub
@@ -28,8 +43,11 @@ export const monitorCommand = new Command('monitor')
                 dashboard.updateState({ connectedAgents: Array.from(connectedAgents) });
 
                 socket.emit('subscribe', {
-                    events: ['file:changed', 'task:updated', 'agent:heartbeat']
+                    events: ['file:changed', 'task:updated', 'agent:heartbeat', 'crdt:update', 'crdt:state']
                 });
+
+                // Request initial CRDT state
+                socket.emit('crdt:request-state');
             });
 
             socket.on('disconnect', () => {
@@ -43,6 +61,20 @@ export const monitorCommand = new Command('monitor')
             });
 
             // 2. Listen for Events
+
+            // CRDT Sync
+            socket.on('crdt:update', (data: { update: string, agent: string }) => {
+                const update = new Uint8Array(Buffer.from(data.update, 'base64'));
+                swarmState.applyUpdate(update);
+            });
+
+            socket.on('crdt:state', (data: { updates: string[] }) => {
+                dashboard.addLog(`📦 Received State (${data.updates.length} chunks)`);
+                for (const chunk of data.updates) {
+                    const update = new Uint8Array(Buffer.from(chunk, 'base64'));
+                    swarmState.applyUpdate(update);
+                }
+            });
 
             // Heartbeats
             socket.on('agent:heartbeat', (data: { agent: string }) => {

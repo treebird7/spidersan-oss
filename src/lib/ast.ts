@@ -1,37 +1,13 @@
-/**
- * Spidersan AST Parser
- * 
- * Semantic conflict detection using Tree-sitter.
- * Detects function/class/method-level changes instead of just file-level.
- * 
- * @module ast
- */
-
 import Parser from 'tree-sitter';
 import TypeScript from 'tree-sitter-typescript';
-import { createHash } from 'crypto';
+import fs from 'fs';
 
-export interface Symbol {
+export interface SymbolInfo {
     name: string;
-    type: 'function' | 'class' | 'method' | 'variable' | 'interface';
+    type: 'function' | 'class' | 'method';
     startLine: number;
     endLine: number;
-    hash: string;  // Hash of the symbol's content for change detection
-}
-
-export interface FileSymbols {
-    filePath: string;
-    symbols: Symbol[];
-    parseTime: number;
-}
-
-export interface SymbolConflict {
-    symbolName: string;
-    symbolType: string;
-    fileA: string;
-    fileB: string;
-    hashA: string;
-    hashB: string;
+    content?: string;
 }
 
 export class ASTParser {
@@ -39,139 +15,94 @@ export class ASTParser {
 
     constructor() {
         this.parser = new Parser();
-        // @ts-ignore - tree-sitter binding quirk
+        // @ts-ignore - binding quirk
         this.parser.setLanguage(TypeScript.typescript);
     }
 
-    /**
-     * Parse a TypeScript/JavaScript file and extract symbols
-     */
-    parseCode(code: string, filePath: string = 'unknown'): FileSymbols {
-        const start = Date.now();
-        const tree = this.parser.parse(code);
-        const symbols = this.extractSymbols(tree.rootNode, code);
-
-        return {
-            filePath,
-            symbols,
-            parseTime: Date.now() - start,
-        };
+    parse(code: string): Parser.Tree {
+        return this.parser.parse(code);
     }
 
     /**
-     * Extract all symbols from an AST
+     * Parse a file and return all defined symbols (functions, classes, methods)
      */
-    private extractSymbols(node: Parser.SyntaxNode, code: string): Symbol[] {
-        const symbols: Symbol[] = [];
+    getSymbols(filePath: string): SymbolInfo[] {
+        if (!fs.existsSync(filePath)) {
+            return [];
+        }
+        const code = fs.readFileSync(filePath, 'utf-8');
+        const tree = this.parse(code);
+        return this.extractSymbols(tree);
+    }
 
-        const visit = (n: Parser.SyntaxNode) => {
-            let symbolType: Symbol['type'] | null = null;
-            let nameNode: Parser.SyntaxNode | null = null;
+    private extractSymbols(tree: Parser.Tree): SymbolInfo[] {
+        const symbols: SymbolInfo[] = [];
+        const cursor = tree.walk();
 
-            switch (n.type) {
-                case 'function_declaration':
-                    symbolType = 'function';
-                    nameNode = n.childForFieldName('name');
-                    break;
-                case 'class_declaration':
-                    symbolType = 'class';
-                    nameNode = n.childForFieldName('name');
-                    break;
-                case 'method_definition':
-                    symbolType = 'method';
-                    nameNode = n.childForFieldName('name');
-                    break;
-                case 'interface_declaration':
-                    symbolType = 'interface';
-                    nameNode = n.childForFieldName('name');
-                    break;
-                case 'lexical_declaration':
-                case 'variable_declaration':
-                    // Only track exported or top-level variables
-                    if (n.parent?.type === 'program' || n.parent?.type === 'export_statement') {
-                        symbolType = 'variable';
-                        const declarator = n.descendantsOfType('variable_declarator')[0];
-                        nameNode = declarator?.childForFieldName('name') || null;
-                    }
-                    break;
+        const visit = (node: Parser.SyntaxNode) => {
+            if (node.type === 'function_declaration' || node.type === 'class_declaration' || node.type === 'method_definition') {
+                const nameNode = node.childForFieldName('name');
+                if (nameNode) {
+                    symbols.push({
+                        name: nameNode.text,
+                        type: node.type.replace('_declaration', '').replace('_definition', '') as any,
+                        startLine: node.startPosition.row + 1, // 1-indexed for humans
+                        endLine: node.endPosition.row + 1,
+                        content: node.text // Capture content for comparison
+                    });
+                }
             }
 
-            if (symbolType && nameNode) {
-                const content = code.slice(n.startIndex, n.endIndex);
-                symbols.push({
-                    name: nameNode.text,
-                    type: symbolType,
-                    startLine: n.startPosition.row + 1,
-                    endLine: n.endPosition.row + 1,
-                    hash: this.hashContent(content),
-                });
-            }
-
-            // Recurse into children
-            for (let i = 0; i < n.childCount; i++) {
-                const child = n.child(i);
+            for (let i = 0; i < node.childCount; i++) {
+                const child = node.child(i);
                 if (child) visit(child);
             }
         };
 
-        visit(node);
+        visit(tree.rootNode);
         return symbols;
     }
 
     /**
-     * Hash symbol content for change detection
-     */
-    private hashContent(content: string): string {
-        // Normalize whitespace before hashing
-        const normalized = content.replace(/\s+/g, ' ').trim();
-        return createHash('sha256').update(normalized).digest('hex').slice(0, 16);
-    }
-
-    /**
-     * Compare two file versions and find symbol-level conflicts
+     * Compare two versions of code and find symbols that differ in content
      */
     findSymbolConflicts(
-        codeA: string, fileA: string,
-        codeB: string, fileB: string
+        contentA: string, labelA: string,
+        contentB: string, labelB: string
     ): SymbolConflict[] {
-        const symbolsA = this.parseCode(codeA, fileA);
-        const symbolsB = this.parseCode(codeB, fileB);
+        const treeA = this.parse(contentA);
+        const treeB = this.parse(contentB);
+
+        const symbolsA = this.extractSymbols(treeA);
+        const symbolsB = this.extractSymbols(treeB);
 
         const conflicts: SymbolConflict[] = [];
-        const mapA = new Map(symbolsA.symbols.map(s => [s.name, s]));
 
-        for (const symB of symbolsB.symbols) {
-            const symA = mapA.get(symB.name);
-            if (symA && symA.hash !== symB.hash) {
+        // Map for fast lookup
+        const mapB = new Map<string, SymbolInfo>();
+        symbolsB.forEach(s => mapB.set(s.name, s));
+
+        for (const symA of symbolsA) {
+            const symB = mapB.get(symA.name);
+            // If symbol exists in both and content differs
+            if (symB && symA.content !== symB.content) {
                 conflicts.push({
-                    symbolName: symB.name,
-                    symbolType: symB.type,
-                    fileA,
-                    fileB,
-                    hashA: symA.hash,
-                    hashB: symB.hash,
+                    symbolName: symA.name,
+                    symbolType: symA.type,
+                    locations: [
+                        { file: labelA, range: [symA.startLine, symA.endLine] },
+                        { file: labelB, range: [symB.startLine, symB.endLine] }
+                    ]
                 });
             }
         }
 
         return conflicts;
     }
-
-    /**
-     * Check if a specific symbol was modified between two versions
-     */
-    isSymbolModified(codeA: string, codeB: string, symbolName: string): boolean {
-        const symbolsA = this.parseCode(codeA);
-        const symbolsB = this.parseCode(codeB);
-
-        const symA = symbolsA.symbols.find(s => s.name === symbolName);
-        const symB = symbolsB.symbols.find(s => s.name === symbolName);
-
-        if (!symA && !symB) return false;  // Symbol doesn't exist in either
-        if (!symA || !symB) return true;   // Symbol added or removed
-        return symA.hash !== symB.hash;    // Symbol modified
-    }
 }
 
-// Export singleton for convenience
-export const astParser = new ASTParser();
+export interface SymbolConflict {
+    symbolName: string;
+    symbolType: string;
+    locations: { file: string; range: [number, number] }[];
+}
