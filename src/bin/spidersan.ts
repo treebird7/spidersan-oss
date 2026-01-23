@@ -67,7 +67,10 @@ import {
     // Terminal UI
     tuiCommand,
     // File History
+    // File History
     whoTouchedCommand,
+    // Semantic
+    semanticCommand,
 } from '../commands/index.js';
 
 // Read version from package.json dynamically
@@ -195,6 +198,9 @@ program.addCommand(tuiCommand);
 
 // File History (forensics)
 program.addCommand(whoTouchedCommand);
+
+// Semantic RLS
+program.addCommand(semanticCommand);
 
 // Check for updates (non-blocking)
 import { checkForUpdates } from '../lib/update-check.js';

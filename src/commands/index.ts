@@ -75,4 +75,8 @@ export { lockCommand } from './lock.js';
 export { tuiCommand } from './tui.js';
 
 // File History (forensics)
+// File History (forensics)
 export { whoTouchedCommand } from './who-touched.js';
+
+// Semantic RLS
+export { semanticCommand } from './semantic.js';
