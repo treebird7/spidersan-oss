@@ -4,6 +4,7 @@ interface DashboardState {
     connectedAgents: string[];
     activeTasks: Array<{ id: string; title: string; owner: string; status: string }>;
     activeFiles: Map<string, string[]>; // file -> agents[]
+    activeLocks: Array<{ symbol: string; agent: string; time: number }>; // NEW
     logs: string[];
 }
 
@@ -12,7 +13,8 @@ export class SpidersanDashboard {
     private headerBox: blessed.Widgets.BoxElement;
     private taskList: blessed.Widgets.ListElement;
     private radarBox: blessed.Widgets.BoxElement;
-    private logBox: blessed.Widgets.ListElement; // Changed to ListElement for better scrolling
+    private locksBox: blessed.Widgets.ListElement; // NEW
+    private logBox: blessed.Widgets.ListElement;
     private state: DashboardState;
 
     constructor() {
@@ -25,6 +27,7 @@ export class SpidersanDashboard {
             connectedAgents: [],
             activeTasks: [],
             activeFiles: new Map(),
+            activeLocks: [],
             logs: []
         };
 
@@ -35,7 +38,7 @@ export class SpidersanDashboard {
             top: 0,
             left: 0,
             width: '100%',
-            height: 3, // Increased height
+            height: 3,
             content: '🕷️ SPIDERSAN MONITOR | initializing...',
             tags: true,
             style: {
@@ -45,12 +48,12 @@ export class SpidersanDashboard {
             }
         });
 
-        // 2. Task List (Left)
+        // 2. Task List (Left Top)
         const taskBox = blessed.box({
             top: 3,
             left: 0,
             width: '50%',
-            height: '50%-3', // Subtract header height
+            height: '40%', // Reduced height
             label: ' 📋 ACTIVE TASKS ',
             border: { type: 'line' },
             style: { border: { fg: 'green' } }
@@ -70,12 +73,32 @@ export class SpidersanDashboard {
             }
         });
 
+        // 2.5 Locks List (Left Bottom) - NEW
+        const locksContainer = blessed.box({
+            top: '40%+3',
+            left: 0,
+            width: '50%',
+            height: '30%',
+            label: ' 🔒 ACTIVE LOCKS ',
+            border: { type: 'line' },
+            style: { border: { fg: 'yellow' } }
+        });
+
+        this.locksBox = blessed.list({
+            parent: locksContainer,
+            top: 0,
+            left: 0,
+            width: '100%-2',
+            height: '100%-2',
+            tags: true
+        });
+
         // 3. Conflict Radar (Right)
         this.radarBox = blessed.box({
             top: 3,
             left: '50%',
             width: '50%',
-            height: '50%-3',
+            height: '70%',
             label: ' 🕸️ CONFLICT RADAR ',
             border: { type: 'line' },
             tags: true,
@@ -84,10 +107,10 @@ export class SpidersanDashboard {
 
         // 4. Logs (Bottom)
         const logContainer = blessed.box({
-            top: '50%',
+            top: '70%+3',
             left: 0,
             width: '100%',
-            height: '50%',
+            height: '30%-3',
             label: ' 📜 SYSTEM LOGS ',
             border: { type: 'line' },
             style: { border: { fg: 'cyan' } }
@@ -112,6 +135,7 @@ export class SpidersanDashboard {
         // Append everything
         this.screen.append(this.headerBox);
         this.screen.append(taskBox);
+        this.screen.append(locksContainer); // NEW
         this.screen.append(this.radarBox);
         this.screen.append(logContainer);
 
@@ -124,8 +148,9 @@ export class SpidersanDashboard {
     public render() {
         this.updateHeader();
         this.updateTasks();
+        this.updateLocks(); // NEW
         this.updateRadar();
-        // Logs are appended incrementally, so no full re-render needed for them usually
+        // Logs are appended incrementally
         this.screen.render();
     }
 
@@ -136,6 +161,19 @@ export class SpidersanDashboard {
             ` 🕷️ SPIDERSAN MONITOR  |  🕒 ${time}\n` +
             ` 📡 AGENTS: ${agents}`
         );
+    }
+
+    private updateLocks() {
+        if (this.state.activeLocks.length === 0) {
+            this.locksBox.setItems(['(No active locks)']);
+            return;
+        }
+
+        const items = this.state.activeLocks.map(l => {
+            const age = Math.floor((Date.now() - l.time) / 1000 / 60);
+            return `🔒 ${l.symbol} ({yellow-fg}${l.agent}{/}) - ${age}m`;
+        });
+        this.locksBox.setItems(items);
     }
 
     private updateTasks() {
