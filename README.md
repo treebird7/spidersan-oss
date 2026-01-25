@@ -142,20 +142,11 @@ spidersan rescue-status
 
 **Perfect for:** Post-hackathon cleanup, onboarding to chaotic repos, AI agent disasters.
 
-### Pro (License Required)
-
-| Feature | Description |
-|---------|-------------|
-| **Unlimited Branches** | No limit on concurrent registered branches |
-| **Conflict Prediction** | Proactive detection before conflicts occur |
-| **MCP Server** | Model Context Protocol integration for AI agents |
-
 ---
 
 ## 📖 Documentation
 
 - [One Pager](docs/ONE_PAGER.md) - Product overview
-- [Implementation Plan](docs/implementation_plan.md) - Technical architecture
 - [Data Collection](docs/DATA_COLLECTION.md) - Privacy & data practices
 
 ---
@@ -166,9 +157,10 @@ spidersan rescue-status
 
 We're building this in public and want to hear from you!
 
-- **Issues & Features:** [GitHub Issues](https://github.com/treebird7/Spidersan/issues)
-- **Email:** treebird7@proton.me
-- **Twitter/X:** [@treebird7](https://twitter.com/treebird7)
+- **Issues & Features:** [GitHub Issues](https://github.com/treebird7/spidersan-oss/issues)
+- **Email:** treebird@treebird.dev
+- **Site:** [Treebird](https://treebird.uk)
+- **Twitter/X:** [@Treebird_Dev](https://twitter.com/Treebird_Dev)
 
 Tell us what's working, what's broken, and what you'd love to see next.
 
@@ -190,6 +182,6 @@ Contributions welcome! Please read our contributing guidelines first.
 
 **Made with 🕷️ for AI-first development teams**
 
-Part of the [Treebird Ecosystem](https://github.com/treebird7) 🌲
+Part of the [Treebird Ecosystem](https://treebird.uk) 🌲
 
 </div>
