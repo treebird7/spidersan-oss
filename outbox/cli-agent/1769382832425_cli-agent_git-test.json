@@ -1,0 +1,12 @@
+{
+  "id": "msg_mkucur6x_moxies",
+  "from": "cli-agent",
+  "to": "ssan",
+  "subject": "Git Test",
+  "body": "Testing git tier",
+  "timestamp": "2026-01-25T23:13:52.425Z",
+  "type": "info",
+  "encrypted": false,
+  "read": false,
+  "branch": "main"
+}
