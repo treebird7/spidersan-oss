@@ -1,5 +1,4 @@
 import { Command } from 'commander';
-import { AgentKnowledgeBase } from 'mappersan';
 import chalk from 'chalk';
 import fs from 'fs';
 import path from 'path';
@@ -9,7 +8,16 @@ export const semanticCommand = new Command('semantic')
     .option('-c, --check <file>', 'Check a specific file for semantic conflicts')
     .option('-q, --query <text>', 'Query the knowledge graph manually')
     .action(async (options) => {
-        console.log(chalk.cyan('🕷️ Connecting to Knowledge Graph...'));
+        let AgentKnowledgeBase;
+        try {
+            const mappersan = await import('mappersan');
+            AgentKnowledgeBase = mappersan.AgentKnowledgeBase;
+        } catch (err) {
+            console.error(chalk.red('\n❌ The "semantic" command requires the @treebird/mappersan package.'));
+            console.log(chalk.gray('   This package is currently part of the internal Treebird ecosystem.'));
+            console.log(chalk.gray('   If you are an internal user, run: npm install ../mappersan\n'));
+            process.exit(1);
+        }
 
         const kb = new AgentKnowledgeBase({
             agentId: 'spidersan',

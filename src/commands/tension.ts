@@ -9,8 +9,9 @@
  */
 
 import { Command } from 'commander';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
+import { validateFilePath } from '../lib/security.js';
 
 // Security-sensitive file patterns
 const SECURITY_PATTERNS = [
@@ -52,7 +53,7 @@ interface TensionReport {
 
 function getCurrentBranch(): string {
     try {
-        return execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim();
+        return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' }).trim();
     } catch {
         throw new Error('Not in a git repository');
     }
@@ -60,7 +61,10 @@ function getCurrentBranch(): string {
 
 function getRepoName(): string {
     try {
-        const remote = execSync('git remote get-url origin 2>/dev/null', { encoding: 'utf-8' }).trim();
+        const remote = execFileSync('git', ['remote', 'get-url', 'origin'], {
+            encoding: 'utf-8',
+            stdio: ['ignore', 'pipe', 'ignore']
+        }).trim();
         const match = remote.match(/\/([^/]+?)(?:\.git)?$/);
         return match ? match[1] : process.cwd().split('/').pop() || 'unknown';
     } catch {
@@ -91,13 +95,30 @@ function calculateSeverity(
 function getGitBlameOwner(filepath: string): string | undefined {
     try {
         // Get the author who owns the most lines
-        const blame = execSync(
-            `git blame --porcelain "${filepath}" 2>/dev/null | grep "^author " | sort | uniq -c | sort -rn | head -1`,
-            { encoding: 'utf-8' }
-        ).trim();
+        const safePath = validateFilePath(filepath);
+        const blameOutput = execFileSync(
+            'git',
+            ['blame', '--porcelain', '--', safePath],
+            { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }
+        );
 
-        const match = blame.match(/^\s*\d+\s+author\s+(.+)$/);
-        return match ? match[1] : undefined;
+        const counts = new Map<string, number>();
+        for (const line of blameOutput.split('\n')) {
+            if (!line.startsWith('author ')) continue;
+            const author = line.slice('author '.length).trim();
+            counts.set(author, (counts.get(author) || 0) + 1);
+        }
+
+        let topAuthor: string | undefined;
+        let topCount = 0;
+        for (const [author, count] of counts) {
+            if (count > topCount) {
+                topAuthor = author;
+                topCount = count;
+            }
+        }
+
+        return topAuthor;
     } catch {
         return undefined;
     }
@@ -105,9 +126,11 @@ function getGitBlameOwner(filepath: string): string | undefined {
 
 function getLastModified(filepath: string): string | undefined {
     try {
-        const log = execSync(
-            `git log -1 --format="%aI" -- "${filepath}" 2>/dev/null`,
-            { encoding: 'utf-8' }
+        const safePath = validateFilePath(filepath);
+        const log = execFileSync(
+            'git',
+            ['log', '-1', '--format=%aI', '--', safePath],
+            { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }
         ).trim();
         return log || undefined;
     } catch {
