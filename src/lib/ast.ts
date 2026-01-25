@@ -1,6 +1,7 @@
 import Parser from 'tree-sitter';
 import TypeScript from 'tree-sitter-typescript';
 import fs from 'fs';
+import { createHash } from 'crypto';
 
 export interface SymbolInfo {
     name: string;
@@ -8,6 +9,7 @@ export interface SymbolInfo {
     startLine: number;
     endLine: number;
     content?: string;
+    hash?: string;
 }
 
 export class ASTParser {
@@ -35,6 +37,13 @@ export class ASTParser {
         return this.extractSymbols(tree);
     }
 
+    /**
+     * Compute SHA-256 hash of code content
+     */
+    computeHash(content: string): string {
+        return createHash('sha256').update(content).digest('hex');
+    }
+
     private extractSymbols(tree: Parser.Tree): SymbolInfo[] {
         const symbols: SymbolInfo[] = [];
         const cursor = tree.walk();
@@ -43,12 +52,14 @@ export class ASTParser {
             if (node.type === 'function_declaration' || node.type === 'class_declaration' || node.type === 'method_definition') {
                 const nameNode = node.childForFieldName('name');
                 if (nameNode) {
+                    const content = node.text;
                     symbols.push({
                         name: nameNode.text,
                         type: node.type.replace('_declaration', '').replace('_definition', '') as any,
                         startLine: node.startPosition.row + 1, // 1-indexed for humans
                         endLine: node.endPosition.row + 1,
-                        content: node.text // Capture content for comparison
+                        content: content,
+                        hash: this.computeHash(content)
                     });
                 }
             }

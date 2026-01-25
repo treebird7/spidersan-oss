@@ -231,6 +231,45 @@ function checkErrorLogs(): Check {
     }
 }
 
+function checkEmfileLimit(): Check {
+    try {
+        const limit = parseInt(execSync('ulimit -n', { encoding: 'utf-8' }).trim(), 10);
+        if (limit < 2048) {
+            return {
+                name: 'File Limits',
+                status: 'warn',
+                message: `ulimit -n is ${limit} (recommended: 2048+ for large repos)`
+            };
+        }
+        return { name: 'File Limits', status: 'ok', message: `ulimit -n is ${limit}` };
+    } catch {
+        return { name: 'File Limits', status: 'warn', message: 'Could not check ulimit' };
+    }
+}
+
+function checkWatcherStatus(): Check {
+    try {
+        // macOS ps command to find running node process with 'spidersan watch'
+        const output = execSync('ps aux | grep "spidersan watch" | grep -v grep', { encoding: 'utf-8' });
+        if (output.trim()) {
+            return { name: 'Watcher Daemon', status: 'ok', message: 'Running' };
+        }
+        return { name: 'Watcher Daemon', status: 'warn', message: 'Not running (run: spidersan watch)' };
+    } catch {
+        return { name: 'Watcher Daemon', status: 'warn', message: 'Not running (run: spidersan watch)' };
+    }
+}
+
+function checkNodeVersion(): Check {
+    const version = process.version;
+    const major = parseInt(version.replace('v', '').split('.')[0], 10);
+
+    if (major < 18) {
+        return { name: 'Node Version', status: 'error', message: `${version} (Requires Node 18+)` };
+    }
+    return { name: 'Node Version', status: 'ok', message: `${version}` };
+}
+
 export const doctorCommand = new Command('doctor')
     .description('Diagnose common Spidersan issues')
     .option('--json', 'Output as JSON')
@@ -244,6 +283,9 @@ export const doctorCommand = new Command('doctor')
             checkErrorLogs(),
             checkMycmail(),
             checkLicense(),
+            checkEmfileLimit(),
+            checkWatcherStatus(),
+            checkNodeVersion(),
             await checkStaleBranches(),
         ];
 

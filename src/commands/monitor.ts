@@ -1,5 +1,8 @@
 import { Command } from 'commander';
 import { io, Socket } from 'socket.io-client';
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+import chokidar from 'chokidar';
 import { SpidersanDashboard } from '../tui/dashboard.js';
 import { getStorage } from '../storage/index.js';
 import { createSwarmState, SwarmState } from '../lib/crdt.js';
@@ -17,6 +20,34 @@ export const monitorCommand = new Command('monitor')
 
         // CRDT State
         const swarmState = createSwarmState(AGENT_ID);
+
+        // Local Persistence
+        const SPIDERSAN_DIR = join(process.cwd(), '.spidersan');
+        const STATE_FILE = join(SPIDERSAN_DIR, 'crdt.state');
+
+        // Load initial state
+        if (existsSync(STATE_FILE)) {
+            try {
+                const data = readFileSync(STATE_FILE);
+                swarmState.applyUpdate(new Uint8Array(data));
+                dashboard.addLog('📚 Loaded local state');
+            } catch (e) {
+                dashboard.addLog(`⚠️ Failed to load state: ${e}`);
+            }
+        }
+
+        // Watch for local changes (from other CLI commands)
+        // using chokidar for better cross-platform support
+        const watcher = chokidar.watch(STATE_FILE, { persistent: true });
+        watcher.on('change', () => {
+            try {
+                const data = readFileSync(STATE_FILE);
+                swarmState.applyUpdate(new Uint8Array(data));
+                // dashboard.addLog('🔄 Local state updated'); // verbose
+            } catch (e) {
+                // ignore read errors (race conditions)
+            }
+        });
 
         // Refresh dashboard when CRDT state changes
         swarmState.doc.on('update', () => {
