@@ -18,6 +18,7 @@ import {
     dependsCommand,
     staleCommand,
     cleanupCommand,
+    rescueCommand,
     abandonCommand,
     mergedCommand,
     syncCommand,
@@ -38,6 +39,7 @@ import {
     collabCommand,
     // Diagnostics
     doctorCommand,
+    whoOwnsCommand,
     pulseCommand,
     completionsCommand,
     // Security Pipeline
@@ -67,10 +69,10 @@ import {
     // Terminal UI
     tuiCommand,
     // File History
-    // File History
     whoTouchedCommand,
     // Semantic
     semanticCommand,
+    monitorCommand,
 } from '../commands/index.js';
 
 // Read version from package.json dynamically
@@ -131,6 +133,7 @@ program.addCommand(readyCheckCommand);
 program.addCommand(dependsCommand);
 program.addCommand(staleCommand);
 program.addCommand(cleanupCommand);
+program.addCommand(rescueCommand);
 program.addCommand(abandonCommand);
 program.addCommand(mergedCommand);
 program.addCommand(syncCommand);
@@ -156,6 +159,7 @@ collabCommand(program);
 
 // Diagnostics
 program.addCommand(doctorCommand);
+program.addCommand(whoOwnsCommand);
 program.addCommand(pulseCommand);
 program.addCommand(completionsCommand);
 
@@ -195,6 +199,7 @@ program.addCommand(lockCommand);
 
 // Terminal UI
 program.addCommand(tuiCommand);
+program.addCommand(monitorCommand);
 
 // File History (forensics)
 program.addCommand(whoTouchedCommand);

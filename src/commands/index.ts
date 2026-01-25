@@ -6,7 +6,9 @@ export { mergeOrderCommand } from './merge-order.js';
 export { readyCheckCommand } from './ready-check.js';
 export { dependsCommand } from './depends.js';
 export { staleCommand } from './stale.js';
+// Rescue commands
 export { cleanupCommand } from './cleanup.js';
+export { rescueCommand } from './rescue.js';
 export { abandonCommand } from './abandon.js';
 export { mergedCommand } from './merged.js';
 export { syncCommand } from './sync.js';
@@ -34,6 +36,7 @@ export { registerCollabCommand as collabCommand } from './collab.js';
 
 // Diagnostics
 export { doctorCommand } from './doctor.js';
+export { whoOwnsCommand } from './who-owns.js';
 export { pulseCommand } from './pulse.js';
 export { completionsCommand } from './completions.js';
 
@@ -73,10 +76,10 @@ export { lockCommand } from './lock.js';
 
 // Terminal UI
 export { tuiCommand } from './tui.js';
-
-// File History (forensics)
 // File History (forensics)
 export { whoTouchedCommand } from './who-touched.js';
 
 // Semantic RLS
 export { semanticCommand } from './semantic.js';
+
+export { monitorCommand } from './monitor.js';
