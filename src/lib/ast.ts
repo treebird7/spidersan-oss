@@ -17,7 +17,7 @@ export class ASTParser {
 
     constructor() {
         this.parser = new Parser();
-        // @ts-ignore - binding quirk
+        // TypeScript binding quirk
         this.parser.setLanguage(TypeScript.typescript);
     }
 
