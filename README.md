@@ -1,9 +1,3 @@
----
-aliases: ["Spidersan Overview"]
-tags: [agent/myceliumail, type/readme]
----
-
-<div align="center">
 
 # 🕷️ Spidersan
 
@@ -16,11 +10,12 @@ tags: [agent/myceliumail, type/readme]
 
 ![Demo](./assets/demo.gif)
 
-[Quick Start](#-quick-start) • [Features](#-features) • [Documentation](#-documentation) • [Pro](#-pro)
+[Quick Start](#-quick-start) • [Features](#-features) • [Documentation](#-documentation)
 
 </div>
 
 ---
+
 
 ## 🎯 The Problem
 
@@ -165,29 +160,7 @@ spidersan rescue-status
 
 ---
 
-## 💎 Pro
 
-Spidersan Pro unlocks advanced features for teams running multiple AI agents.
-
-| Feature | Free | Pro ($9/mo) |
-|---------|------|-------------|
-| Core commands | ✅ All | ✅ All |
-| Concurrent branches | 5 max | ✅ Unlimited |
-| MCP Server | ❌ | ✅ |
-| Conflict prediction | ❌ | ✅ Coming soon |
-| Priority support | ❌ | ✅ |
-
-**Activate Pro:**
-```bash
-spidersan activate <your-license-key>
-spidersan status  # Check your plan
-```
-
-Get a license: [spidersan.dev/pro](https://spidersan.dev/pro)
-
-> **Note:** One Pro license unlocks the entire Treebird ecosystem (Spidersan + Myceliumail).
-
----
 
 ## 🗣️ Feedback & Support
 
@@ -210,7 +183,6 @@ Contributions welcome! Please read our contributing guidelines first.
 ## 📄 License
 
 - **Core CLI**: [MIT License](LICENSE.md)
-- **Pro Features**: [Business Source License 1.1](LICENSE.md)
 
 ---
 
