@@ -10,7 +10,7 @@ import { execSync } from 'child_process';
 import { existsSync } from 'fs';
 
 // Security: Input validation
-const VALID_FILE_PATH = /^[a-zA-Z0-9._\/-]+$/;
+const VALID_FILE_PATH = /^[a-zA-Z0-9._/-]+$/;
 
 function validateFilePath(path: string): string {
     if (!VALID_FILE_PATH.test(path)) {
@@ -142,6 +142,7 @@ export const whoTouchedCommand = new Command('who-touched')
     .action(async (file, options) => {
         // Validate input
         const safePath = validateFilePath(file);
+
         const limit = parseInt(options.limit, 10) || 10;
 
         // Check if file exists or is tracked
