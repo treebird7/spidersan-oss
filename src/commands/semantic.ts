@@ -9,7 +9,6 @@ export const semanticCommand = new Command('semantic')
     .action(async (options) => {
         let AgentKnowledgeBase;
         try {
-            // @ts-expect-error - mappersan is an optional internal dependency
             const mappersan = await import('mappersan');
             AgentKnowledgeBase = mappersan.AgentKnowledgeBase;
         } catch (err) {
