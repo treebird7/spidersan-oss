@@ -18,6 +18,7 @@ import {
     dependsCommand,
     staleCommand,
     cleanupCommand,
+    rescueCommand,
     abandonCommand,
     mergedCommand,
     syncCommand,
@@ -38,6 +39,7 @@ import {
     collabCommand,
     // Diagnostics
     doctorCommand,
+    whoOwnsCommand,
     pulseCommand,
     completionsCommand,
     // Security Pipeline
@@ -127,6 +129,7 @@ program.addCommand(readyCheckCommand);
 program.addCommand(dependsCommand);
 program.addCommand(staleCommand);
 program.addCommand(cleanupCommand);
+program.addCommand(rescueCommand);
 program.addCommand(abandonCommand);
 program.addCommand(mergedCommand);
 program.addCommand(syncCommand);
@@ -152,6 +155,7 @@ collabCommand(program);
 
 // Diagnostics
 program.addCommand(doctorCommand);
+program.addCommand(whoOwnsCommand);
 program.addCommand(pulseCommand);
 program.addCommand(completionsCommand);
 
