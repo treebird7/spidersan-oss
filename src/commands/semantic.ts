@@ -1,6 +1,5 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
-import fs from 'fs';
 import path from 'path';
 
 export const semanticCommand = new Command('semantic')
@@ -10,7 +9,7 @@ export const semanticCommand = new Command('semantic')
     .action(async (options) => {
         let AgentKnowledgeBase;
         try {
-            // @ts-ignore - mappersan is an optional internal dependency
+            // @ts-expect-error - mappersan is an optional internal dependency
             const mappersan = await import('mappersan');
             AgentKnowledgeBase = mappersan.AgentKnowledgeBase;
         } catch (err) {
