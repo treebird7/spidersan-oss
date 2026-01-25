@@ -52,6 +52,7 @@ export { watchCommand } from './watch.js';
 export { radarCommand } from './radar.js';
 
 // Demo/Onboarding
+export { welcomeCommand } from './welcome.js';
 export { demoCommand } from './demo.js';
 
 // MCP Health

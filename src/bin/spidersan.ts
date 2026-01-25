@@ -51,6 +51,7 @@ import {
     watchCommand,
     radarCommand,
     // Demo/Onboarding
+    welcomeCommand,
     demoCommand,
     // MCP Health
     mcpHealthCommand,
@@ -175,6 +176,7 @@ program.addCommand(watchCommand);
 program.addCommand(radarCommand);
 
 // Demo/Onboarding
+program.addCommand(welcomeCommand);
 program.addCommand(demoCommand);
 
 // MCP Health
