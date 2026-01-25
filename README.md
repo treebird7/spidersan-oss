@@ -88,15 +88,21 @@ spidersan merge-order
 
 ### Free (MIT License)
 
+### Free (MIT License)
+
 | Command | Description |
 |---------|-------------|
-| `spidersan list` | List all registered branches |
 | `spidersan register` | Register a branch with files being modified |
 | `spidersan conflicts` | Show file conflicts between branches |
+| `spidersan lock` | **NEW!** Distributed CRDT-based locking with AST DNA verification |
+| `spidersan monitor` | **NEW!** Interactive TUI dashboard for real-time monitoring |
+| `spidersan rescue` | **NEW!** Automated triage & salvage for abandoned code |
+| `spidersan doctor` | **NEW!** Deep diagnostic check of the local agent environment |
+| `spidersan who-owns` | **NEW!** Forensic ownership analysis of files via git history |
+| `spidersan watch` | Daemon mode - watch files and auto-register |
 | `spidersan merge-order` | Get topologically-sorted merge order |
 | `spidersan ready-check` | Verify branch is ready (no WIP, no conflicts) |
-| `spidersan watch` | **NEW!** Daemon mode - watch files and auto-register |
-| `spidersan who-touched` | **NEW!** Show git history + agent activity for files |
+| `spidersan semantic` | Semantic awareness via Knowledge Graph (optional) |
 
 
 ### Watch Mode (Daemon)
