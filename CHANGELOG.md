@@ -11,6 +11,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-01-25 (Feature Release)
+
+This release focuses on advanced coordination infrastructure, forensic analysis, and offline-first reliability.
+
+### Added
+- **🚑 Rescue Mode** (`spidersan rescue`) - Automated scanning, triage (Merge/Salvage/Abandon), and code salvage for chaotic or abandoned repositories.
+- **📺 Monitor Dashboard** (`spidersan monitor`) - Real-time terminal TUI for tracking the swarm's activity and conflict status across the team.
+- **🧬 DNA-Level Security** - AST hashing in `spidersan lock` ensures agents never work on stale code by verifying the underlying logic structure hasn't changed.
+- **🔄 CRDT Sync** - Ground-up rewrite of local coordination to use state-based CRDTs, allowing agents to resolve conflicts locally even without Hub connectivity.
+- **🔍 Ownership Forensics** (`spidersan who-owns`) - Identifies file "owners" based on git contribution density and recent activity.
+- **🧠 Semantic RLS** (`spidersan semantic`) - Deep conflict detection using the RLS Knowledge Graph (requires `@treebird/mappersan`).
+- **🩺 Advanced Diagnostics** - Enhanced `spidersan doctor` with ulimit (EMFILE prevention), daemon health, and Node.js environment checks.
+
+### Changed
+- **OSS Portability**: Refactored `mappersan` from a hard file dependency to a dynamic optional import, making the CLI fully publishable and portable.
+- **Persistence**: Improved Invoak/Spidersan coordination logic for better result persistence across machine boundaries.
+
+### Security
+- Added SHA-256 structural hashing for all semantic locks.
+- Refactored hardcoded user paths to use cross-platform environment variables.
+
 ## [0.2.2] - 2026-01-19 (Security Release)
 
 This release addresses several critical security vulnerabilities. Users are strongly encouraged to upgrade immediately.
