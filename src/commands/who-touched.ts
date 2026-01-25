@@ -6,7 +6,7 @@
  */
 
 import { Command } from 'commander';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { existsSync } from 'fs';
 
 // Security: Input validation
@@ -101,8 +101,9 @@ function getFileHistory(filePath: string, limit: number): TouchEntry[] {
     try {
         // Use %x00 as delimiter for safety
         const format = '%H%x00%h%x00%an%x00%ae%x00%ai%x00%ar%x00%s';
-        const output = execSync(
-            `git log -n ${limit} --follow --format="${format}" -- "${filePath}"`,
+        const output = execFileSync(
+            'git',
+            ['log', '-n', `${limit}`, '--follow', `--format=${format}`, '--', filePath],
             { encoding: 'utf-8', maxBuffer: 1024 * 1024 }
         );
 
@@ -132,6 +133,22 @@ function getFileHistory(filePath: string, limit: number): TouchEntry[] {
     }
 }
 
+function parseSinceDate(since: string): number | null {
+    try {
+        const output = execFileSync('date', ['-d', since, '+%s'], { encoding: 'utf-8' }).trim();
+        return parseInt(output, 10);
+    } catch {
+        // GNU date failed; try BSD date format (macOS)
+    }
+
+    try {
+        const output = execFileSync('date', ['-j', '-f', '%Y-%m-%d', since, '+%s'], { encoding: 'utf-8' }).trim();
+        return parseInt(output, 10);
+    } catch {
+        return null;
+    }
+}
+
 export const whoTouchedCommand = new Command('who-touched')
     .description('Show who touched a file (git history with agent detection)')
     .argument('<file>', 'File path to check history for')
@@ -148,7 +165,7 @@ export const whoTouchedCommand = new Command('who-touched')
         // Check if file exists or is tracked
         if (!existsSync(safePath)) {
             try {
-                execSync(`git ls-files --error-unmatch "${safePath}"`, {
+                execFileSync('git', ['ls-files', '--error-unmatch', safePath], {
                     encoding: 'utf-8',
                     stdio: 'pipe'
                 });
@@ -167,16 +184,12 @@ export const whoTouchedCommand = new Command('who-touched')
 
         // Filter by --since
         if (options.since) {
-            try {
-                const sinceDate = execSync(`date -d "${options.since}" +%s 2>/dev/null || date -j -f "%Y-%m-%d" "${options.since}" +%s`,
-                    { encoding: 'utf-8' }).trim();
-                const sinceTimestamp = parseInt(sinceDate, 10);
+            const sinceTimestamp = parseSinceDate(options.since);
+            if (sinceTimestamp !== null) {
                 entries = entries.filter(e => {
                     const commitDate = new Date(e.date).getTime() / 1000;
                     return commitDate >= sinceTimestamp;
                 });
-            } catch {
-                // If date parsing fails, skip the filter
             }
         }
 

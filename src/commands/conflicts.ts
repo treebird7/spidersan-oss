@@ -9,28 +9,11 @@
  */
 
 import { Command } from 'commander';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { getStorage } from '../storage/index.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
-
-// Security: Input validation patterns
-const VALID_AGENT_ID = /^[a-z0-9][a-z0-9_-]{0,30}$/i;
-const VALID_BRANCH_NAME = /^[a-zA-Z0-9][a-zA-Z0-9/_.-]{0,99}$/;
-
-function validateAgentId(agentId: string): string {
-    if (!VALID_AGENT_ID.test(agentId)) {
-        throw new Error(`Invalid agent ID: "${agentId.slice(0, 20)}..." (must be alphanumeric with - or _)`);
-    }
-    return agentId;
-}
-
-function validateBranchName(branch: string): string {
-    if (!VALID_BRANCH_NAME.test(branch)) {
-        throw new Error(`Invalid branch name: "${branch.slice(0, 20)}..."`);
-    }
-    return branch;
-}
+import { validateAgentId, validateBranchName, validateFilePath } from '../lib/security.js';
 
 // Config
 const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
@@ -103,7 +86,7 @@ function getConflictTier(file: string): ConflictTier {
 
 function getCurrentBranch(): string {
     try {
-        return execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim();
+        return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' }).trim();
     } catch {
         throw new Error('Not in a git repository');
     }
@@ -309,8 +292,10 @@ export const conflictsCommand = new Command('conflicts')
 
                     try {
                         // Get file content from both branches
-                        const currentContent = execSync(`git show HEAD:${file}`, { encoding: 'utf-8' });
-                        const otherContent = execSync(`git show ${conflict.branch}:${file}`, { encoding: 'utf-8' });
+                        const safeFile = validateFilePath(file);
+                        const safeBranch = validateBranchName(conflict.branch);
+                        const currentContent = execFileSync('git', ['show', `HEAD:${safeFile}`], { encoding: 'utf-8' });
+                        const otherContent = execFileSync('git', ['show', `${safeBranch}:${safeFile}`], { encoding: 'utf-8' });
 
                         const symbolConflicts = astParser.findSymbolConflicts(
                             currentContent, `${targetBranch}:${file}`,
@@ -482,4 +467,3 @@ export const conflictsCommand = new Command('conflicts')
             process.exit(1);
         }
     });
-

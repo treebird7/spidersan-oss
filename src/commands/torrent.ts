@@ -6,9 +6,10 @@
  */
 
 import { Command } from 'commander';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import type { Branch } from '../storage/adapter.js';
+import { validateTaskId } from '../lib/security.js';
 
 // Config
 const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
@@ -29,22 +30,23 @@ interface TorrentClaimOptions {
 
 function getCurrentBranch(): string {
     try {
-        return execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim();
+        return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' }).trim();
     } catch {
         throw new Error('Not in a git repository');
     }
 }
 
 function createBranchForTask(taskId: string): void {
-    const branchName = `task/${taskId}`;
+    const safeTaskId = validateTaskId(taskId);
+    const branchName = `task/${safeTaskId}`;
     try {
         // Check if branch exists
-        execSync(`git rev-parse --verify ${branchName}`, { encoding: 'utf-8', stdio: 'pipe' });
+        execFileSync('git', ['rev-parse', '--verify', branchName], { encoding: 'utf-8', stdio: 'pipe' });
         console.log(`   Branch ${branchName} already exists, checking out...`);
-        execSync(`git checkout ${branchName}`, { encoding: 'utf-8' });
+        execFileSync('git', ['checkout', branchName], { encoding: 'utf-8' });
     } catch {
         // Branch doesn't exist, create it
-        execSync(`git checkout -b ${branchName}`, { encoding: 'utf-8' });
+        execFileSync('git', ['checkout', '-b', branchName], { encoding: 'utf-8' });
     }
 }
 
@@ -93,6 +95,7 @@ torrentCommand
     .option('-a, --agent <agent>', 'Agent claiming this task')
     .option('-p, --parent <parent-task>', 'Parent task ID (for nested decomposition)')
     .action(async (taskId: string, options: TorrentCreateOptions) => {
+        const safeTaskId = validateTaskId(taskId);
         const storage = await getStorage();
 
         if (!await storage.isInitialized()) {
@@ -100,14 +103,14 @@ torrentCommand
             process.exit(1);
         }
 
-        const branchName = `task/${taskId}`;
+        const branchName = `task/${safeTaskId}`;
         const agent = options.agent || process.env.SPIDERSAN_AGENT || 'unknown';
-        const parentTaskId = options.parent || getParentTaskId(taskId);
+        const parentTaskId = options.parent || getParentTaskId(safeTaskId);
 
         console.log(`
 🔄 TASK TORRENTING: Create Branch
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Task:   ${taskId}
+Task:   ${safeTaskId}
 Branch: ${branchName}
 Agent:  ${agent}
 Parent: ${parentTaskId || '(none)'}
@@ -115,7 +118,7 @@ Parent: ${parentTaskId || '(none)'}
         `);
 
         // Create git branch
-        createBranchForTask(taskId);
+        createBranchForTask(safeTaskId);
         console.log(`✅ Created and checked out: ${branchName}`);
 
         // Register in Spidersan
@@ -139,7 +142,7 @@ Parent: ${parentTaskId || '(none)'}
 
         // Try to notify Hub
         try {
-            await fetch(`${HUB_URL}/api/tasks/${taskId}/claim`, {
+            await fetch(`${HUB_URL}/api/tasks/${safeTaskId}/claim`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ agent, branch: branchName })
@@ -153,7 +156,7 @@ Parent: ${parentTaskId || '(none)'}
 💡 Next steps:
    1. Make your changes
    2. git add && git commit
-   3. spidersan torrent complete ${taskId}
+   3. spidersan torrent complete ${safeTaskId}
         `);
     });
 
@@ -240,13 +243,14 @@ torrentCommand
     .option('-a, --agent <agent>', 'Agent completing this task')
     .action(async (taskId: string, options: TorrentClaimOptions) => {
         const storage = await getStorage();
-        const branchName = `task/${taskId}`;
+        const safeTaskId = validateTaskId(taskId);
+        const branchName = `task/${safeTaskId}`;
         const agent = options.agent || process.env.SPIDERSAN_AGENT || 'unknown';
 
         const branch = await storage.get(branchName);
         if (!branch) {
             console.error(`❌ Task branch not found: ${branchName}`);
-            console.log(`   Run: spidersan torrent create ${taskId}`);
+            console.log(`   Run: spidersan torrent create ${safeTaskId}`);
             process.exit(1);
         }
 
@@ -254,7 +258,7 @@ torrentCommand
         await storage.update(branchName, { status: 'completed' });
 
         console.log(`
-🎉 TASK COMPLETE: ${taskId}
+🎉 TASK COMPLETE: ${safeTaskId}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 Branch:    ${branchName}
 Agent:     ${agent}
@@ -275,7 +279,7 @@ Files:     ${branch.files.length}
 
         // Try to notify Hub
         try {
-            await fetch(`${HUB_URL}/api/tasks/${taskId}/complete`, {
+            await fetch(`${HUB_URL}/api/tasks/${safeTaskId}/complete`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ agent, branch: branchName })
@@ -473,19 +477,20 @@ torrentCommand
     .option('-a, --agent <agent>', 'Agent creating the decomposition')
     .action(async (parentId: string, options: { count?: string; agent?: string }) => {
         const storage = await getStorage();
+        const safeParentId = validateTaskId(parentId);
         const count = parseInt(options.count || '3', 10);
         const agent = options.agent || process.env.SPIDERSAN_AGENT || 'unknown';
         const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
         console.log(`
-🔀 DECOMPOSING: ${parentId}
+🔀 DECOMPOSING: ${safeParentId}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Creating ${count} child tasks...
         `);
 
         const created: string[] = [];
         for (let i = 0; i < Math.min(count, 26); i++) {
-            const childId = `${parentId}-${letters[i]}`;
+            const childId = `${safeParentId}-${letters[i]}`;
             const branchName = `task/${childId}`;
 
             // Register child task (don't create git branch, just register)
