@@ -8,26 +8,66 @@
  */
 
 import { Command } from 'commander';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
 import { ASTParser } from '../lib/ast.js';
 import { createSwarmState, SwarmState } from '../lib/crdt.js';
 
 const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
 const AGENT_ID = process.env.SPIDERSAN_AGENT || process.env.MYCELIUMAIL_AGENT_ID || 'unknown';
 
+// Local Persistence
+const SPIDERSAN_DIR = join(process.cwd(), '.spidersan');
+const STATE_FILE = join(SPIDERSAN_DIR, 'crdt.state');
+
 // Singleton swarm state (persists across commands in same session)
 let swarmState: SwarmState | null = null;
+
+function ensureSpidersanDir() {
+    if (!existsSync(SPIDERSAN_DIR)) {
+        mkdirSync(SPIDERSAN_DIR, { recursive: true });
+    }
+}
+
+function saveLocalState(state: SwarmState) {
+    try {
+        ensureSpidersanDir();
+        const update = state.getStateAsUpdate();
+        writeFileSync(STATE_FILE, update);
+    } catch (err) {
+        console.error('⚠️ Failed to save local state:', err);
+    }
+}
+
+function loadLocalState(state: SwarmState) {
+    if (existsSync(STATE_FILE)) {
+        try {
+            const data = readFileSync(STATE_FILE);
+            const update = new Uint8Array(data);
+            state.applyUpdate(update);
+        } catch (err) {
+            console.error('⚠️ Failed to load local state:', err);
+        }
+    }
+}
 
 function getSwarmState(): SwarmState {
     if (!swarmState) {
         swarmState = createSwarmState(AGENT_ID, async (update) => {
-            // Sync updates to Hub
+            // 1. Save to local file
+            if (swarmState) saveLocalState(swarmState);
+
+            // 2. Sync updates to Hub
             try {
                 await syncToHub(update);
             } catch {
                 // Hub offline - silent fail
             }
         });
+
+        // Load initial state from disk
+        loadLocalState(swarmState);
     }
     return swarmState;
 }
@@ -62,6 +102,8 @@ async function pullFromHub(): Promise<void> {
                 const update = Buffer.from(base64Update, 'base64');
                 state.applyUpdate(new Uint8Array(update));
             }
+            // Save after pulling
+            saveLocalState(state);
         }
     } catch {
         // Hub offline - continue with local state
@@ -155,9 +197,8 @@ export const lockCommand = new Command('lock')
                 process.exit(1);
             }
 
-            const code = readFileSync(filePath, 'utf-8');
             const parser = new ASTParser();
-            const fileSymbols = parser.parseCode(code, filePath);
+            const symbols = parser.getSymbols(filePath);
 
             console.log(`\n🕷️ LOCKING SYMBOLS IN ${filePath}:`);
             console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
@@ -165,9 +206,10 @@ export const lockCommand = new Command('lock')
             let acquired = 0;
             let blocked = 0;
 
-            for (const symbol of fileSymbols.symbols) {
+            for (const symbol of symbols) {
                 const id = makeSymbolId(filePath, symbol.name);
-                const success = state.acquireLock(id, symbol.hash, options.intent);
+                const hash = symbol.hash || 'auto'; // Use computed AST hash
+                const success = state.acquireLock(id, hash, options.intent);
 
                 if (success) {
                     console.log(`  🔒 ${symbol.type} '${symbol.name}' — locked`);
@@ -213,12 +255,11 @@ export const lockCommand = new Command('lock')
         // If it's a file:symbol format, try to compute actual hash
         if (parsed && existsSync(parsed.file)) {
             try {
-                const code = readFileSync(parsed.file, 'utf-8');
                 const parser = new ASTParser();
-                const fileSymbols = parser.parseCode(code, parsed.file);
-                const symbol = fileSymbols.symbols.find(s => s.name === parsed.symbol);
+                const symbols = parser.getSymbols(parsed.file);
+                const symbol = symbols.find(s => s.name === parsed.symbol);
                 if (symbol) {
-                    hash = symbol.hash;
+                    hash = symbol.hash || 'auto';
                 }
             } catch {
                 // Use manual hash
