@@ -18,6 +18,9 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # Required for npm Trusted Publisher (OIDC)
     
     steps:
       - uses: actions/checkout@v4
@@ -42,12 +45,11 @@ jobs:
       
       - name: Set version (manual dispatch)
         if: github.event_name == 'workflow_dispatch'
+        continue-on-error: true
         run: npm version ${{ inputs.version }} --no-git-tag-version
       
-      - name: Publish to npm
-        run: npm publish --access public --tag ${{ inputs.tag || 'latest' }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish to npm (Trusted Publisher)
+        run: npm publish --provenance --access public --tag ${{ inputs.tag || 'latest' }}
       
       - name: Summary
         run: |
