@@ -12,7 +12,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 
 import * as storage from './lib/storage.js';
-import { requireProLicense } from './lib/license.js';
+// License check removed for OSS version
 import { existsSync, realpathSync } from 'fs';
 import { resolve, isAbsolute } from 'path';
 
@@ -399,6 +399,119 @@ server.tool(
     }
 );
 
+// Tool: welcome (onboarding ritual with optional demo)
+server.tool(
+    'welcome',
+    'Welcome ritual for new agents - shows setup guide and optional conflict demo',
+    {
+        demo: z.boolean().optional().describe('Run interactive demo showing conflict detection'),
+    },
+    async ({ demo }) => {
+        const welcome = `🕷️ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   SPIDERSAN WELCOMES YOU TO THE WEB
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   You are not alone in this codebase.
+   Other agents weave alongside you.
+   The web keeps you from colliding.
+
+   ┌─────────────────────────────────┐
+   │  "Claim your threads            │
+   │   before you weave."            │
+   └─────────────────────────────────┘
+
+🕸️  QUICK SETUP (one command):
+
+   → register_branch
+     branch: "your-branch-name"
+     files: ["files", "you're", "touching"]
+     agent: "your-name"
+
+   Then before coding, always:
+   → check_conflicts
+
+   When done:
+   → mark_merged
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   The web sees all. The web protects all.
+🕷️ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+
+        if (!demo) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: welcome + `
+
+⚡ WANT TO SEE THE WEB'S POWER?
+
+   Call welcome again with demo: true
+   I'll simulate a collision so you can
+   witness the web's protection firsthand.`
+                }],
+            };
+        }
+
+        // Demo mode: simulate a conflict
+        const ghostBranch = '__ghost-demo__';
+        const ghostFiles = ['README.md', 'package.json', 'src/index.ts'];
+
+        // Register ghost agent
+        storage.registerBranch({
+            name: ghostBranch,
+            files: ghostFiles,
+            status: 'active',
+            description: 'Ghost agent for demo',
+            agent: 'ghost-agent',
+            repo: 'demo',
+        });
+
+        // Check for conflicts (there should be none yet with real branches)
+        const conflicts = storage.findConflicts();
+
+        // Build demo narrative
+        let demoResult = welcome + `
+
+⚡ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   LIVE DEMO: THE WEB IN ACTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+👻 Ghost agent summoned...
+   Branch: ${ghostBranch}
+   Files:  ${ghostFiles.join(', ')}
+
+🔍 The ghost is now "working on" common files.
+
+   If YOU register a branch touching these files,
+   the web will warn you BEFORE you collide.
+
+📋 TRY IT NOW:
+
+   → register_branch
+     branch: "my-feature"
+     files: ["README.md"]
+     agent: "your-name"
+
+   → check_conflicts
+
+   ⚠️  You'll see the collision warning!
+
+🧹 CLEANUP:
+
+   When done experimenting, the ghost will
+   fade on its own, or call:
+   → mark_abandoned branch: "${ghostBranch}"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Now you understand. Welcome to the web.
+🕷️ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+
+        return {
+            content: [{ type: 'text', text: demoResult }],
+        };
+    }
+);
+
 // Tool: list_tools (for version discovery)
 server.tool(
     'list_tools',
@@ -406,6 +519,7 @@ server.tool(
     {},
     async () => {
         const tools = [
+            { name: 'welcome', desc: '✨ START HERE - onboarding ritual with demo', args: 'demo?: boolean' },
             { name: 'list_branches', desc: 'List registered branches by status', args: 'status?: all|active|merged|abandoned' },
             { name: 'check_conflicts', desc: 'Detect file conflicts between active branches', args: 'none' },
             { name: 'get_merge_order', desc: 'Recommend safe merge sequence', args: 'none' },
@@ -423,14 +537,14 @@ server.tool(
         return {
             content: [{
                 type: 'text',
-                text: `🕷️ Spidersan MCP Server v1.2.3
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                text: `🕷️ Spidersan MCP Server v1.2.3 (OSS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ${formatted}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Total: ${tools.length} tools available
-Pro License: Required for full functionality`
+"Claim your threads before you weave."`
             }],
         };
     }
@@ -438,8 +552,8 @@ Pro License: Required for full functionality`
 
 // Start the server
 async function main() {
-    // Verify Pro license before starting
-    requireProLicense();
+    // OSS version - no license required
+    console.error('🕷️ Spidersan MCP Server (OSS)');
 
     const transport = new StdioServerTransport();
     await server.connect(transport);
