@@ -4,7 +4,7 @@
 **Severity:** WARN
 **Category:** SECURITY
 **Date Fixed:** 2025-12-17
-**Project:** Spidersan (treebird7/Spidersan)
+**Project:** Spidersan (treebird7/spidersan-oss)
 
 Note: `spidersan inbox` is an ecosystem-only command.
 
@@ -331,7 +331,7 @@ COMMIT;
 
 - [Supabase Database Linter Docs](https://supabase.com/docs/guides/database/database-linter?lint=0011_function_search_path_mutable)
 - [PostgreSQL search_path Security](https://www.postgresql.org/docs/current/ddl-schemas.html#DDL-SCHEMAS-PATH)
-- [Spidersan Fix PR](https://github.com/treebird7/Spidersan/pull/new/claude/fix-supabase-errors-yWOgk)
+- [Spidersan Fix PR](https://github.com/treebird7/spidersan-oss/pull/new/claude/fix-supabase-errors-yWOgk)
 
 ## Summary Checklist
 
