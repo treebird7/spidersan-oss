@@ -65,7 +65,7 @@ npm install -g spidersan
 
 ```bash
 # 1. Register your branch when you start working
-spidersan register --files "src/component.tsx"
+spidersan register --files "lib/auth.ts,api/login.ts"
 
 # 2. Check for conflicts before you go too deep
 spidersan conflicts
@@ -85,19 +85,17 @@ spidersan merge-order
 
 | Command | Description |
 |---------|-------------|
-| `spidersan init` | Initialize a repo for local branch tracking |
-| `spidersan register` | Register a branch with files being modified |
-| `spidersan list` | List active branches and metadata |
-| `spidersan conflicts` | Show file conflicts between branches |
-| `spidersan depends` | Declare dependencies between branches (optional Supabase sync) |
-| `spidersan merge-order` | Get recommended merge order (heuristic) |
-| `spidersan ready-check` | Verify branch is ready to merge |
-| `spidersan stale` | Find stale branches older than N days |
-| `spidersan cleanup` | Remove stale branches from registry |
-| `spidersan rescue` | Scan/salvage rogue work |
-| `spidersan abandon` | Mark a branch as abandoned |
-| `spidersan merged` | Mark a branch as merged |
-| `spidersan sync` | Sync registry with git state |
+| `spidersan list` | List all registered branches and their file ownership |
+| `spidersan register --files` | Register a branch with the files being modified |
+| `spidersan conflicts` | Show file conflicts between your branch and others |
+| `spidersan merge-order` | Get topologically-sorted optimal merge order |
+| `spidersan ready-check` | Verify branch is ready to merge (no WIP, no conflicts) |
+| `spidersan watch --hub` | Daemon mode: watch files and auto-register with Hub sync |
+| `spidersan who-touched <file>` | Show git history + agent activity for specific files |
+| `spidersan rescue` | Start rescue mission for abandoned branch cleanup |
+| `spidersan scan --all` | Scan and categorize all branches in the repo |
+| `spidersan triage` | Categorize branches: MERGE / SALVAGE / ABANDON |
+| `spidersan salvage <branch>` | Extract good code from broken branches |
 | `spidersan watch` | Daemon mode - watch files and auto-register |
 | `spidersan doctor` | Diagnose local state and registry health |
 
@@ -153,8 +151,8 @@ spidersan rescue --abandon path/to/file.ts
 ## 📖 Documentation
 
 - [Core Guide](docs/CORE.md) - Public feature set and core workflows
-- [Ecosystem Overview](docs/ECOSYSTEM.md) - Advanced features (internal)
-- [Usage](USAGE.md) - CLI walkthroughs
+- Ecosystem Overview (internal; see spidersan-ecosystem repo)
+- Usage (internal; see spidersan-ecosystem repo)
 - [One Pager](docs/ONE_PAGER.md) - Product overview
 - [Data Collection](docs/DATA_COLLECTION.md) - Privacy & data practices
 

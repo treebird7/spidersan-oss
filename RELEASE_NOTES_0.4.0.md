@@ -4,26 +4,22 @@
 
 ## What's New
 
-Spidersan 0.4.0 consolidates into a focused, professional **15-command core** with an optional plugin system for advanced features. This release addresses community feedback on licensing clarity, feature scope, and professional positioning.
+Spidersan 0.4.0 consolidates into a focused, professional **11-command core** with an optional plugin system for advanced features. This release addresses community feedback on licensing clarity, feature scope, and professional positioning.
 
 ### 🎯 Core Focus
 
-**15 Essential Commands** (reduced from 47):
-- `register` — Register agents & branches
-- `merge` — Merge conflict-free branches  
-- `conflicts` — Detect & resolve conflicts
-- `depends` — Declare & verify dependencies (optional Supabase sync)
-- `abandon` — Mark branches as abandoned
-- `doctor` — Health check & diagnostics
-- `rescue` — Triage & recover chaotic repositories
-- `monitor` — Real-time status monitoring
-- `lifecycle` — Branch lifecycle tracking
-- `audit` — Security & integrity audits
-- `sync` — Local/cloud synchronization
-- `repair` — Recover from corruption
-- `debug` — Detailed diagnostics
-- `keygen` — Generate coordination tokens
-- `help` — Built-in documentation
+**11 Essential Commands** (reduced from 47):
+- `list` — List all registered branches and their file ownership
+- `register --files` — Register a branch with the files being modified
+- `conflicts` — Show file conflicts between your branch and others
+- `merge-order` — Get topologically-sorted optimal merge order
+- `ready-check` — Verify branch is ready to merge (no WIP, no conflicts)
+- `watch --hub` — Daemon mode: watch files and auto-register with Hub sync
+- `who-touched <file>` — Show git history + agent activity for specific files
+- `rescue` — Start rescue mission for abandoned branch cleanup
+- `scan --all` — Scan and categorize all branches in the repo
+- `triage` — Categorize branches: MERGE / SALVAGE / ABANDON
+- `salvage <branch>` — Extract good code from broken branches
 
 **What This Means:**
 - Simple, focused CLI for coordination & conflict resolution
@@ -61,7 +57,7 @@ Advanced features will be available as optional plugin (coming soon).
 ### 📋 What's Changed
 
 - **Licensing:** MIT-only model (removed BSL-1.1 complexity)
-- **Documentation:** Split into public (CORE.md) and advanced (ECOSYSTEM.md)
+- **Documentation:** Split into public (CORE.md) and advanced (ecosystem docs, internal)
 - **Architecture:** Plugin-based loading with graceful fallback
 - **CLI:** Shows only core commands by default; ecosystem loads transparently if installed
 - **Examples:** Updated to reflect core-only usage patterns
@@ -107,9 +103,9 @@ spidersan monitor
 
 ### 📚 Documentation
 
-- **[CORE.md](https://github.com/treebird7/spidersan/docs/CORE.md)** — Core command reference & tutorials
-- **[USAGE.md](https://github.com/treebird7/spidersan/USAGE.md)** — Practical workflows
-- **[CLI Help](https://github.com/treebird7/spidersan#quick-start)** — Built-in `spidersan --help`
+- **[CORE.md](https://github.com/treebird7/spidersan-oss/docs/CORE.md)** — Core command reference & tutorials
+- **USAGE.md** — Practical workflows (internal)
+- **[CLI Help](https://github.com/treebird7/spidersan-oss#quick-start)** — Built-in `spidersan --help`
 
 Advanced features documented separately when ecosystem is released.
 
@@ -137,10 +133,10 @@ Built with Haiku (architecture), Codex (implementation), and Big Pickle (quality
 
 ### 🔗 Links
 
-- **GitHub:** https://github.com/treebird7/spidersan
+- **GitHub:** https://github.com/treebird7/spidersan-oss
 - **npm:** https://www.npmjs.com/package/spidersan
-- **Issues:** https://github.com/treebird7/spidersan/issues
-- **Discussions:** https://github.com/treebird7/spidersan/discussions
+- **Issues:** https://github.com/treebird7/spidersan-oss/issues
+- **Discussions:** https://github.com/treebird7/spidersan-oss/discussions
 
 ---
 

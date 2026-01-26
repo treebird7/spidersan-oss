@@ -173,7 +173,7 @@ Any agent can:
 | Limitation | Detail |
 |------------|--------|
 | Sync | Single machine only |
-| Messaging | Not available |
+| Messaging | Requires Myceliumail (separate tool) |
 | Dependencies | Not available |
 | Team use | Not practical |
 
@@ -185,6 +185,8 @@ Any agent can:
 | Network dependency | Requires internet connection |
 | Cost | Supabase usage fees apply |
 | Setup | More complex initial configuration |
+
+**Note:** Messaging is provided via Myceliumail (`mycmail`), not by the storage layer.
 
 ---
 
@@ -230,16 +232,9 @@ Any agent can:
 
 ---
 
-## Messaging Limitations (Supabase Only)
+## Messaging Limitations (Myceliumail Integration)
 
-| Limitation | Detail |
-|------------|--------|
-| No real-time push | Agents must poll inbox |
-| No delivery confirmation | No read receipts |
-| No threading | Single reply-to reference only |
-| No attachments | File content in message body only |
-| No encryption | Messages stored in plain text |
-| Repo-scoped | Cannot message across repos |
+Spidersan does not implement messaging itself. When you use wake or messaging commands, Spidersan delegates to the Myceliumail CLI (`mycmail`). Delivery guarantees, encryption, inbox behavior, and real-time push are determined by Myceliumail configuration, not Spidersan.
 
 ---
 

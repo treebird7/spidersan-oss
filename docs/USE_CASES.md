@@ -7,7 +7,7 @@ tags: [agent/mappersan, agent/spidersan, topic/mcp]
 > **The Complete Guide to Spidersan Applications**
 > Branch Coordination CLI for AI Coding Agents
 
-Note: Messaging commands in this guide (`send`, `inbox`, `read`) are ecosystem-only and require the optional `spidersan-ecosystem` plugin.
+Note: Messaging commands in this guide (`send`, `inbox`, `read`) are ecosystem-only and require the optional `spidersan-ecosystem` plugin plus Myceliumail (`mycmail`) configured.
 
 ---
 
@@ -710,7 +710,7 @@ Every branch registered with Spidersan includes description, agent, files modifi
 > "Our AI assistants can't talk to each other. Claude found a bug that Cursor needed to know about, but there was no way to communicate."
 
 **The Solution:**
-Spidersan's agent messaging system enables AI-to-AI communication with typed messages, priorities, and handoffs.
+Spidersan ecosystem messaging (via Myceliumail) enables AI-to-AI communication with typed messages, priorities, and handoffs.
 
 **Key Message:** *"Give your AI agents a voice. Let them coordinate like a real team."*
 
@@ -755,7 +755,7 @@ Spidersan calculates optimal merge order based on file conflicts and declared de
 |--------|--------|-----------|
 | Conflict detection | At PR time (too late) | Before work begins |
 | Branch tracking | Spreadsheets/Notion | Automated CLI |
-| Agent communication | Slack/Discord | Native agent messaging |
+| Agent communication | Slack/Discord | Myceliumail-backed messaging (ecosystem) |
 | Merge ordering | Guesswork | Calculated algorithm |
 
 **Hashtags:** `#productivity` `#automation` `#developer-experience`
