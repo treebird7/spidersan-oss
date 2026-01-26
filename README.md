@@ -99,6 +99,8 @@ spidersan merge-order
 | `spidersan watch` | Daemon mode - watch files and auto-register |
 | `spidersan doctor` | Diagnose local state and registry health |
 
+Keep core commands and add a "Coming Soon" or "Ecosystem Plugin" section for advanced commands like `who-touched`, `monitor`, `lock`, etc.
+
 ### Ecosystem Plugin (Optional)
 
 Install `spidersan-ecosystem` to unlock advanced coordination (internal for now):
@@ -176,6 +178,20 @@ Tell us what's working, what's broken, and what you'd love to see next.
 ## 🤝 Contributing
 
 Contributions welcome! Please read our contributing guidelines first.
+
+---
+
+## Support
+
+### Fuel the Flock
+
+Treebird is free and open source. Star our repos on GitHub or support us to keep the servers running and the agents dreaming.
+
+❤️ Sponsor on GitHub
+https://github.com/sponsors/treebird7
+
+☕ Buy me a coffee
+https://buymeacoffee.com/tree.bird
 
 ---
 
