@@ -44,13 +44,23 @@ When 3+ agents work on a codebase:
 2. **DevOps Teams** - Managing AI-assisted development workflows
 3. **Solo Developers** - Running multiple AI agents on one project
 
-## Features
+## Core Features (v0.4.0)
 
-- Branch registration
-- Conflict detection (file-level)
+**15 Essential Commands:**
+- Branch registration & lifecycle management
+- Conflict detection (file-level, tiered blocking)
 - Merge ordering (heuristic)
-- Ready-check validation
-- Optional Supabase sync for cross-machine coordination
+- Dependency tracking (optional cloud sync)
+- Health checks & diagnostics
+- Repository rescue & recovery
+
+**Optional Ecosystem Plugin:**
+- Advanced locking (CRDT-based)
+- Semantic conflict detection
+- Real-time monitoring
+- Intent-aware scanning
+- Peer-to-peer torrenting
+- Messaging & audit trails
 
 ## Competitive Advantage
 
@@ -58,15 +68,17 @@ When 3+ agents work on a codebase:
 - **Zero config** - works with any Git workflow
 - **Language agnostic** - not tied to any AI platform
 - **Local-first** - no mandatory cloud dependency
+- **MIT licensed** - open source, no restrictions
 
 ## Roadmap
 
-1. **Q1 2025**: CLI v1.0, npm package
-2. **Q2 2025**: MCP server, conflict detection refinements
-3. **Q3 2025**: VS Code extension, dashboard
-4. **Q4 2025**: Enterprise self-hosted
+1. **Q1 2026** ✅: CLI v0.4.0, focused core (15 commands), npm package
+2. **Q2 2026**: Ecosystem plugin public release, MCP server refinements
+3. **Q3 2026**: VS Code extension, dashboard
+4. **Q4 2026**: Enterprise features, self-hosted Hub
 
-## Contact
+## Links
 
-- GitHub: [github.com/treebird7/Spidersan](https://github.com/treebird7/Spidersan)
-- Email: [hello@spidersan.dev](mailto:hello@spidersan.dev)
+- **GitHub:** [github.com/treebird7/spidersan-oss](https://github.com/treebird7/spidersan-oss)
+- **npm:** [npmjs.com/package/spidersan](https://www.npmjs.com/package/spidersan)
+- **Docs:** [CORE.md](CORE.md) for full documentation

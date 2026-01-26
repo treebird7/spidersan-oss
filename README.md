@@ -81,7 +81,7 @@ spidersan merge-order
 
 ## ✨ Features
 
-### Core Commands (MIT)
+### Core Commands
 
 | Command | Description |
 |---------|-------------|
@@ -183,7 +183,7 @@ Contributions welcome! Please read our contributing guidelines first.
 
 ## 📄 License
 
-- **MIT License**: [LICENSE](LICENSE)
+MIT License - see [LICENSE](LICENSE) for details
 
 ---
 
