@@ -10,13 +10,13 @@ Spidersan is designed with a **local-first** architecture. Your code and branch 
 
 ## What We Collect
 
-### Free Tier
+### Local Mode
 
-**Nothing.** The free CLI operates entirely locally with no network calls.
+**Nothing.** The CLI operates entirely locally with no network calls.
 
-### Pro Tier (Optional)
+### Optional Cloud Sync
 
-When using Pro features with a cloud backend:
+When using a cloud backend (Supabase):
 
 | Data | Purpose | Retention |
 |------|---------|-----------|

@@ -152,9 +152,8 @@ spidersan rescue-status           # View mission progress
 - **Cannot predict semantic conflicts** - Only file-level overlap detection
 
 ### Storage Limitations:
-- **Local storage**: Max 5 concurrent branches (free tier)
-- **No real-time sync**: Local storage is single-machine only
-- **Supabase required** for: messaging, cross-machine sync, dependencies
+- **Local storage**: Single-machine only (no real-time sync)
+- **Supabase optional** for cross-machine sync and dependency tracking
 
 ## Quick Patterns
 

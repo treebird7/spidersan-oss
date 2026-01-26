@@ -11,6 +11,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-01-26 (Core Release)
+
+This release consolidates Spidersan into a focused, professional 15-command core with an optional ecosystem plugin for advanced features.
+
+### Added
+- **Plugin Architecture** - Optional ecosystem commands loaded at runtime via `ecosystem-loader.ts`
+- **Version Mismatch Detection** - Warns if ecosystem plugin is incompatible with core version
+- **Type Stubs** - Support for optional ecosystem module without installation
+- **Ecosystem Package** - Separate `spidersan-ecosystem` package for advanced features (locking, intent scanning, real-time monitoring, torrenting, messaging, security audit)
+
+### Changed
+- **Core Streamlined** - Reduced from 47 commands to 15 essential commands
+- **Documentation Split** - Public CORE.md (15 commands) vs. advanced ECOSYSTEM.md (16 commands)
+- **CLI Messaging** - Removed Pro/BSL licensing references; MIT-only across all packages
+- **README Refocused** - Emphasizes core use cases (coordination, conflict resolution)
+- **USAGE Examples** - Updated to match 15-command core; ecosystem features documented separately
+
+### Removed
+- **16 Ecosystem Commands** - Moved to optional `spidersan-ecosystem` plugin: lock, semantic, torrent, monitor, intent-scan, active-windows, radar, collab, collab-sync, sync-all, tension, audit-mark, send, inbox, msg-read, keygen
+- **Pro Licensing** - Consolidated to MIT-only model
+
+### Fixed
+- **Abandon Command Name** - Consistency across CORE.md and CLI help
+- **Register Examples** - Now reflect actual core command behavior
+
 ## [0.3.0] - 2026-01-25 (Feature Release)
 
 This release focuses on advanced coordination infrastructure, forensic analysis, and offline-first reliability.
@@ -82,22 +107,12 @@ This release addresses several critical security vulnerabilities. Users are stro
 ## [0.2.0] - 2025-12-23
 
 ### Added
-- **Pro license system** - Ed25519-based cryptographic licensing
-  - `spidersan activate <key>` - Activate Pro license
-  - `spidersan status` - Check license and branch status
-  - 5-branch limit for free tier
-  - Unlimited branches for Pro users
 - **MCP Server** - Model Context Protocol integration for Claude Desktop
   - 7 tools: list_branches, check_conflicts, get_merge_order, register_branch, mark_merged, mark_abandoned, get_branch_info
-  - Pro license required
   - Global storage at `~/.spidersan/registry.json`
 - **Update check notifications** - CLI checks npm for newer versions
   - Shows banner when update available
   - 24-hour cache, non-blocking
-- **Pro READMEs** - Updated docs with pricing ($9/mo) and features
-  - Free vs Pro comparison table
-  - Feedback & support section
-  - Contact: treebird7@proton.me
 
 ### Changed
 - MCP server uses global storage (works without git context)

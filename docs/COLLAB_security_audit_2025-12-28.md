@@ -9,6 +9,8 @@ tags: [agent/myceliumail, agent/spidersan, type/collab]
 > **Status:** 🟠 Action Recommended  
 > **Requested By:** Freedbird
 
+Note: The audited commands (`send`, `close`, `collab`) are now ecosystem-only.
+
 ---
 
 ## 📋 Executive Summary

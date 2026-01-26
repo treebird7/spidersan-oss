@@ -7,6 +7,8 @@ tags: [agent/mappersan, agent/spidersan, topic/mcp]
 > **The Complete Guide to Spidersan Applications**
 > Branch Coordination CLI for AI Coding Agents
 
+Note: Messaging commands in this guide (`send`, `inbox`, `read`) are ecosystem-only and require the optional `spidersan-ecosystem` plugin.
+
 ---
 
 ## Table of Contents
@@ -192,7 +194,7 @@ spidersan register --files lib/cache.ts --desc "Experiment: In-memory LRU cache"
 
 # Later, mark winner and abandon others
 spidersan merged --pr 456  # Redis approach won
-spidersan abandoned  # Abandon LRU approach (switch to that branch first)
+spidersan abandon  # Abandon LRU approach (switch to that branch first)
 ```
 
 **Hashtags:** `#experimentation` `#a-b-testing` `#prototype-tracking` `#decision-making`
@@ -464,7 +466,7 @@ spidersan send <target-agent> "<subject>" --type <info|question|alert|handoff> \
 spidersan merged --pr <pr-number>
 
 # When abandoning an approach
-spidersan abandoned
+spidersan abandon
 ```
 
 **Why:** This keeps the registry accurate and helps `merge-order` calculations.
@@ -496,7 +498,7 @@ spidersan abandoned
 | Command | When to Use | Example |
 |---------|-------------|---------|
 | `merged` | After PR is merged | `spidersan merged --pr 123` |
-| `abandoned` | Giving up on approach | `spidersan abandoned` |
+| `abandon` | Giving up on approach | `spidersan abandon` |
 | `sync` | Registry seems stale | `spidersan sync` |
 
 ---
@@ -599,7 +601,7 @@ gh pr create --title "Feature: XYZ"
 spidersan merged --pr 123
 
 # Failure path
-spidersan abandoned
+spidersan abandon
 git branch -D feature/failed-experiment
 ```
 
@@ -849,27 +851,14 @@ With Spidersan ready-check:
 
 ## 5. Feature Highlights for Marketing
 
-### Free Tier (MIT License)
 - Branch registration and tracking
-- Conflict detection
-- Merge order calculation
+- Conflict detection (file-level)
+- Merge order recommendations (heuristic)
 - WIP/TODO detection
 - Stale branch management
-- Local storage (no account needed)
+- Optional Supabase sync (cross-machine coordination)
 
-**Message:** *"Everything you need to coordinate AI agents. Free forever."*
-
----
-
-### Pro Tier (Business Source License)
-- Unlimited concurrent branches
-- Cloud sync with Supabase
-- Agent-to-agent messaging
-- Conflict prediction
-- Team collaboration
-- MCP Server integration
-
-**Message:** *"Scale your AI coordination. Team features for growing teams."*
+**Message:** *"Everything you need to coordinate AI agents."*
 
 ---
 
@@ -1150,7 +1139,7 @@ spidersan triage
 # Shows: MERGE (3) | SALVAGE (5) | ABANDON (7)
 
 # 4. See the light
-spidersan status
+spidersan rescue-status
 # Clear action plan with next steps
 ```
 

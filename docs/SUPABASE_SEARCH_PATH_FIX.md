@@ -6,6 +6,8 @@
 **Date Fixed:** 2025-12-17
 **Project:** Spidersan (treebird7/Spidersan)
 
+Note: `spidersan inbox` is an ecosystem-only command.
+
 ## What Was Broken
 
 Supabase's database linter flagged 4 PostgreSQL functions with security warnings:
