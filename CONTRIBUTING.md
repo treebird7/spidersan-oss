@@ -69,7 +69,7 @@ npm run dev
 ## Questions?
 
 Feel free to reach out:
-- **GitHub Issues**: [github.com/treebird7/Spidersan/issues](https://github.com/treebird7/Spidersan/issues)
+- **GitHub Issues**: [github.com/treebird7/spidersan-oss/issues](https://github.com/treebird7/spidersan-oss/issues)
 - **Email**: treebird7@proton.me
 
 ---

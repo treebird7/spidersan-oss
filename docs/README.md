@@ -135,9 +135,9 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Support
 
-- 📖 [Documentation](https://github.com/treebird7/Spidersan)
-- 💬 [Discussions](https://github.com/treebird7/Spidersan/discussions)
-- 🐛 [Issues](https://github.com/treebird7/Spidersan/issues)
+- 📖 [Documentation](https://github.com/treebird7/spidersan-oss)
+- 💬 [Discussions](https://github.com/treebird7/spidersan-oss/discussions)
+- 🐛 [Issues](https://github.com/treebird7/spidersan-oss/issues)
 
 ---
 
