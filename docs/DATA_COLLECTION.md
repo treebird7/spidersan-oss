@@ -33,10 +33,21 @@ When using a cloud backend (Supabase):
 
 ## Your Control
 
-- All cloud features are opt-in
-- Use `spidersan config --local-only` to disable all network calls
-- Request data deletion anytime
+- **All cloud features are opt-in** - Core works entirely offline
+- **Optional Supabase sync** - Use `depends --cloud` to enable cross-machine coordination
+- **No tracking by default** - Core CLI has zero telemetry
+- **Request data deletion anytime** - Contact us if you used cloud features
+
+## Version 0.4.0 Privacy
+
+Spidersan 0.4.0 **core** has:
+- ✅ Zero telemetry
+- ✅ Zero network calls (unless you opt-in to cloud sync)
+- ✅ All data stays local
+- ✅ Open source (MIT license) - audit the code yourself
+
+Advanced ecosystem features (optional plugin, coming soon) may include additional opt-in cloud features with the same privacy-first approach.
 
 ## Contact
 
-Questions about data practices? [privacy@spidersan.dev](mailto:privacy@spidersan.dev)
+Questions about data practices? File an issue on [GitHub](https://github.com/treebird7/spidersan-oss/issues)
