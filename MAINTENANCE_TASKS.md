@@ -42,13 +42,13 @@
 
 ---
 
-#### 2. CHANGELOG.md Update
+#### 2. CHANGELOG.md Update (Internal)
 **Owner:** 📚 **Watsan** (documentation + indexing)  
 **Priority:** P1  
 **Estimated time:** 15 minutes
 
 **Task:**
-Update CHANGELOG.md with recent additions:
+Update internal CHANGELOG.md with recent additions:
 - `/reflect` workflow (commit eb4d970)
 - `/git-sync` workflow (commit dc61af8)
 - `/remote-agents` workflow (commit 27dd7e2)
@@ -72,8 +72,8 @@ Update CHANGELOG.md with recent additions:
 - Version bumped if needed
 
 **Files:**
-- `/Dev/Spidersan/CHANGELOG.md`
-- `/Dev/Spidersan/package.json` (if version bump)
+- `/Users/freedbird/Dev/treebird-internal/spidersan-ecosystem/archives/spidersan-public-2026-01-26/CHANGELOG.md`
+- `/Users/freedbird/Dev/spidersan-public/package.json` (if version bump)
 
 ---
 

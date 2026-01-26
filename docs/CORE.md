@@ -219,7 +219,7 @@ spidersan sync --all             # Force full sync with git
 - ✅ Coordinating merge order
 - ✅ Checking readiness
 
-**[Spidersan Ecosystem](ECOSYSTEM.md)** (advanced) adds:
+**Spidersan Ecosystem** (internal plugin) adds:
 - 🚀 Prevent conflicts with symbol locking (distributed CRDT)
 - 🚀 Detect duplicate work before coding starts
 - 🚀 Monitor branch activity in real-time dashboards
@@ -287,6 +287,6 @@ spidersan cleanup
 
 ## Next: Ecosystem Features
 
-Ready for more? [Read about Spidersan Ecosystem](ECOSYSTEM.md) for advanced team coordination features.
+Ready for more? The Spidersan Ecosystem (internal plugin) covers advanced team coordination features.
 
 Or stick with core. Both are great. 🕷️

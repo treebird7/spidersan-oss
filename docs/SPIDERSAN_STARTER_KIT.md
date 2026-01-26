@@ -14,7 +14,7 @@ Spidersan is a **branch coordination tool** for AI coding agents. It tracks whic
 
 **The metaphor:** The spider's web doesn't catch prey — it *senses* the forest. Every strand is a nerve ending.
 
-Note: `mcp-health` is an ecosystem-only command.
+Note: `mcp-health` is an ecosystem-only command (requires the optional plugin).
 
 ---
 
@@ -146,7 +146,7 @@ spidersan watch --agent myagent --hub
 | `spidersan merge-order` | Get optimal merge order |
 | `spidersan ready-check` | Verify branch is merge-ready |
 | `spidersan watch` | Daemon mode, auto-register |
-| `spidersan mcp-health` | Check MCP server status |
+| `spidersan mcp-health` | Check MCP server status (ecosystem-only) |
 
 ---
 
@@ -183,6 +183,8 @@ spidersan conflicts --wake
 # With retry after waiting
 spidersan conflicts --wake --retry 60
 ```
+
+**Note:** This uses the Myceliumail CLI (`mycmail`). Messaging commands like `spidersan send`, `inbox`, and `read` are ecosystem-only and require the plugin plus Myceliumail setup.
 
 ---
 

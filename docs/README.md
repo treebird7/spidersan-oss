@@ -115,8 +115,8 @@ spidersan cleanup --days 7
 ## Documentation
 
 - [Core Guide](CORE.md)
-- [Ecosystem Overview](ECOSYSTEM.md)
-- [Usage](../USAGE.md)
+- Ecosystem Overview (internal; see spidersan-ecosystem repo)
+- Usage (internal; see spidersan-ecosystem repo)
 - [Limitations](LIMITATIONS.md)
 
 ---

@@ -17,7 +17,7 @@ Every product in the Treebird ecosystem should track these status flags.
 |------|--------|---------|
 | **E2E Tested** | ✅ Yes | CI runs tests, build verified locally |
 | **User Reviewed** | ✅ In Use | Treebird uses for daily coordination |
-| **Documentation** | ✅ Complete | README, STARTER_KIT, LESSONS_LEARNED |
+| **Documentation** | ✅ Complete | README, STARTER_KIT (public); Lessons Learned (internal) |
 | **Clarity** | ✅ Good | Clear CLI, tiered conflict system |
 | **Published** | ✅ npm | `npm install -g spidersan` |
 
