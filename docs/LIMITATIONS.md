@@ -168,17 +168,16 @@ Any agent can:
 
 ## Storage-Specific Limitations
 
-### Local Storage (Free Tier)
+### Local Storage
 
 | Limitation | Detail |
 |------------|--------|
-| Branch limit | 5 concurrent branches max |
 | Sync | Single machine only |
 | Messaging | Not available |
 | Dependencies | Not available |
 | Team use | Not practical |
 
-### Supabase Storage (Pro Tier)
+### Supabase Storage (Optional)
 
 | Limitation | Detail |
 |------------|--------|

@@ -46,18 +46,11 @@ When 3+ agents work on a codebase:
 
 ## Features
 
-| Free | Pro |
-|------|-----|
-| Branch registration | Unlimited branches |
-| Conflict detection | Conflict prediction |
-| Merge ordering | MCP Server integration |
-| Ready-check validation | Priority support |
-
-## Pricing Model
-
-- **Free Tier**: 5 concurrent branches, core CLI features
-- **Pro Tier**: $29/month per project, unlimited branches + advanced features
-- **Enterprise**: Custom pricing, self-hosted option
+- Branch registration
+- Conflict detection (file-level)
+- Merge ordering (heuristic)
+- Ready-check validation
+- Optional Supabase sync for cross-machine coordination
 
 ## Competitive Advantage
 
@@ -69,7 +62,7 @@ When 3+ agents work on a codebase:
 ## Roadmap
 
 1. **Q1 2025**: CLI v1.0, npm package
-2. **Q2 2025**: MCP server, conflict prediction
+2. **Q2 2025**: MCP server, conflict detection refinements
 3. **Q3 2025**: VS Code extension, dashboard
 4. **Q4 2025**: Enterprise self-hosted
 

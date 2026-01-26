@@ -7,6 +7,8 @@ tags: [agent/myceliumail, agent/spidersan]
 > **Effective Date:** December 2024
 > **Change:** Spidersan now uses Myceliumail as its external messaging engine.
 
+Note: Messaging commands (`send`, `inbox`, `keygen`, `key-import`, `keys`) are ecosystem-only and require the optional `spidersan-ecosystem` plugin.
+
 ## What Changed?
 
 Previously, Spidersan had built-in messaging logic (`src/storage/supabase.ts` messaging methods).

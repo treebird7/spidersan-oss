@@ -2,6 +2,8 @@
 
 > How FlockView can auto-sync collabs to prevent merge conflicts
 
+Note: `collab-sync` is an ecosystem-only command.
+
 ---
 
 ## Quick Start

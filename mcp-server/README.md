@@ -7,15 +7,9 @@ tags: [agent/spidersan, type/readme]
 
 MCP Server for Spidersan - Branch coordination for AI coding agents.
 
-## 🕷️ Pro Feature
+## MIT License
 
-This MCP server requires a Pro license. Activate with:
-
-```bash
-spidersan activate <license-key>
-```
-
-Get a license at: [spidersan.dev/pro](https://spidersan.dev/pro)
+This MCP server is included under the MIT license with the rest of Spidersan.
 
 ## Installation
 

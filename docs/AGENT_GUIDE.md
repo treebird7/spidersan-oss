@@ -10,6 +10,8 @@ tags: [agent/mappersan, agent/myceliumail, agent/spidersan, topic/mcp]
 
 Branch coordination tool. Prevents merge conflicts between AI agents.
 
+Note: This guide includes ecosystem-only commands (`send`, `inbox`, `read`, `keygen`, `key-import`, `keys`, `pulse`, `mcp-health`). These require the optional `spidersan-ecosystem` plugin.
+
 ## 5 Commands You'll Use 90% of the Time
 
 ```bash
@@ -25,7 +27,7 @@ spidersan list                                       # See all branches
 When you wake up in a Spidersan-enabled repo:
 
 ```bash
-# 1. Quick health check
+# 1. Quick health check (ecosystem)
 spidersan pulse --quiet
 
 # 2. Check for conflicts
@@ -64,7 +66,7 @@ After PR merged?
 └─ merged --pr <num>
 
 Branch abandoned?
-└─ abandoned
+└─ abandon
 ```
 
 ## Command Syntax Cheat Sheet
@@ -77,7 +79,7 @@ Branch abandoned?
 | Pre-merge check | `spidersan ready-check` |
 | Get merge order | `spidersan merge-order` |
 | Mark merged | `spidersan merged --pr 123` |
-| Mark abandoned | `spidersan abandoned` |
+| Mark abandoned | `spidersan abandon` |
 | Find stale | `spidersan stale --days 7` |
 | Clean up | `spidersan cleanup --older-than 14` |
 | Sync with git | `spidersan sync` |
@@ -263,4 +265,3 @@ spidersan mcp-health --kill-zombies  # Clean up duplicates
 | 1 WARN | Log + notify | Same file, different areas |
 | 2 PAUSE | 30s delay | Same function/block |
 | 3 BLOCK | Stop push | Direct overlap |
-

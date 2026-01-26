@@ -22,59 +22,12 @@ import {
     abandonCommand,
     mergedCommand,
     syncCommand,
-    // Messaging
-    sendCommand,
-    inboxCommand,
-    msgReadCommand,
-    // Key management
-    keygenCommand,
-    keyImportCommand,
-    keysCommand,
-    // License
-    activateCommand,
-    statusCommand,
-    // Session lifecycle
-    wakeCommand,
-    closeCommand,
-    collabCommand,
-    // Diagnostics
-    doctorCommand,
-    whoOwnsCommand,
-    pulseCommand,
-    completionsCommand,
-    // Security Pipeline
-    tensionCommand,
-    auditMarkCommand,
-    // Session logging
-    logCommand,
-    // Daemon mode
     watchCommand,
-    radarCommand,
-    // Demo/Onboarding
-    welcomeCommand,
-    demoCommand,
-    // MCP Health
-    mcpHealthCommand,
-    mcpRestartCommand,
-    // Task Torrenting
-    torrentCommand,
-    // Collab Sync
-    collabSyncCommand,
-    // Global Sync
-    syncAllCommand,
-    // Layer 3+4 Conflict Detection
-    intentScanCommand,
-    activeWindowsCommand,
-    // Semantic Locking (CRDT)
-    lockCommand,
-    // Terminal UI
-    tuiCommand,
-    // File History
-    whoTouchedCommand,
-    // Semantic
-    semanticCommand,
-    monitorCommand,
+    doctorCommand,
+    loadEcosystemCommands,
+    getEcosystemStatus,
 } from '../commands/index.js';
+import { checkForUpdates } from '../lib/update-check.js';
 
 // Read version from package.json dynamically
 const require = createRequire(import.meta.url);
@@ -122,15 +75,13 @@ program
         }
     });
 
-// Core commands (Free tier)
+// Core commands
 program.addCommand(initCommand);
 program.addCommand(registerCommand);
 program.addCommand(listCommand);
 program.addCommand(conflictsCommand);
 program.addCommand(mergeOrderCommand);
 program.addCommand(readyCheckCommand);
-
-// Branch lifecycle
 program.addCommand(dependsCommand);
 program.addCommand(staleCommand);
 program.addCommand(cleanupCommand);
@@ -138,79 +89,24 @@ program.addCommand(rescueCommand);
 program.addCommand(abandonCommand);
 program.addCommand(mergedCommand);
 program.addCommand(syncCommand);
-
-// Messaging (requires Supabase)
-program.addCommand(sendCommand);
-program.addCommand(inboxCommand);
-program.addCommand(msgReadCommand);
-
-// Key management (for encrypted messaging)
-program.addCommand(keygenCommand);
-program.addCommand(keyImportCommand);
-program.addCommand(keysCommand);
-
-// License management
-program.addCommand(activateCommand);
-program.addCommand(statusCommand);
-
-// Session lifecycle
-program.addCommand(wakeCommand);
-program.addCommand(closeCommand);
-collabCommand(program);
-
-// Diagnostics
-program.addCommand(doctorCommand);
-program.addCommand(whoOwnsCommand);
-program.addCommand(pulseCommand);
-program.addCommand(completionsCommand);
-
-// Security Pipeline (ssan + srlk)
-program.addCommand(tensionCommand);
-program.addCommand(auditMarkCommand);
-
-// Session logging
-program.addCommand(logCommand);
-
-// Daemon mode
 program.addCommand(watchCommand);
-program.addCommand(radarCommand);
+program.addCommand(doctorCommand);
 
-// Demo/Onboarding
-program.addCommand(welcomeCommand);
-program.addCommand(demoCommand);
+async function main(): Promise<void> {
+    const ecosystemCommands = await loadEcosystemCommands();
+    ecosystemCommands.forEach((command) => program.addCommand(command));
 
-// MCP Health
-program.addCommand(mcpHealthCommand);
-program.addCommand(mcpRestartCommand);
+    const ecosystemStatus = getEcosystemStatus();
+    if (ecosystemStatus.versionMismatch && ecosystemStatus.requiredRange && ecosystemStatus.coreVersion) {
+        console.warn(
+            `⚠️ Ecosystem expects spidersan@${ecosystemStatus.requiredRange}, but core is ${ecosystemStatus.coreVersion}`
+        );
+    }
 
-// Task Torrenting
-program.addCommand(torrentCommand);
+    // Check for updates (non-blocking)
+    checkForUpdates().catch(() => { });
 
-// Collab Sync (prevents merge conflicts)
-program.addCommand(collabSyncCommand);
+    program.parse();
+}
 
-// Global Sync (all repos)
-program.addCommand(syncAllCommand);
-
-// Layer 3+4 Conflict Detection
-program.addCommand(intentScanCommand);
-program.addCommand(activeWindowsCommand);
-
-// Semantic Locking (CRDT-based)
-program.addCommand(lockCommand);
-
-// Terminal UI
-program.addCommand(tuiCommand);
-program.addCommand(monitorCommand);
-
-// File History (forensics)
-program.addCommand(whoTouchedCommand);
-
-// Semantic RLS
-program.addCommand(semanticCommand);
-
-// Check for updates (non-blocking)
-import { checkForUpdates } from '../lib/update-check.js';
-checkForUpdates().catch(() => { });
-
-program.parse();
+void main();

@@ -14,6 +14,8 @@ Spidersan is a **branch coordination tool** for AI coding agents. It tracks whic
 
 **The metaphor:** The spider's web doesn't catch prey — it *senses* the forest. Every strand is a nerve ending.
 
+Note: `mcp-health` is an ecosystem-only command.
+
 ---
 
 ## 1. Install

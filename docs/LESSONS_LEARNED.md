@@ -2,6 +2,8 @@
 
 > Technical lessons specific to Spidersan development and usage.
 
+Note: `collab-sync`, `intent-scan`, and `active-windows` are ecosystem-only commands.
+
 ---
 
 ## Collab Documentation

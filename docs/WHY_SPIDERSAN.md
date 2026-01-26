@@ -69,12 +69,10 @@ spidersan merge-order
 - Ready-to-merge validation
 - Local storage
 
-### Pro Tier ($15/month)
-- Cloud sync across machines
-- Team coordination
-- Agent-to-agent messaging
-- Conflict prediction (coming)
-- Web dashboard (coming)
+### Optional Cloud Sync
+- Supabase sync across machines (opt-in)
+- Team coordination (shared registry)
+- Agent-to-agent messaging (via Myceliumail)
 
 ---
 

@@ -47,8 +47,8 @@ $ spidersan merge-order
 
 📋 Recommended merge sequence:
   1. fix-auth-bug     (no dependencies)
-  2. new-dashboard    (depends on main)
-  3. refactor-api     (rebase after #1)
+    2. new-dashboard    (overlaps with #1)
+    3. refactor-api     (rebase after #1)
 ```
 
 ---
@@ -68,49 +68,38 @@ cd your-project
 spidersan init
 ```
 
-This creates a `.spidersanrc` config file.
+This creates `.spidersan/` with local registry data. Optional config can live in `.spidersanrc`.
 
 ### Usage
 
 ```bash
 # Register your current branch
 git checkout -b my-feature
-spidersan register "Building awesome feature"
+spidersan register --files "src/feature.ts" --description "Building awesome feature"
 
 # See what's happening across all sessions
 spidersan list
 
-# Get optimal merge order
+# Get recommended merge order
 spidersan merge-order
 
 # Mark branch as done
-spidersan complete
+spidersan merged --pr 123
 
 # Clean up old branches
-spidersan cleanup --older-than 7d
+spidersan cleanup --days 7
 ```
 
 ---
 
 ## Features
 
-### Free (Open Source)
-
 - ✅ Branch tracking across sessions
-- ✅ Merge order recommendations
-- ✅ Supabase sync (up to 5 branches)
+- ✅ Merge order recommendations (heuristic)
+- ✅ Supabase sync (optional)
 - ✅ Git integration
 - ✅ Session persistence
-
-### Pro ($15/month)
-
-- ✅ Unlimited branches
-- ✅ Conflict prediction
-- ✅ Team collaboration
-- ✅ GitHub Actions integration
-- ✅ Web dashboard
-- ✅ MCP server for Claude
-- ✅ Priority support
+- ✅ Optional ecosystem plugin for advanced features
 
 ---
 
@@ -125,20 +114,16 @@ spidersan cleanup --older-than 7d
 
 ## Documentation
 
-- [Installation Guide](docs/installation.md)
-- [Configuration](docs/configuration.md)
-- [Commands](docs/commands.md)
-- [Pro Features](docs/pro.md)
+- [Core Guide](CORE.md)
+- [Ecosystem Overview](ECOSYSTEM.md)
+- [Usage](../USAGE.md)
+- [Limitations](LIMITATIONS.md)
 
 ---
 
 ## License
 
-Dual-licensed:
-- **Core:** MIT License (free forever)
-- **Pro:** Business Source License 1.1
-
-See [LICENSE.md](LICENSE.md) for details.
+MIT License. See [LICENSE](../LICENSE).
 
 ---
 
@@ -150,9 +135,9 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Support
 
-- 📖 [Documentation](https://github.com/yourname/spidersan/wiki)
-- 💬 [Discussions](https://github.com/yourname/spidersan/discussions)
-- 🐛 [Issues](https://github.com/yourname/spidersan/issues)
+- 📖 [Documentation](https://github.com/treebird7/Spidersan)
+- 💬 [Discussions](https://github.com/treebird7/Spidersan/discussions)
+- 🐛 [Issues](https://github.com/treebird7/Spidersan/issues)
 
 ---
 
@@ -160,10 +145,8 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 - [x] Core CLI
 - [x] Supabase sync
-- [ ] Conflict detection (Pro)
-- [ ] MCP server
-- [ ] Web dashboard
-- [ ] GitHub Actions bot
+- [ ] Conflict detection refinements
+- [ ] Ecosystem plugin rollout
 
 ---
 

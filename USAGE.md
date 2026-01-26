@@ -1,318 +1,124 @@
 # Spidersan: Branch Coordination for AI Agents
 
-> 🕷️ *"The web doesn't just connect — it coordinates."*
+> "The web doesn't just connect — it coordinates."
 
 ## 1. Overview
 
-Spidersan is the **branch coordination system** for multi-agent AI development. When multiple AI coding assistants work on the same codebase, Spidersan prevents merge conflicts, coordinates file access, and orchestrates parallel work.
+Spidersan Core is a lightweight MIT CLI for branch coordination across AI coding sessions. It helps you register what you're changing, detect conflicts early, and get a recommended merge order. An optional ecosystem plugin adds advanced coordination tools for internal teams.
 
 **Core capabilities:**
-- **Conflict Detection** — 7-layer conflict prevention system
-- **Branch Registration** — Track who's editing what
-- **Real-time Monitoring** — Watch mode and radar for live awareness
-- **Session Management** — Wake/close patterns for agent lifecycles
-- **Multi-repo Sync** — Manage all /Dev repositories at once
+- File-level conflict detection (tiered)
+- Branch registration and dependency hints
+- Merge readiness checks
+- Watch mode auto-registration
+- Cleanup and rescue tools
+- Local-first storage with optional Supabase
 
-## 2. Quick Start
+## 2. Quick Start (Core)
 
 ```bash
-# Start a session
-spidersan wake
-
-# Register what you're working on
+spidersan init
 spidersan register --files "src/app.ts,README.md" --description "Adding feature X"
-
-# Check for conflicts before committing
 spidersan conflicts
-
-# Validate before merge
 spidersan ready-check
-
-# End your session
-spidersan close
+spidersan merge-order
+spidersan merged --pr 123
 ```
 
-## 3. The 7-Layer Conflict Detection
+## 3. Core Commands
 
-Spidersan uses a sophisticated multi-layer approach:
-
-| Layer | Name | What It Detects |
-|-------|------|-----------------|
-| L1 | File-level | Git conflicts (same file, different changes) |
-| L2 | Semantic | Code dependencies (function calls, imports) |
-| L3 | Intent | Overlapping work in collab entries |
-| L4 | Temporal | Active windows (who's working now) |
-| L5 | Cross-repo | Breaking changes across repositories |
-| L6 | Predictive | Pattern analysis (likely conflicts) |
-| L7 | Resolution | Auto-merge strategies |
-
-## 4. Core Commands
-
-### Session Management
-
-```bash
-# Wake up - start your session
-spidersan wake
-spidersan wake --quiet          # Minimal output
-spidersan wake --skip-mail      # Skip messaging integration
-
-# Close - end your session  
-spidersan close
-```
-
-### Branch Registration
-
-```bash
-# Register files you're editing
-spidersan register --files "file1.ts,file2.ts"
-spidersan register --files "src/*" --description "Refactoring auth"
-spidersan register --auto        # Auto-detect from git diff
-spidersan register -i            # Interactive mode
-
-# List all registered branches
-spidersan list
-spidersan list --json            # JSON output
-```
-
-### Conflict Detection
-
-```bash
-# Check for conflicts
-spidersan conflicts
-spidersan conflicts --tier 2         # Only TIER 2+ (blocking)
-spidersan conflicts --strict         # Exit with error if conflicts found
-spidersan conflicts --notify         # Alert Hub about conflicts
-spidersan conflicts --wake           # Wake conflicting agents
-spidersan conflicts --auto           # Auto-resolve loop (Ralph Wiggum mode)
-```
-
-**Conflict Tiers:**
-- **Tier 1** — Potential conflicts (same directory)
-- **Tier 2** — Likely conflicts (same file, different edits)
-- **Tier 3** — Definite conflicts (same lines)
-
-### Pre-Merge Validation
-
-```bash
-# Check if branch is ready to merge
-spidersan ready-check
-spidersan merge-order           # Get optimal merge sequence
-```
-
-## 5. Real-time Monitoring
-
-### Watch Mode (Daemon)
-
-```bash
-# Watch current directory for changes
-spidersan watch
-
-# Watch with options
-spidersan watch --agent birdsan       # Set agent identifier
-spidersan watch --hub                 # Connect to Hub for real-time warnings
-spidersan watch --hub-sync            # Post conflicts to Hub chat
-spidersan watch --quiet               # Only log conflicts
-spidersan watch /path/to/dir          # Watch specific directory
-```
-
-### Radar
-
-```bash
-# Real-time conflict radar
-spidersan radar
-spidersan radar --hub https://hub.example.com
-```
-
-### Pulse
-
-```bash
-# Self-awareness check
-spidersan pulse
-spidersan pulse --json
-```
-
-## 6. Multi-Repo Sync
-
-```bash
-# Sync all /Dev repositories
-spidersan sync-all                    # Show status of all repos
-spidersan sync-all --pull             # Pull all repos
-spidersan sync-all --push             # Push repos with commits
-spidersan sync-all --pull --push      # Full sync cycle
-spidersan sync-all --repos "Envoak,Sherlocksan" --pull  # Specific repos
-```
-
-## 7. Collaboration Tools
-
-### Collab Documents
-
-```bash
-# Manage collaborative documents
-spidersan collab
-spidersan collab-sync               # Prevent collab merge conflicts
-```
-
-### Intent Scanning (Layer 3)
-
-```bash
-# Detect overlapping work intentions
-spidersan intent-scan               # Scan today's collab
-spidersan intent-scan --days 3      # Scan last 3 days
-spidersan intent-scan --verbose     # Show all detected intents
-spidersan intent-scan --json        # Output as JSON
-```
-
-### Active Windows (Layer 4)
-
-```bash
-# Detect overlapping work sessions
-spidersan active-windows
-```
-
-### File History & Agent Detection
-
-```bash
-# See who touched a file (git history + agent detection)
-spidersan who-touched src/app.ts
-spidersan who-touched README.md --agents-only    # Only show agent names
-spidersan who-touched lib/auth.ts --since 7d     # Last 7 days
-spidersan who-touched api/* --json               # JSON output for automation
-```
-
-**What it shows:**
-- Git commit history for the file
-- Agent names detected from commit messages (glyphs/names)
-- Timestamps and commit messages
-- Invoakable with `--json` for programmatic use
-
-
-## 8. Task Torrenting
-
-Parallel task execution with automatic branch management:
-
-```bash
-# Create task branch
-spidersan torrent create TASK-001
-
-# Show all task branches
-spidersan torrent status
-
-# Mark task complete
-spidersan torrent complete TASK-001
-
-# Get optimal merge order
-spidersan torrent merge-order
-
-# View task tree
-spidersan torrent tree
-
-# Decompose parent into children
-spidersan torrent decompose TASK --children "TASK-A,TASK-B,TASK-C"
-```
-
-## 9. Security Integration
-
-```bash
-# Show file tensions (security pipeline)
-spidersan tension
-
-# Mark branch as security-reviewed
-spidersan audit-mark feature/my-branch
-```
-
-## 10. MCP Ecosystem
-
-```bash
-# Check MCP server health
-spidersan mcp-health
-
-# Restart MCP connections
-spidersan mcp-restart
-```
-
-## 11. Diagnostics
-
-```bash
-# Diagnose issues
-spidersan doctor
-
-# View session log
-spidersan log
-spidersan log "Session note here"
-```
-
-## 12. Configuration
-
-Initialize Spidersan in a project:
+### Initialization
 
 ```bash
 spidersan init
 ```
 
-This creates `.spidersan/` with:
-- `registry.json` — Branch registrations
-- `config.json` — Local settings
+Creates `.spidersan/` with local registry data.
 
-### Shell Completions
+### Registration & Visibility
 
 ```bash
-spidersan completions bash >> ~/.bashrc
-spidersan completions zsh >> ~/.zshrc
-spidersan completions fish >> ~/.config/fish/completions/spidersan.fish
-```
-
-## 13. Workflow Examples
-
-### Solo Agent Session
-
-```bash
-spidersan wake
+spidersan register --files "file1.ts,file2.ts"
 spidersan register --auto
-# ... do your work ...
-spidersan conflicts
-spidersan ready-check
-spidersan close
+spidersan register --interactive
+spidersan list
 ```
 
-### Multi-Agent Coordination
+### Conflict Detection
 
 ```bash
-# Agent A registers
-spidersan register --files "auth/*" --agent agentA
-
-# Agent B registers
-spidersan register --files "api/*" --agent agentB
-
-# Coordinator checks
 spidersan conflicts
-spidersan radar
+spidersan conflicts --tier 2
+spidersan conflicts --strict
+spidersan conflicts --notify
+spidersan conflicts --wake
+```
 
-# When ready
+Conflict tiers:
+- Tier 1: warn
+- Tier 2: pause
+- Tier 3: block
+
+### Dependencies (Supabase Optional)
+
+```bash
+spidersan depends feature/auth feature/oauth
+spidersan depends --branch feature/auth
+spidersan depends --clear
+```
+
+Dependency tracking requires Supabase (`SUPABASE_URL` + `SUPABASE_KEY`). Local storage will show a hint.
+
+### Readiness & Merge Order
+
+```bash
+spidersan ready-check
 spidersan merge-order
 ```
 
-### Continuous Watch
+`merge-order` is a heuristic: use it for visibility, not as a guarantee.
+
+### Branch Lifecycle
 
 ```bash
-# Start in background
-spidersan watch --hub --quiet &
-
-# Work normally... Spidersan warns of conflicts in real-time
+spidersan stale --days 14
+spidersan cleanup --days 14
+spidersan rescue --scan
+spidersan rescue --salvage path/to/file.ts
+spidersan rescue --abandon path/to/file.ts
+spidersan abandon
+spidersan merged --pr 123
+spidersan sync
 ```
 
-## 14. Troubleshooting
+### Watch Mode
 
-| Issue | Solution |
-|-------|----------|
-| "No registry found" | Run `spidersan init` first |
-| Stale branches | Run `spidersan cleanup` |
-| MCP not connecting | Run `spidersan mcp-health` |
-| Conflicts not detected | Ensure branches are registered |
+```bash
+spidersan watch
+spidersan watch --agent myagent
+spidersan watch --hub
+spidersan watch --hub-sync
+```
 
----
+### Diagnostics
 
-*Generated manually for Spidersan's Birthday Stress Test (Hour 1: No Spider Assistance)*  
-*Date: 2026-01-18*  
-*Time: Started 20:36, documented without spidersan commands*
+```bash
+spidersan doctor
+```
 
-🕷️🎂🌲
+## 4. Configuration
+
+Spidersan loads optional config from `.spidersanrc` or `.spidersanrc.json` in your repo. Invalid JSON falls back to defaults.
+
+## 5. Ecosystem Plugin (Optional)
+
+Advanced features live in the optional `spidersan-ecosystem` plugin (internal for now). When installed, the core CLI loads it automatically.
+
+**Ecosystem commands include:**
+- Monitoring and coordination: `monitor`, `radar`, `collab`, `collab-sync`
+- Semantic tools: `lock`, `semantic`, `intent-scan`, `active-windows`
+- Messaging: `send`, `inbox`, `msg-read`, `keygen`, `key-import`, `keys`
+- Task distribution: `torrent`, `sync-all`
+- Security + MCP: `tension`, `audit-mark`, `mcp-health`, `mcp-restart`
+
+If you need access, use the internal repo at `treebird-internal/spidersan-ecosystem`.

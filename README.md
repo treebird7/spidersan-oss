@@ -19,21 +19,21 @@
 
 ## 🎯 The Problem
 
-**10 AI agents. 1 file. 51 minutes of chaos.**
+**Local experiment: 10 AI agents. 1 file. 51 minutes of chaos.**
 
-Without coordination:
-- ⏱️ 51 min to complete 1 shared file
+In our experience:
+- ⏱️ ~51 min to complete 1 shared file
 - 💥 12 conflicts
-- �� 2 build breaks pushed to main
+- 🔥 2 build breaks pushed to main
 - 😰 Frustration level: 5/5
 
 ## 🕷️ The Solution
 
-**Spidersan** is your AI team's coordination layer. It tracks branches, detects conflicts early, and provides optimal merge ordering—so your agents can work in harmony.
+**Spidersan** is your AI team's coordination layer. It tracks branches, detects conflicts early, and recommends a merge order based on registered overlap—so your agents can work in harmony.
 
 ```bash
 # Register your branch
-spidersan register feature/auth --files "lib/auth.ts,api/login.ts"
+spidersan register --files "lib/auth.ts,api/login.ts"
 
 # See what conflicts with you
 spidersan conflicts
@@ -45,10 +45,10 @@ spidersan merge-order
 spidersan ready-check
 ```
 
-**Results with Spidersan:**
-- ⏱️ 5 min (10x faster)
+**Results with Spidersan (same team):**
+- ⏱️ ~5 min (about 10x faster for us)
 - ✅ 0 conflicts
-- 🎯 Optimal merge sequence
+- 🎯 Recommended merge sequence
 - 😌 Confidence: 5/5
 
 ---
@@ -65,7 +65,7 @@ npm install -g spidersan
 
 ```bash
 # 1. Register your branch when you start working
-spidersan register my-feature --files "src/component.tsx"
+spidersan register --files "src/component.tsx"
 
 # 2. Check for conflicts before you go too deep
 spidersan conflicts
@@ -73,7 +73,7 @@ spidersan conflicts
 # 3. When done, verify you're merge-ready
 spidersan ready-check
 
-# 4. Get optimal merge order for the team
+# 4. Get recommended merge order for the team
 spidersan merge-order
 ```
 
@@ -81,23 +81,33 @@ spidersan merge-order
 
 ## ✨ Features
 
-### Free (MIT License)
-
-### Free (MIT License)
+### Core Commands (MIT)
 
 | Command | Description |
 |---------|-------------|
+| `spidersan init` | Initialize a repo for local branch tracking |
 | `spidersan register` | Register a branch with files being modified |
+| `spidersan list` | List active branches and metadata |
 | `spidersan conflicts` | Show file conflicts between branches |
-| `spidersan lock` | **NEW!** Distributed CRDT-based locking with AST DNA verification |
-| `spidersan monitor` | **NEW!** Interactive TUI dashboard for real-time monitoring |
-| `spidersan rescue` | **NEW!** Automated triage & salvage for abandoned code |
-| `spidersan doctor` | **NEW!** Deep diagnostic check of the local agent environment |
-| `spidersan who-owns` | **NEW!** Forensic ownership analysis of files via git history |
+| `spidersan depends` | Declare dependencies between branches (optional Supabase sync) |
+| `spidersan merge-order` | Get recommended merge order (heuristic) |
+| `spidersan ready-check` | Verify branch is ready to merge |
+| `spidersan stale` | Find stale branches older than N days |
+| `spidersan cleanup` | Remove stale branches from registry |
+| `spidersan rescue` | Scan/salvage rogue work |
+| `spidersan abandon` | Mark a branch as abandoned |
+| `spidersan merged` | Mark a branch as merged |
+| `spidersan sync` | Sync registry with git state |
 | `spidersan watch` | Daemon mode - watch files and auto-register |
-| `spidersan merge-order` | Get topologically-sorted merge order |
-| `spidersan ready-check` | Verify branch is ready (no WIP, no conflicts) |
-| `spidersan semantic` | Semantic awareness via Knowledge Graph (optional) |
+| `spidersan doctor` | Diagnose local state and registry health |
+
+### Ecosystem Plugin (Optional)
+
+Install `spidersan-ecosystem` to unlock advanced coordination (internal for now):
+- Symbol locking (`lock`) and semantic analysis (`semantic`)
+- Intent scanning, active windows, and realtime monitoring (`intent-scan`, `active-windows`, `monitor`, `radar`)
+- Task torrenting, multi-repo sync, and messaging (`torrent`, `sync-all`, `send`, `inbox`)
+- Security pipeline + MCP health (`tension`, `audit-mark`, `mcp-health`, `mcp-restart`)
 
 
 ### Watch Mode (Daemon)
@@ -126,18 +136,14 @@ spidersan watch --agent myagent --hub --quiet
 Got a repo with 10+ abandoned branches? Let Spidersan clean up the mess:
 
 ```bash
-# 1. Start rescue mission
-spidersan rescue
+# Scan for rogue files/branches
+spidersan rescue --scan
 
-# 2. Scan and categorize all branches
-spidersan scan --all
-spidersan triage   # → MERGE / SALVAGE / ABANDON
+# Salvage a file into ./salvage/
+spidersan rescue --salvage path/to/file.ts
 
-# 3. Extract good code from broken branches
-spidersan salvage feature/old-auth --components src/auth/jwt.ts
-
-# 4. See your progress
-spidersan rescue-status
+# Abandon a rogue file
+spidersan rescue --abandon path/to/file.ts
 ```
 
 **Perfect for:** Post-hackathon cleanup, onboarding to chaotic repos, AI agent disasters.
@@ -146,6 +152,9 @@ spidersan rescue-status
 
 ## 📖 Documentation
 
+- [Core Guide](docs/CORE.md) - Public feature set and core workflows
+- [Ecosystem Overview](docs/ECOSYSTEM.md) - Advanced features (internal)
+- [Usage](USAGE.md) - CLI walkthroughs
 - [One Pager](docs/ONE_PAGER.md) - Product overview
 - [Data Collection](docs/DATA_COLLECTION.md) - Privacy & data practices
 
@@ -174,7 +183,7 @@ Contributions welcome! Please read our contributing guidelines first.
 
 ## 📄 License
 
-- **Core CLI**: [MIT License](LICENSE.md)
+- **MIT License**: [LICENSE](LICENSE)
 
 ---
 

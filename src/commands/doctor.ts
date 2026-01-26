@@ -104,14 +104,6 @@ function checkMycmail(): Check {
     }
 }
 
-function checkLicense(): Check {
-    const licensePath = join(homedir(), '.spidersan', 'license.json');
-    if (existsSync(licensePath)) {
-        return { name: 'Pro License', status: 'ok', message: 'License found' };
-    }
-    return { name: 'Pro License', status: 'warn', message: 'Free tier (5 branch limit)' };
-}
-
 async function checkStaleBranches(): Promise<Check> {
     try {
         const storage = await getStorage();
@@ -282,7 +274,6 @@ export const doctorCommand = new Command('doctor')
             checkGitignore(),
             checkErrorLogs(),
             checkMycmail(),
-            checkLicense(),
             checkEmfileLimit(),
             checkWatcherStatus(),
             checkNodeVersion(),

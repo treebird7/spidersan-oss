@@ -4,6 +4,8 @@
 
 **Spidersan** is a coordination layer for autonomous AI coding agents. It acts as a semantic "traffic controller" between agents and the underlying Git repository, preventing collisions before they happen and managing parallel work streams through a "Task Torrenting" protocol.
 
+Note: `torrent`, `intent-scan`, `active-windows`, `collab-sync`, and `pulse` are ecosystem-only commands.
+
 ### High-Level Architecture
 
 ```mermaid

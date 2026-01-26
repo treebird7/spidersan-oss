@@ -27,6 +27,8 @@ Every product in the Treebird ecosystem should track these status flags.
 
 ### CLI Commands
 
+Note: `mcp-health` and `pulse` are ecosystem-only commands.
+
 | Command | Tested | Documented | Notes |
 |---------|--------|------------|-------|
 | `init` | ✅ | ✅ | Creates .spidersan/ |

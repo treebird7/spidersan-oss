@@ -13,6 +13,8 @@ While Spidersan and Mappersan were designed for code repositories, they work equ
 - Data files (JSON, YAML, CSV)
 - Design assets metadata
 
+Note: `spidersan send` is ecosystem-only and requires the optional `spidersan-ecosystem` plugin.
+
 ## Why Use These Tools for Documents?
 
 | Problem | Without Spidersan | With Spidersan |
@@ -119,7 +121,7 @@ spidersan register \
   --desc "Statistical analysis and figures"
 ```
 
-### Dependency Declaration (Supabase tier)
+### Dependency Declaration (Supabase mode, optional)
 ```bash
 # Results depend on methodology being finalized
 spidersan depends methodology-branch
