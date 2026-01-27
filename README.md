@@ -61,6 +61,13 @@ spidersan ready-check
 npm install -g spidersan
 ```
 
+### Guided Setup (Optional)
+
+```bash
+spidersan welcome
+spidersan config wizard
+```
+
 ### Basic Usage
 
 ```bash
@@ -85,21 +92,26 @@ spidersan merge-order
 
 | Command | Description |
 |---------|-------------|
-| `spidersan list` | List all registered branches and their file ownership |
+| `spidersan init` | Initialize Spidersan in the current project |
 | `spidersan register --files` | Register a branch with the files being modified |
+| `spidersan list` | List all registered branches and their file ownership |
 | `spidersan conflicts` | Show file conflicts between your branch and others |
 | `spidersan merge-order` | Get topologically-sorted optimal merge order |
 | `spidersan ready-check` | Verify branch is ready to merge (no WIP, no conflicts) |
-| `spidersan watch --hub` | Daemon mode: watch files and auto-register with Hub sync |
-| `spidersan who-touched <file>` | Show git history + agent activity for specific files |
+| `spidersan depends` | Set/show branch dependencies (Supabase only) |
+| `spidersan stale` | Find stale branches |
+| `spidersan cleanup` | Cleanup stale branches |
 | `spidersan rescue` | Start rescue mission for abandoned branch cleanup |
-| `spidersan scan --all` | Scan and categorize all branches in the repo |
-| `spidersan triage` | Categorize branches: MERGE / SALVAGE / ABANDON |
-| `spidersan salvage <branch>` | Extract good code from broken branches |
-| `spidersan watch` | Daemon mode - watch files and auto-register |
+| `spidersan abandon` | Abandon a branch (mark inactive) |
+| `spidersan merged` | Mark a branch merged |
+| `spidersan sync` | Sync registry (local/Supabase) |
+| `spidersan watch` | Daemon mode: watch files and auto-register |
 | `spidersan doctor` | Diagnose local state and registry health |
+| `spidersan config` | View/edit configuration + guided wizard |
+| `spidersan auto` | Auto-watch start/stop/status (config-based) |
+| `spidersan welcome` | Onboarding and quick start |
 
-Keep core commands and add a "Coming Soon" or "Ecosystem Plugin" section for advanced commands like `who-touched`, `monitor`, `lock`, etc.
+Advanced commands like `who-touched`, `monitor`, `lock`, `scan`, `triage`, and `salvage` live in the ecosystem plugin.
 
 ### Ecosystem Plugin (Optional)
 
@@ -123,6 +135,9 @@ spidersan watch --agent myagent --hub
 
 # Quiet mode (only show conflicts)
 spidersan watch --agent myagent --hub --quiet
+
+# Watch only specific paths
+spidersan watch --paths "src,lib" --root .
 ```
 
 **Features:**
@@ -130,6 +145,16 @@ spidersan watch --agent myagent --hub --quiet
 - ⚠️ Real-time conflict detection
 - 🔌 Hub integration for team visibility
 - 🕐 Debounced (1s) to prevent spam
+
+### ⚡ Auto Watch (Background)
+
+Run a background watcher using paths from your config:
+
+```bash
+spidersan auto start
+spidersan auto status
+spidersan auto stop
+```
 
 ### 🦺 Rescue Mode
 

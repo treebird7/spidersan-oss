@@ -13,5 +13,8 @@ export { mergedCommand } from './merged.js';
 export { syncCommand } from './sync.js';
 export { watchCommand } from './watch.js';
 export { doctorCommand } from './doctor.js';
+export { configCommand } from './config.js';
+export { autoCommand } from './auto.js';
+export { welcomeCommand } from './welcome.js';
 
 export { loadEcosystemCommands, getEcosystemStatus } from './ecosystem-loader.js';
