@@ -4,6 +4,7 @@ import { getStorage } from '../storage/index.js';
 import * as chokidar from 'chokidar';
 import * as path from 'path';
 import { io, Socket } from 'socket.io-client';
+import { loadConfig } from '../lib/config.js';
 
 // Config
 const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
@@ -11,6 +12,8 @@ const DEBOUNCE_MS = 1000;  // Debounce file changes
 
 interface WatchOptions {
     dir?: string;
+    paths?: string;
+    root?: string;
     agent?: string;
     hub?: boolean;
     hubSync?: boolean;
@@ -37,6 +40,10 @@ function getRepoRoot(): string {
     } catch {
         return process.cwd();
     }
+}
+
+function parsePaths(value: string): string[] {
+    return value.split(',').map((entry) => entry.trim()).filter(Boolean);
 }
 
 // Post conflict warning to Hub chat API
@@ -71,6 +78,8 @@ export const watchCommand = new Command('watch')
     .description('🕷️ Watch files and auto-register changes (daemon mode)')
     .argument('[directory]', 'Directory to watch (default: current repo)')
     .option('-d, --dir <directory>', 'Directory to watch (alias for positional arg)')
+    .option('--paths <paths>', 'Comma-separated list of files or folders to watch')
+    .option('--root <root>', 'Project root for relative paths (default: git root)')
     .option('-a, --agent <agent>', 'Agent identifier for registration')
     .option('--hub', 'Connect to Hub and emit real-time conflict warnings')
     .option('--hub-sync', 'Post conflicts to Hub chat via REST API')
@@ -78,6 +87,7 @@ export const watchCommand = new Command('watch')
     .option('--legacy', 'Legacy mode: use old watcher settings (more file descriptors)')
     .action(async (directory: string | undefined, options: WatchOptions) => {
         const storage = await getStorage();
+        const config = await loadConfig();
 
         if (!await storage.isInitialized()) {
             console.error('❌ Spidersan not initialized. Run: spidersan init');
@@ -85,15 +95,21 @@ export const watchCommand = new Command('watch')
         }
 
         const branch = getCurrentBranch();
-        const repoRoot = directory || options.dir || getRepoRoot();
-        const agent = options.agent || process.env.SPIDERSAN_AGENT || 'unknown';
+        const repoRoot = options.root || getRepoRoot();
+        const watchTargets = options.paths
+            ? parsePaths(options.paths).map((entry) => path.isAbsolute(entry) ? entry : path.join(repoRoot, entry))
+            : [directory || options.dir || repoRoot];
+        const configuredAgent = config.agent.name?.trim();
+        const agent = options.agent || process.env.SPIDERSAN_AGENT || configuredAgent || 'unknown';
+        const watchLabel = watchTargets.length === 1 ? watchTargets[0] : `${watchTargets.length} paths`;
 
         console.log(`
 🕷️ SPIDERSAN WATCH MODE
 ━━━━━━━━━━━━━━━━━━━━━━━
 Branch:    ${branch}
 Agent:     ${agent}
-Watching:  ${repoRoot}
+Root:      ${repoRoot}
+Watching:  ${watchLabel}
 Hub:       ${options.hub ? HUB_URL : 'disabled'}
 Hub Sync:  ${options.hubSync ? 'enabled (posts to chat)' : 'disabled'}
 ━━━━━━━━━━━━━━━━━━━━━━━
@@ -216,7 +232,7 @@ Press Ctrl+C to stop.
 
         // Start watching
         // SECURITY FIX: Always limit depth to prevent EMFILE errors (Sherlocksan 2026-01-02)
-        const watcher = chokidar.watch(repoRoot, {
+        const watcher = chokidar.watch(watchTargets, {
             ignored: !options.legacy ? [
                 ...smartIgnores,
                 /(^|[/\\])\../, // dotfiles

@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { execSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import * as readline from 'readline';
+import { loadConfig } from '../lib/config.js';
 
 function getCurrentBranch(): string {
     try {
@@ -74,6 +75,7 @@ export const registerCommand = new Command('register')
     .option('--auto', 'Auto-detect files from git diff')
     .action(async (options) => {
         const storage = await getStorage();
+        const config = await loadConfig();
 
         if (!await storage.isInitialized()) {
             console.error('❌ Spidersan not initialized. Run: spidersan init');
@@ -95,6 +97,9 @@ export const registerCommand = new Command('register')
             files = await promptForFiles(detected);
         }
 
+        const configuredAgent = config.agent.name?.trim();
+        const resolvedAgent = (options.agent || process.env.SPIDERSAN_AGENT || configuredAgent || '').trim() || undefined;
+
         // Check if branch already registered
         const existing = await storage.get(branchName);
 
@@ -103,7 +108,7 @@ export const registerCommand = new Command('register')
             await storage.update(branchName, {
                 files: [...new Set([...existing.files, ...files])],
                 description: options.description || existing.description,
-                agent: options.agent || existing.agent,
+                agent: resolvedAgent ?? existing.agent,
             });
             console.log(`🕷️ Updated branch: ${branchName}`);
         } else {
@@ -113,7 +118,7 @@ export const registerCommand = new Command('register')
                 files,
                 status: 'active',
                 description: options.description,
-                agent: options.agent,
+                agent: resolvedAgent,
             });
             console.log(`🕷️ Registered branch: ${branchName}`);
         }

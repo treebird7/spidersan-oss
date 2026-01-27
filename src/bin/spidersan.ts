@@ -24,6 +24,9 @@ import {
     syncCommand,
     watchCommand,
     doctorCommand,
+    configCommand,
+    autoCommand,
+    welcomeCommand,
     loadEcosystemCommands,
     getEcosystemStatus,
 } from '../commands/index.js';
@@ -91,6 +94,9 @@ program.addCommand(mergedCommand);
 program.addCommand(syncCommand);
 program.addCommand(watchCommand);
 program.addCommand(doctorCommand);
+program.addCommand(configCommand);
+program.addCommand(autoCommand);
+program.addCommand(welcomeCommand);
 
 async function main(): Promise<void> {
     const ecosystemCommands = await loadEcosystemCommands();

@@ -7,8 +7,23 @@
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
+import { homedir } from 'os';
 
 export interface SpidersanConfig {
+    ecosystem: {
+        enabled: boolean;
+    };
+    agent: {
+        name?: string;
+    };
+    autoWatch: {
+        enabled: boolean;
+        paths: string[];
+        hub: boolean;
+        hubSync: boolean;
+        quiet: boolean;
+        legacy: boolean;
+    };
     readyCheck: {
         enableWipDetection: boolean;
         wipPatterns: string[];
@@ -32,6 +47,20 @@ export interface SpidersanConfig {
 }
 
 const DEFAULT_CONFIG: SpidersanConfig = {
+    ecosystem: {
+        enabled: true,
+    },
+    agent: {
+        name: '',
+    },
+    autoWatch: {
+        enabled: false,
+        paths: [],
+        hub: false,
+        hubSync: false,
+        quiet: false,
+        legacy: false,
+    },
     readyCheck: {
         enableWipDetection: true,
         wipPatterns: ['TODO', 'FIXME', 'WIP', 'HACK', 'XXX'],
@@ -50,7 +79,7 @@ const DEFAULT_CONFIG: SpidersanConfig = {
     },
 };
 
-const CONFIG_FILES = ['.spidersanrc', '.spidersanrc.json', '.spidersan.config.json'];
+export const CONFIG_FILES = ['.spidersanrc', '.spidersanrc.json', '.spidersan.config.json'];
 
 interface ValidationError {
     path: string;
@@ -67,6 +96,18 @@ function validateConfig(config: unknown): ValidationError[] {
 
     const obj = config as Record<string, unknown>;
 
+    // Validate ecosystem
+    if (obj.ecosystem !== undefined) {
+        if (typeof obj.ecosystem !== 'object' || obj.ecosystem === null) {
+            errors.push({ path: 'ecosystem', message: 'Must be an object' });
+        } else {
+            const eco = obj.ecosystem as Record<string, unknown>;
+            if (eco.enabled !== undefined && typeof eco.enabled !== 'boolean') {
+                errors.push({ path: 'ecosystem.enabled', message: 'Must be a boolean' });
+            }
+        }
+    }
+
     // Validate readyCheck
     if (obj.readyCheck !== undefined) {
         if (typeof obj.readyCheck !== 'object' || obj.readyCheck === null) {
@@ -81,6 +122,47 @@ function validateConfig(config: unknown): ValidationError[] {
             }
             if (rc.enableWipDetection !== undefined && typeof rc.enableWipDetection !== 'boolean') {
                 errors.push({ path: 'readyCheck.enableWipDetection', message: 'Must be a boolean' });
+            }
+        }
+    }
+
+    // Validate agent
+    if (obj.agent !== undefined) {
+        if (typeof obj.agent !== 'object' || obj.agent === null) {
+            errors.push({ path: 'agent', message: 'Must be an object' });
+        } else {
+            const agent = obj.agent as Record<string, unknown>;
+            if (agent.name !== undefined && typeof agent.name !== 'string') {
+                errors.push({ path: 'agent.name', message: 'Must be a string' });
+            }
+        }
+    }
+
+    // Validate autoWatch
+    if (obj.autoWatch !== undefined) {
+        if (typeof obj.autoWatch !== 'object' || obj.autoWatch === null) {
+            errors.push({ path: 'autoWatch', message: 'Must be an object' });
+        } else {
+            const aw = obj.autoWatch as Record<string, unknown>;
+            if (aw.enabled !== undefined && typeof aw.enabled !== 'boolean') {
+                errors.push({ path: 'autoWatch.enabled', message: 'Must be a boolean' });
+            }
+            if (aw.paths !== undefined) {
+                if (!Array.isArray(aw.paths) || !aw.paths.every((p) => typeof p === 'string')) {
+                    errors.push({ path: 'autoWatch.paths', message: 'Must be an array of strings' });
+                }
+            }
+            if (aw.hub !== undefined && typeof aw.hub !== 'boolean') {
+                errors.push({ path: 'autoWatch.hub', message: 'Must be a boolean' });
+            }
+            if (aw.hubSync !== undefined && typeof aw.hubSync !== 'boolean') {
+                errors.push({ path: 'autoWatch.hubSync', message: 'Must be a boolean' });
+            }
+            if (aw.quiet !== undefined && typeof aw.quiet !== 'boolean') {
+                errors.push({ path: 'autoWatch.quiet', message: 'Must be a boolean' });
+            }
+            if (aw.legacy !== undefined && typeof aw.legacy !== 'boolean') {
+                errors.push({ path: 'autoWatch.legacy', message: 'Must be a boolean' });
             }
         }
     }
@@ -103,36 +185,60 @@ function validateConfig(config: unknown): ValidationError[] {
     return errors;
 }
 
-export async function loadConfig(basePath: string = process.cwd()): Promise<SpidersanConfig> {
-    // Try each config file name
-    for (const filename of CONFIG_FILES) {
-        const configPath = join(basePath, filename);
-        if (existsSync(configPath)) {
-            try {
-                const content = await readFile(configPath, 'utf-8');
-                const userConfig = JSON.parse(content);
+export function getConfigPaths(basePath: string = process.cwd(), includeGlobal: boolean = true): string[] {
+    const paths: string[] = [];
 
-                // Validate config
-                const errors = validateConfig(userConfig);
-                if (errors.length > 0) {
-                    console.warn(`⚠️  Config validation warnings in ${filename}:`);
-                    errors.forEach(e => console.warn(`   ${e.path}: ${e.message}`));
-                }
+    if (includeGlobal) {
+        const home = homedir();
+        CONFIG_FILES.forEach((filename) => paths.push(join(home, filename)));
+    }
 
-                return deepMerge(DEFAULT_CONFIG, userConfig);
-            } catch (error) {
-                if (error instanceof SyntaxError) {
-                    console.error(`❌ Invalid JSON in ${filename}: ${error.message}`);
-                    console.error('   Using default configuration instead.');
-                } else {
-                    console.warn(`Warning: Failed to read ${filename}:`, error);
-                }
+    CONFIG_FILES.forEach((filename) => paths.push(join(basePath, filename)));
+    return paths;
+}
+
+export async function loadConfigWithSources(
+    basePath: string = process.cwd(),
+    options: { includeGlobal?: boolean } = {}
+): Promise<{ config: SpidersanConfig; sources: string[]; errors: ValidationError[] }> {
+    const includeGlobal = options.includeGlobal !== false;
+    const sources: string[] = [];
+    const errors: ValidationError[] = [];
+    let merged: SpidersanConfig = DEFAULT_CONFIG;
+
+    const configPaths = getConfigPaths(basePath, includeGlobal);
+    for (const configPath of configPaths) {
+        if (!existsSync(configPath)) continue;
+        try {
+            const content = await readFile(configPath, 'utf-8');
+            const userConfig = JSON.parse(content);
+
+            const validationErrors = validateConfig(userConfig);
+            if (validationErrors.length > 0) {
+                errors.push(...validationErrors.map(err => ({ ...err, path: `${configPath}:${err.path || ''}`.replace(/:$/, '') })));
+            }
+
+            merged = deepMerge(merged, userConfig);
+            sources.push(configPath);
+        } catch (error) {
+            if (error instanceof SyntaxError) {
+                errors.push({ path: configPath, message: `Invalid JSON: ${error.message}` });
+            } else {
+                errors.push({ path: configPath, message: 'Failed to read config file' });
             }
         }
     }
 
-    // Return defaults if no config found
-    return DEFAULT_CONFIG;
+    return { config: merged, sources, errors };
+}
+
+export async function loadConfig(basePath: string = process.cwd()): Promise<SpidersanConfig> {
+    const result = await loadConfigWithSources(basePath);
+    if (result.errors.length > 0) {
+        console.warn('⚠️  Config validation warnings:');
+        result.errors.forEach(e => console.warn(`   ${e.path}: ${e.message}`));
+    }
+    return result.config;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
