@@ -19,7 +19,13 @@
 
 ## 🎯 The Problem
 
-**A multi coders or agents and multi branch work can result in a merging nightmare**
+**Local experiment: 10 AI agents. 1 file. 51 minutes of chaos.**
+
+In our experience:
+- ⏱️ ~51 min to complete 1 shared file
+- 💥 12 conflicts
+- 🔥 2 build breaks pushed to main
+- 😰 Frustration level: 5/5
 
 ## 🕷️ The Solution
 
@@ -40,8 +46,10 @@ spidersan ready-check
 ```
 
 **Results with Spidersan (same team):**
-- ⏱️ ~5 min (about 10x faster)
+- ⏱️ ~5 min (about 10x faster for us)
 - ✅ 0 conflicts
+- 🎯 Recommended merge sequence
+- 😌 Confidence: 5/5
 
 ---
 
@@ -105,6 +113,15 @@ spidersan merge-order
 
 Advanced commands like `who-touched`, `monitor`, `lock`, `scan`, `triage`, and `salvage` live in the ecosystem plugin.
 
+### Ecosystem Plugin (Optional)
+
+Install `spidersan-ecosystem` to unlock advanced coordination (internal for now):
+- Symbol locking (`lock`) and semantic analysis (`semantic`)
+- Intent scanning, active windows, and realtime monitoring (`intent-scan`, `active-windows`, `monitor`, `radar`)
+- Task torrenting, multi-repo sync, and messaging (`torrent`, `sync-all`, `send`, `inbox`)
+- Security pipeline + MCP health (`tension`, `audit-mark`, `mcp-health`, `mcp-restart`)
+
+
 ### Watch Mode (Daemon)
 
 Real-time file monitoring with auto-registration:
@@ -161,7 +178,9 @@ spidersan rescue --abandon path/to/file.ts
 ## 📖 Documentation
 
 - [Core Guide](docs/CORE.md) - Public feature set and core workflows
+- Ecosystem Overview (internal; see spidersan-ecosystem repo)
 - Usage (internal; see spidersan-ecosystem repo)
+- [One Pager](docs/ONE_PAGER.md) - Product overview
 - [Data Collection](docs/DATA_COLLECTION.md) - Privacy & data practices
 
 ---
