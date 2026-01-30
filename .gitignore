@@ -143,6 +143,9 @@ node_modules
 treebird-internal
 repos/
 
+# macOS Finder metadata
+.DS_Store
+
 # License signing keys (NEVER COMMIT)
 license-keys.json
 scripts/license-keys.json
