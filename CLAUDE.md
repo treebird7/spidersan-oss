@@ -143,6 +143,54 @@ spidersan rescue-status           # View mission progress
 
 ---
 
+## ⚡ Pre-Work Workflow for AI Agents
+
+**ALWAYS run this sequence before modifying any files:**
+
+### Step 1: Initialize (First Time Only)
+```bash
+# Check if repo is initialized
+if [ ! -d ".spidersan" ]; then
+  spidersan init
+fi
+```
+
+### Step 2: Check for Conflicts (REQUIRED)
+```bash
+spidersan conflicts
+# 🔴 BLOCK → STOP immediately, coordinate with other agent
+# 🟠 PAUSE → Contact other agent via toak before proceeding  
+# 🟡 WARN → Note it, proceed with caution
+# ✅ CLEAN → Safe to proceed
+```
+
+### Step 3: Register Your Work (REQUIRED)
+```bash
+spidersan register --files "src/auth.ts,src/api.ts" \
+  --agent <your-agent-id> \
+  --description "Brief description of what you're doing"
+```
+
+### Step 4: Proceed with Changes
+Only after Steps 1-3 are complete.
+
+---
+
+### Quick Pre-Work Commands
+
+```bash
+# Minimal check before work
+spidersan conflicts && spidersan register --files "your files" --agent yourname
+
+# With specific file check
+spidersan conflicts --files "src/auth.ts"
+
+# Check who's working where
+spidersan list
+```
+
+---
+
 ## 🤖 AI Agent Use Cases
 
 ### Scenario 1: Starting a New Feature
