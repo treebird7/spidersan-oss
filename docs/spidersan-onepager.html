@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spidersan - One Pager</title>
+    <link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        /* ═══════════════════════════════════════════════════════
+           TRIBAL INTEGRATION DESIGN SYSTEM
+           "Ancient Wisdom Meets Modern Code"
+           ═══════════════════════════════════════════════════════ */
+
+        :root {
+            /* Base - Earthy Darks */
+            --bg-deep: #1a1612;
+            --bg-surface: #2a2420;
+            --bg-surface-light: #3a3430;
+
+            /* Text */
+            --text-primary: #e8e4df;
+            --text-secondary: #c8c4bf;
+            --text-muted: #9a958f;
+            --text-inverse: #1a1612;
+
+            /* Accent - Bluejay Blue */
+            --accent: #4a90d9;
+            --accent-light: #6ba8eb;
+
+            /* Semantic */
+            --success: #6b9a5b;
+            --warning: #c9a227;
+            --error: #a85a4a;
+
+            /* Spidersan Purple */
+            --spider-purple: #8b5cf6;
+            --spider-purple-light: #a78bfa;
+
+            /* Borders */
+            --border: #3d3530;
+
+            /* Fonts */
+            --font-serif: 'Spectral', Georgia, serif;
+            --font-mono: 'JetBrains Mono', monospace;
+            --font-sans: 'Inter', sans-serif;
+        }
+
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-serif);
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            padding: 40px;
+            position: relative;
+        }
+
+        /* Noise texture overlay */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.03'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .page {
+            max-width: 800px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           HEADER
+           ═══════════════════════════════════════════════════════ */
+
+        .header {
+            text-align: center;
+            margin-bottom: 48px;
+            padding-bottom: 32px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .glyph {
+            font-size: 3rem;
+            filter: drop-shadow(0 0 20px rgba(139, 92, 246, 0.4));
+        }
+
+        h1 {
+            font-family: var(--font-serif);
+            font-size: 3rem;
+            font-weight: 400;
+            letter-spacing: -0.02em;
+            color: var(--text-primary);
+        }
+
+        .tagline {
+            font-family: var(--font-mono);
+            font-size: 1rem;
+            color: var(--spider-purple-light);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-top: 8px;
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            color: var(--text-secondary);
+            margin-top: 16px;
+            font-style: italic;
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           PROBLEM / SOLUTION
+           ═══════════════════════════════════════════════════════ */
+
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 32px;
+            margin-bottom: 40px;
+        }
+
+        .card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 28px;
+        }
+
+        .card.problem {
+            border-left: 4px solid var(--error);
+        }
+
+        .card.solution {
+            border-left: 4px solid var(--success);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .card-icon {
+            font-size: 1.5rem;
+        }
+
+        h2 {
+            font-family: var(--font-mono);
+            font-size: 1rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .card.problem h2 { color: var(--error); }
+        .card.solution h2 { color: var(--success); }
+
+        .card p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            line-height: 1.7;
+        }
+
+        .pain-points {
+            list-style: none;
+            margin-top: 16px;
+        }
+
+        .pain-points li {
+            position: relative;
+            padding-left: 24px;
+            margin-bottom: 8px;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .pain-points li::before {
+            content: "×";
+            position: absolute;
+            left: 0;
+            color: var(--error);
+            font-weight: bold;
+        }
+
+        .solution-points li::before {
+            content: "✓";
+            color: var(--success);
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           ARCHITECTURE DIAGRAM
+           ═══════════════════════════════════════════════════════ */
+
+        .diagram-section {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 40px;
+            text-align: center;
+        }
+
+        .diagram-section h3 {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: var(--accent);
+            letter-spacing: 1px;
+            margin-bottom: 24px;
+        }
+
+        .diagram {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+            white-space: pre;
+            display: inline-block;
+            text-align: left;
+        }
+
+        .diagram .highlight {
+            color: var(--spider-purple-light);
+        }
+
+        .diagram .agent {
+            color: var(--accent);
+        }
+
+        .diagram .output {
+            color: var(--warning);
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           FEATURES TABLE
+           ═══════════════════════════════════════════════════════ */
+
+        .features-section {
+            margin-bottom: 40px;
+        }
+
+        .features-section h3 {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: var(--accent);
+            letter-spacing: 1px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .feature-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .feature-card.pro {
+            border-color: var(--warning);
+            background: linear-gradient(135deg, var(--bg-surface) 0%, rgba(201, 162, 39, 0.08) 100%);
+        }
+
+        .feature-icon {
+            font-size: 1.2rem;
+            flex-shrink: 0;
+        }
+
+        .feature-content h4 {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .feature-content p {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            border-radius: 4px;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+
+        .badge.free {
+            background: var(--success);
+            color: var(--text-inverse);
+        }
+
+        .badge.pro {
+            background: var(--warning);
+            color: var(--text-inverse);
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           QUICK START
+           ═══════════════════════════════════════════════════════ */
+
+        .quickstart {
+            background: #0a0a0a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 40px;
+        }
+
+        .terminal-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 16px;
+            background: #1a1a1a;
+            border-bottom: 1px solid #333;
+        }
+
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .dot.red { background: #ff5f56; }
+        .dot.amber { background: #ffbd2e; }
+        .dot.green { background: #27c93f; }
+
+        .terminal-title {
+            margin-left: auto;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: #666;
+        }
+
+        .terminal-body {
+            padding: 20px;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+        }
+
+        .terminal-line {
+            margin-bottom: 8px;
+        }
+
+        .prompt { color: var(--spider-purple-light); }
+        .cmd { color: #fff; }
+        .arg { color: var(--text-muted); }
+        .output { color: var(--success); }
+        .comment { color: #666; font-style: italic; }
+
+        /* ═══════════════════════════════════════════════════════
+           PRICING
+           ═══════════════════════════════════════════════════════ */
+
+        .pricing {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+
+        .price-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 28px;
+            text-align: center;
+        }
+
+        .price-card.featured {
+            border-color: var(--warning);
+            background: linear-gradient(135deg, var(--bg-surface) 0%, rgba(201, 162, 39, 0.1) 100%);
+        }
+
+        .price-tier {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--accent);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .price-card.featured .price-tier {
+            color: var(--warning);
+        }
+
+        .price-amount {
+            font-family: var(--font-mono);
+            font-size: 2.5rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .price-period {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .price-features {
+            list-style: none;
+            margin-top: 20px;
+            text-align: left;
+        }
+
+        .price-features li {
+            position: relative;
+            padding-left: 20px;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .price-features li::before {
+            content: "~";
+            position: absolute;
+            left: 0;
+            color: var(--text-muted);
+        }
+
+        .price-card.featured .price-features li::before {
+            content: ">";
+            color: var(--warning);
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           FOOTER
+           ═══════════════════════════════════════════════════════ */
+
+        .footer {
+            text-align: center;
+            padding-top: 32px;
+            border-top: 1px solid var(--border);
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 32px;
+            margin-bottom: 20px;
+        }
+
+        .footer-link {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .footer-tagline {
+            font-style: italic;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .treebird-badge {
+            display: inline-block;
+            margin-top: 16px;
+            padding: 8px 16px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           PRINT STYLES
+           ═══════════════════════════════════════════════════════ */
+
+        @media print {
+            body {
+                padding: 20px;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .page {
+                max-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo-row">
+                <span class="glyph">&#128375;</span>
+                <h1>Spidersan</h1>
+            </div>
+            <div class="tagline">One Spider To Rule Them All</div>
+            <p class="subtitle">Branch coordination for AI coding agents</p>
+        </header>
+
+        <!-- Problem / Solution -->
+        <div class="two-col">
+            <div class="card problem">
+                <div class="card-header">
+                    <span class="card-icon">&#9888;</span>
+                    <h2>The Problem</h2>
+                </div>
+                <p>AI coding agents are powerful&mdash;but when multiple agents work simultaneously, chaos ensues:</p>
+                <ul class="pain-points">
+                    <li>Merge conflicts everywhere</li>
+                    <li>No visibility into overlapping changes</li>
+                    <li>Hours of agent work wasted</li>
+                    <li>Manual coordination slows everything</li>
+                </ul>
+            </div>
+
+            <div class="card solution">
+                <div class="card-header">
+                    <span class="card-icon">&#10004;</span>
+                    <h2>The Solution</h2>
+                </div>
+                <p>Spidersan is your AI team's coordination layer:</p>
+                <ul class="pain-points solution-points">
+                    <li>Track all active branches</li>
+                    <li>Detect conflicts early</li>
+                    <li>Optimal merge ordering</li>
+                    <li>Zero-config Git integration</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Architecture Diagram -->
+        <div class="diagram-section">
+            <h3>// How It Works</h3>
+            <pre class="diagram"><span class="agent">Agent 1</span>          <span class="agent">Agent 2</span>          <span class="agent">Agent 3</span>
+feature/auth     feature/api      feature/ui
+    |                |                |
+    +----------------+----------------+
+                     |
+              <span class="highlight">[ Spidersan ]</span>
+                     |
+         +-----------+-----------+
+         |           |           |
+    <span class="output">Conflicts</span>   <span class="output">Merge Order</span>  <span class="output">Ready Check</span></pre>
+        </div>
+
+        <!-- Quick Start -->
+        <div class="quickstart">
+            <div class="terminal-header">
+                <span class="dot red"></span>
+                <span class="dot amber"></span>
+                <span class="dot green"></span>
+                <span class="terminal-title">Quick Start</span>
+            </div>
+            <div class="terminal-body">
+                <div class="terminal-line"><span class="comment"># Install globally</span></div>
+                <div class="terminal-line"><span class="prompt">$</span> <span class="cmd">npm install -g spidersan</span></div>
+                <div class="terminal-line"></div>
+                <div class="terminal-line"><span class="comment"># Register your branch</span></div>
+                <div class="terminal-line"><span class="prompt">$</span> <span class="cmd">spidersan register</span> <span class="arg">feature/auth --files "lib/auth.ts"</span></div>
+                <div class="terminal-line"></div>
+                <div class="terminal-line"><span class="comment"># Check for conflicts</span></div>
+                <div class="terminal-line"><span class="prompt">$</span> <span class="cmd">spidersan conflicts</span></div>
+                <div class="terminal-line"><span class="output">No conflicts detected. Safe to proceed.</span></div>
+            </div>
+        </div>
+
+        <!-- Features Grid -->
+        <div class="features-section">
+            <h3>// Features</h3>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <span class="feature-icon">&#128269;</span>
+                    <div class="feature-content">
+                        <h4>Conflict Detection <span class="badge free">FREE</span></h4>
+                        <p>See file overlaps between branches before they become merge nightmares.</p>
+                    </div>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon">&#128200;</span>
+                    <div class="feature-content">
+                        <h4>Merge Ordering <span class="badge free">FREE</span></h4>
+                        <p>Get topologically-sorted merge order. No more guessing.</p>
+                    </div>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon">&#128065;</span>
+                    <div class="feature-content">
+                        <h4>Watch Mode <span class="badge free">FREE</span></h4>
+                        <p>Daemon mode auto-registers files as you edit. Real-time alerts.</p>
+                    </div>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon">&#128657;</span>
+                    <div class="feature-content">
+                        <h4>Rescue Mode <span class="badge free">FREE</span></h4>
+                        <p>Clean up repos with 10+ abandoned branches. Triage and salvage.</p>
+                    </div>
+                </div>
+                <div class="feature-card pro">
+                    <span class="feature-icon">&#9889;</span>
+                    <div class="feature-content">
+                        <h4>Unlimited Branches <span class="badge pro">PRO</span></h4>
+                        <p>No limits on concurrent registered branches.</p>
+                    </div>
+                </div>
+                <div class="feature-card pro">
+                    <span class="feature-icon">&#128640;</span>
+                    <div class="feature-content">
+                        <h4>MCP Server <span class="badge pro">PRO</span></h4>
+                        <p>Model Context Protocol integration for AI agents.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pricing -->
+        <div class="pricing">
+            <div class="price-card">
+                <div class="price-tier">Free</div>
+                <div class="price-amount">$0</div>
+                <div class="price-period">forever</div>
+                <ul class="price-features">
+                    <li>All core CLI commands</li>
+                    <li>5 concurrent branches</li>
+                    <li>Watch mode</li>
+                    <li>Rescue mode</li>
+                </ul>
+            </div>
+            <div class="price-card featured">
+                <div class="price-tier">Pro</div>
+                <div class="price-amount">$9</div>
+                <div class="price-period">per month</div>
+                <ul class="price-features">
+                    <li>Everything in Free</li>
+                    <li>Unlimited branches</li>
+                    <li>MCP Server</li>
+                    <li>Priority support</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-links">
+                <a href="https://github.com/treebird7/Spidersan" class="footer-link">GitHub</a>
+                <a href="https://spidersan.dev" class="footer-link">spidersan.dev</a>
+                <a href="mailto:treebird7@proton.me" class="footer-link">Contact</a>
+            </div>
+            <p class="footer-tagline">"One spider to coordinate them all"</p>
+            <div class="treebird-badge">Part of the Treebird Ecosystem</div>
+        </footer>
+    </div>
+</body>
+</html>
