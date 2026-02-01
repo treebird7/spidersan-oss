@@ -141,6 +141,230 @@ spidersan rescue-status           # View mission progress
 4. Need to salvage good code from broken branches
 5. Starting fresh but want to preserve valuable work
 
+---
+
+## 🤖 AI Agent Use Cases
+
+### Scenario 1: Starting a New Feature
+**When:** User asks you to implement a new feature
+
+```bash
+# 1. Check what's already in progress
+spidersan list
+
+# 2. Check for potential conflicts on files you plan to modify
+spidersan conflicts
+
+# 3. Register your work
+git checkout -b feature/new-api-endpoint
+spidersan register --files "src/api/endpoints.ts,src/types/api.ts" --desc "Adding new API endpoint"
+
+# 4. Start coding...
+```
+
+**Why:** Prevents duplicate work and alerts other agents to your changes.
+
+---
+
+### Scenario 2: Before Making Changes
+**When:** User asks you to modify existing files
+
+```bash
+# 1. Check if anyone else is working on these files
+spidersan conflicts
+
+# 2. If TIER 2+ conflicts exist, coordinate first
+spidersan conflicts --tier 2
+
+# 3. If clear, register and proceed
+spidersan register --files "src/auth.ts"
+```
+
+**Why:** Avoids merge conflicts and wasted effort.
+
+---
+
+### Scenario 3: Before Creating a PR
+**When:** You've completed work and user wants to create a PR
+
+```bash
+# 1. Verify no WIP markers or incomplete work
+spidersan ready-check
+
+# 2. Check final conflict status
+spidersan conflicts --strict
+
+# 3. Get recommended merge order
+spidersan merge-order
+
+# 4. If you're not first in line, wait or coordinate
+```
+
+**Why:** Ensures clean merges and proper sequencing.
+
+---
+
+### Scenario 4: Multi-Agent Coordination
+**When:** Multiple agents are working simultaneously
+
+```bash
+# At session start:
+spidersan list                    # See who's working on what
+spidersan conflicts --tier 2      # Check critical conflicts
+
+# During work:
+spidersan watch --agent myagent   # Auto-register file changes
+
+# Before committing:
+spidersan conflicts               # Final check
+spidersan merge-order             # Confirm merge sequence
+```
+
+**Why:** Real-time awareness prevents conflicts.
+
+---
+
+### Scenario 5: Repository Cleanup
+**When:** Repo has many stale/abandoned branches
+
+```bash
+# 1. Start rescue mission
+spidersan rescue --scan
+
+# 2. Find stale branches
+spidersan stale
+
+# 3. Clean up old branches
+spidersan cleanup
+
+# 4. Mark abandoned work
+spidersan abandon
+```
+
+**Why:** Keeps repository clean and registry accurate.
+
+---
+
+### Scenario 6: Debugging Registry Issues
+**When:** Spidersan seems out of sync or broken
+
+```bash
+# 1. Run diagnostics
+spidersan doctor
+
+# 2. Check configuration
+spidersan config view
+
+# 3. Sync registry
+spidersan sync
+
+# 4. Verify health
+spidersan doctor --fix
+```
+
+**Why:** Ensures Spidersan is functioning correctly.
+
+---
+
+### Scenario 7: Working on Critical Files
+**When:** Modifying package.json, .env, CLAUDE.md, migrations, etc.
+
+```bash
+# 1. Check TIER 3 (BLOCK) conflicts
+spidersan conflicts --tier 3
+
+# 2. If conflicts exist, STOP and coordinate
+# These files require sequential changes
+
+# 3. Only proceed if clear
+spidersan register --files "package.json" --desc "Adding new dependency"
+```
+
+**Why:** TIER 3 files can break the entire project if conflicted.
+
+---
+
+### Scenario 8: Long-Running Feature Branch
+**When:** Working on a feature over multiple sessions
+
+```bash
+# Session start:
+spidersan list                    # Check current state
+spidersan conflicts               # See new conflicts
+
+# During work:
+spidersan watch --agent myagent   # Monitor changes
+
+# Session end:
+spidersan conflicts               # Final status check
+# Leave branch registered for next session
+```
+
+**Why:** Maintains visibility across sessions.
+
+---
+
+### Scenario 9: After PR Merged
+**When:** Your PR has been merged to main
+
+```bash
+# Mark as merged
+spidersan merged --pr 123
+
+# Clean up local registry
+spidersan sync
+```
+
+**Why:** Keeps registry clean and informs other agents.
+
+---
+
+### Scenario 10: Emergency Conflict Resolution
+**When:** Merge conflict detected during PR
+
+```bash
+# 1. Check conflict details
+spidersan conflicts --tier 2
+
+# 2. Get merge order recommendation
+spidersan merge-order
+
+# 3. Coordinate with conflicting agent
+# (Use Toak/Myceliumail if available)
+
+# 4. Resolve conflicts manually
+# 5. Re-verify
+spidersan ready-check
+```
+
+**Why:** Systematic approach to conflict resolution.
+
+---
+
+## 🎯 Command Decision Tree
+
+```
+User Request
+    │
+    ├─ "Implement feature X"
+    │   └─→ spidersan list → conflicts → register
+    │
+    ├─ "Modify file Y"
+    │   └─→ spidersan conflicts → register
+    │
+    ├─ "Create PR"
+    │   └─→ spidersan ready-check → merge-order
+    │
+    ├─ "Clean up repo"
+    │   └─→ spidersan rescue → stale → cleanup
+    │
+    ├─ "Check status"
+    │   └─→ spidersan list → conflicts
+    │
+    └─ "Something's broken"
+        └─→ spidersan doctor → sync
+```
+
 ## Limitations
 
 ### What Spidersan CANNOT Do:
