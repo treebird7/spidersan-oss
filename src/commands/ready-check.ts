@@ -9,7 +9,7 @@ import { Command } from 'commander';
 import { execSync } from 'child_process';
 import { readFile } from 'fs/promises';
 import { getStorage } from '../storage/index.js';
-import { loadConfig, type SpidersanConfig } from '../lib/config.js';
+import { loadConfig } from '../lib/config.js';
 import { minimatch } from 'minimatch';
 
 function getCurrentBranch(): string {
