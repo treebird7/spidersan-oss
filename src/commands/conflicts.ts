@@ -10,7 +10,6 @@
 
 import { Command } from 'commander';
 import { execSync } from 'child_process';
-import { readFileSync } from 'fs';
 import { getStorage } from '../storage/index.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
 
