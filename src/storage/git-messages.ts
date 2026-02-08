@@ -10,6 +10,9 @@
  */
 
 import { execSync, spawnSync } from 'child_process';
+import { mkdirSync, writeFileSync } from 'fs';
+import { join } from 'path';
+import { validateAgentId } from '../lib/security.js';
 import type {
     MessageStorageAdapter,
     Message,
@@ -232,27 +235,18 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
 
             // Ensure directory exists
             const dir = path.substring(0, path.lastIndexOf('/'));
-            execSync(`mkdir -p ${dir}`, {
-                cwd: this.basePath,
-                stdio: 'ignore',
-                shell: '/bin/bash',
-            });
+            mkdirSync(join(this.basePath, dir), { recursive: true });
 
-            // Write file using echo with proper escaping
-            const escapedContent = content.replace(/'/g, "'\\''");
-            execSync(`echo '${escapedContent}' > ${path}`, {
-                cwd: this.basePath,
-                stdio: 'ignore',
-                shell: '/bin/bash',
-            });
+            // Write file directly
+            writeFileSync(join(this.basePath, path), content, 'utf-8');
 
             // Commit
-            execSync(`git add ${path}`, {
+            spawnSync('git', ['add', '--', path], {
                 cwd: this.basePath,
                 stdio: 'ignore',
             });
 
-            execSync(`git commit -m "Add message: ${path}"`, {
+            spawnSync('git', ['commit', '-m', `Add message: ${path}`], {
                 cwd: this.basePath,
                 stdio: 'ignore',
             });
@@ -301,6 +295,9 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
     }
 
     async send(input: SendMessageInput): Promise<Message> {
+        validateAgentId(input.from);
+        validateAgentId(input.to);
+
         await this.ensureBranch();
 
         const message: Message = {
@@ -333,6 +330,7 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
     }
 
     async inbox(agentId: string, options: InboxOptions = {}): Promise<Message[]> {
+        validateAgentId(agentId);
         await this.ensureBranch();
 
         // Try to pull latest if remote exists
