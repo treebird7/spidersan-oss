@@ -9,7 +9,9 @@
  * Near-real-time coordination on pull. Works across machines with git remote.
  */
 
-import { execSync, spawnSync } from 'child_process';
+import { execSync, spawnSync, execFileSync } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 import type {
     MessageStorageAdapter,
     Message,
@@ -18,6 +20,7 @@ import type {
     TierStatus,
 } from './message-adapter.js';
 import { generateMessageId, subjectToSlug } from './message-adapter.js';
+import { validateAgentId } from '../lib/security.js';
 
 const MESSAGES_BRANCH = 'spidersan/messages';
 
@@ -203,7 +206,7 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
      * Write a file to the messages branch
      */
     private async writeToBranch(
-        path: string,
+        filePath: string,
         content: string
     ): Promise<boolean> {
         const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', {
@@ -225,34 +228,28 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
 
         try {
             // Checkout messages branch
-            execSync(`git checkout ${MESSAGES_BRANCH}`, {
+            execFileSync('git', ['checkout', MESSAGES_BRANCH], {
                 cwd: this.basePath,
                 stdio: 'ignore',
             });
 
             // Ensure directory exists
-            const dir = path.substring(0, path.lastIndexOf('/'));
-            execSync(`mkdir -p ${dir}`, {
-                cwd: this.basePath,
-                stdio: 'ignore',
-                shell: '/bin/bash',
-            });
+            const fullPath = path.join(this.basePath, filePath);
+            const dir = path.dirname(fullPath);
 
-            // Write file using echo with proper escaping
-            const escapedContent = content.replace(/'/g, "'\\''");
-            execSync(`echo '${escapedContent}' > ${path}`, {
-                cwd: this.basePath,
-                stdio: 'ignore',
-                shell: '/bin/bash',
-            });
+            // Security: Use fs module instead of shell commands to prevent injection
+            fs.mkdirSync(dir, { recursive: true });
+
+            // Write file directly using fs
+            fs.writeFileSync(fullPath, content, { encoding: 'utf-8' });
 
             // Commit
-            execSync(`git add ${path}`, {
+            execFileSync('git', ['add', filePath], {
                 cwd: this.basePath,
                 stdio: 'ignore',
             });
 
-            execSync(`git commit -m "Add message: ${path}"`, {
+            execFileSync('git', ['commit', '-m', `Add message: ${filePath}`], {
                 cwd: this.basePath,
                 stdio: 'ignore',
             });
@@ -271,15 +268,19 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
             return true;
         } finally {
             // Return to original branch
-            execSync(`git checkout ${currentBranch}`, {
-                cwd: this.basePath,
-                stdio: 'ignore',
-            });
+            try {
+                execFileSync('git', ['checkout', currentBranch], {
+                    cwd: this.basePath,
+                    stdio: 'ignore',
+                });
+            } catch {
+                // Ignore recovery errors
+            }
 
             // Restore stash if we had one
             if (hasStash) {
                 try {
-                    execSync('git stash pop', {
+                    execFileSync('git', ['stash', 'pop'], {
                         cwd: this.basePath,
                         stdio: 'ignore',
                     });
@@ -302,6 +303,10 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
 
     async send(input: SendMessageInput): Promise<Message> {
         await this.ensureBranch();
+
+        // Security: Validate agent IDs to prevent path traversal/injection
+        validateAgentId(input.from);
+        validateAgentId(input.to);
 
         const message: Message = {
             id: generateMessageId(),
