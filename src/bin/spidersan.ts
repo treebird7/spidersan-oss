@@ -100,7 +100,16 @@ program.addCommand(welcomeCommand);
 
 async function main(): Promise<void> {
     const ecosystemCommands = await loadEcosystemCommands();
-    ecosystemCommands.forEach((command) => program.addCommand(command));
+    ecosystemCommands.forEach((command) => {
+        const existing = program.commands.find(c => c.name() === command.name());
+        if (existing) {
+            if (isDebugMode()) {
+                console.log(`⚠️  Skipping duplicate ecosystem command: ${command.name()}`);
+            }
+            return;
+        }
+        program.addCommand(command);
+    });
 
     const ecosystemStatus = getEcosystemStatus();
     if (ecosystemStatus.versionMismatch && ecosystemStatus.requiredRange && ecosystemStatus.coreVersion) {
