@@ -9,8 +9,7 @@
  */
 
 import { Command } from 'commander';
-import { execSync } from 'child_process';
-import { readFileSync } from 'fs';
+import { execSync, execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
 
@@ -309,8 +308,9 @@ export const conflictsCommand = new Command('conflicts')
 
                     try {
                         // Get file content from both branches
-                        const currentContent = execSync(`git show HEAD:${file}`, { encoding: 'utf-8' });
-                        const otherContent = execSync(`git show ${conflict.branch}:${file}`, { encoding: 'utf-8' });
+                        // Security: Use execFileSync to prevent command injection via file names
+                        const currentContent = execFileSync('git', ['show', `HEAD:${file}`], { encoding: 'utf-8' });
+                        const otherContent = execFileSync('git', ['show', `${conflict.branch}:${file}`], { encoding: 'utf-8' });
 
                         const symbolConflicts = astParser.findSymbolConflicts(
                             currentContent, `${targetBranch}:${file}`,
