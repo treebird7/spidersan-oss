@@ -31,7 +31,7 @@ function getChangedFiles(): string[] {
     }
 }
 
-function shouldExcludeFile(file: string, excludePatterns: string[]): boolean {
+export function shouldExcludeFile(file: string, excludePatterns: string[]): boolean {
     return excludePatterns.some(pattern => minimatch(file, pattern));
 }
 

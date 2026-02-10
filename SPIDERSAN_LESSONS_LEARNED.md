@@ -66,3 +66,21 @@ excludeFiles: [
 **Lesson:** Safety checks should be file-type aware. Hashes in generated files are not meaningful markers.
 **Broader Pattern:** Detection systems need context. Don't just pattern-match blindly across all file types.
 **Prevention:** When adding safety checks, always consider which file types should be scanned and which should be excluded.
+
+## 8. Agent Playbook: Spidersan Use Cases (10-Feb-26)
+**Purpose:** Guidance for agents using Spidersan in multi-repo coordination workflows.
+
+**Core patterns:**
+- **Register before changing** — Always run `spidersan register --files "..."` when creating a branch to make intent discoverable.
+- **Check conflicts early** — Run `spidersan conflicts` (use `--tier` or `--semantic` when needed) before rebasing or pushing.
+- **Run ready-check pre-PR** — Use `spidersan ready-check` to catch WIP markers and conflicting files; use `--skip-wip` only when you understand the false-positive risk.
+- **Preserve incoming add/add variants** — If two agents add the same file, prefer preserving the incoming variant as `<file>.incoming` for auditability and include a canonical merged version.
+- **Use rebase-helper for stuck rebases** — When local git opens an editor or a rebase is in progress, run `spidersan rebase-helper` for non-interactive diagnostics and guidance.
+- **File-type awareness** — Prefer excluding generated files (lockfiles, binary artifacts) from WIP scanning and other pattern checks.
+
+**Operational tips:**
+- Keep changes small and testable (one feature per branch).
+- If `ready-check` flags many issues, prioritize addressing TIER 3/TIER 2 items first.
+- Document any `--skip-wip` decisions in the PR body and link to the lesson in `SPIDERSAN_LESSONS_LEARNED.md`.
+
+**Why this matters:** These patterns reduce wasted time, prevent unsafe merges, and make cross-agent collaboration auditable.

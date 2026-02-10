@@ -16,5 +16,6 @@ export { doctorCommand } from './doctor.js';
 export { configCommand } from './config.js';
 export { autoCommand } from './auto.js';
 export { welcomeCommand } from './welcome.js';
+export { rebaseHelperCommand } from './rebase-helper.js';
 
 export { loadEcosystemCommands, getEcosystemStatus } from './ecosystem-loader.js';
