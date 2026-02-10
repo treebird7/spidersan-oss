@@ -64,7 +64,7 @@ const DEFAULT_CONFIG: SpidersanConfig = {
     readyCheck: {
         enableWipDetection: true,
         wipPatterns: ['TODO', 'FIXME', 'WIP', 'HACK', 'XXX'],
-        excludeFiles: ['tests/**', '*.test.js', '*.test.ts', '*.md', '**/docs/**'],
+        excludeFiles: ['tests/**', '*.test.js', '*.test.ts', '*.md', '**/docs/**', '**/package-lock.json', '**/yarn.lock', '**/pnpm-lock.yaml'],
         enableExperimentalDetection: false,
         experimentalPatterns: ['experimental/', 'test-'],
         enableBuildCheck: true,
