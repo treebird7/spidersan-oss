@@ -247,7 +247,9 @@ export function deepMerge(target: any, source: any): any {
 
     for (const key in source) {
         // Security: Prevent prototype pollution
-        if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+        if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+            throw new Error(`Invalid config key: ${key}`);
+        }
 
         if (source[key] !== undefined) {
             if (typeof source[key] === 'object' && !Array.isArray(source[key]) && source[key] !== null) {

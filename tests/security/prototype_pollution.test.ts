@@ -12,7 +12,9 @@ describe('Prototype Pollution', () => {
 
     it('should prevent prototype pollution via setNestedValue', () => {
         const obj = {};
-        _testable.setNestedValue(obj, '__proto__.polluted', true);
+        expect(() => {
+            _testable.setNestedValue(obj, '__proto__.polluted', true);
+        }).toThrow();
 
         expect((({} as any)).polluted).toBeUndefined();
         expect((Object.prototype as any).polluted).toBeUndefined();
@@ -27,11 +29,12 @@ describe('Prototype Pollution', () => {
     it('should prevent prototype pollution via deepMerge', () => {
         const maliciousPayload = JSON.parse('{"__proto__": {"pollutedMerge": true}}');
         const target = {};
-        const result = deepMerge(target, maliciousPayload);
+
+        expect(() => {
+            deepMerge(target, maliciousPayload);
+        }).toThrow();
 
         expect((({} as any)).pollutedMerge).toBeUndefined();
         expect((Object.prototype as any).pollutedMerge).toBeUndefined();
-        // Also check result prototype didn't change weirdly
-        expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
     });
 });

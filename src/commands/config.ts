@@ -74,7 +74,7 @@ function setNestedValue(obj: Record<string, unknown>, path: string, value: unkno
 
     // Security: Prevent prototype pollution
     if (parts.some(p => p === '__proto__' || p === 'constructor' || p === 'prototype')) {
-        return;
+        throw new Error('Invalid config path: contains forbidden keys');
     }
 
     let current: Record<string, unknown> = obj;
@@ -227,8 +227,8 @@ async function runWizard(): Promise<void> {
 export const configCommand = new Command('config')
     .description('View and edit Spidersan configuration');
 
-// Internal helper for tests; kept non-exported to avoid expanding the public API surface.
-const _testable = {
+// Export for testing
+export const _testable = {
     setNestedValue,
     getNestedValue,
 };
