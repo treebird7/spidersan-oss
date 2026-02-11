@@ -71,6 +71,12 @@ function parseValue(raw: string): unknown {
 function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
     const parts = path.split('.').filter(Boolean);
     if (parts.length === 0) return;
+
+    // Security: Prevent prototype pollution
+    if (parts.some(p => p === '__proto__' || p === 'constructor' || p === 'prototype')) {
+        return;
+    }
+
     let current: Record<string, unknown> = obj;
     for (let i = 0; i < parts.length - 1; i++) {
         const key = parts[i];
@@ -87,6 +93,9 @@ function getNestedValue(obj: unknown, path: string): unknown {
     const parts = path.split('.').filter(Boolean);
     let current: unknown = obj;
     for (const part of parts) {
+        // Security: Prevent accessing prototype properties
+        if (part === '__proto__' || part === 'constructor' || part === 'prototype') return undefined;
+
         if (typeof current !== 'object' || current === null) return undefined;
         current = (current as Record<string, unknown>)[part];
     }
@@ -217,6 +226,12 @@ async function runWizard(): Promise<void> {
 
 export const configCommand = new Command('config')
     .description('View and edit Spidersan configuration');
+
+// Export for testing
+export const _testable = {
+    setNestedValue,
+    getNestedValue,
+};
 
 async function printConfig(options: { json?: boolean } = {}): Promise<void> {
     const result = await loadConfigWithSources();

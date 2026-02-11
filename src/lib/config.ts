@@ -242,10 +242,13 @@ export async function loadConfig(basePath: string = process.cwd()): Promise<Spid
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function deepMerge(target: any, source: any): any {
+export function deepMerge(target: any, source: any): any {
     const result = { ...target };
 
     for (const key in source) {
+        // Security: Prevent prototype pollution
+        if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+
         if (source[key] !== undefined) {
             if (typeof source[key] === 'object' && !Array.isArray(source[key]) && source[key] !== null) {
                 result[key] = deepMerge(result[key] || {}, source[key]);
