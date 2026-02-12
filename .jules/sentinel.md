@@ -9,3 +9,8 @@
 **Vulnerability:** Prototype pollution via `setNestedValue` and `deepMerge` in configuration handling. Attackers could inject properties into `Object.prototype` via malicious config keys (e.g., `__proto__`).
 **Learning:** Utility functions that traverse or merge objects based on user input must explicitly block access to `__proto__`, `constructor`, and `prototype`.
 **Prevention:** Always validate keys against a deny-list before recursive merge or assignment operations.
+
+## 2026-02-12 - Git Command Injection in Messages Adapter
+**Vulnerability:** `GitMessagesAdapter` used `execSync` with interpolated branch names (`git checkout ${currentBranch}`), which allowed command injection if a branch name contained shell metacharacters.
+**Learning:** Even if Git restricts branch names, defensive coding requires avoiding shell interpolation for any variable input.
+**Prevention:** Use `execFileSync` or `spawnSync` with an array of arguments for all git commands, and prefer Node.js `fs` APIs over shell commands for file operations.
