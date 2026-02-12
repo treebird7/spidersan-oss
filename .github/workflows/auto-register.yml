@@ -65,7 +65,6 @@ jobs:
           echo "🕷️ Auto-registering branch..."
           spidersan register \
             --agent "${{ steps.commit.outputs.agent }}" \
-            --branch "${{ steps.commit.outputs.branch }}" \
             --files "${{ steps.commit.outputs.files }}" \
             --description "Auto-registered via GitHub Actions"
           
