@@ -62,6 +62,9 @@ jobs:
       - name: Register with Spidersan
         if: steps.commit.outputs.files != ''
         run: |
+          echo "🕷️ Initializing Spidersan..."
+          spidersan init
+
           echo "🕷️ Auto-registering branch..."
           spidersan register \
             --agent "${{ steps.commit.outputs.agent }}" \
