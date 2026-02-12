@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { GitMessagesAdapter } from '../../src/storage/git-messages';
+import { GitMessagesAdapter } from '../../src/storage/git-messages.js';
 import * as cp from 'child_process';
+import * as fs from 'fs';
 
 // Mock child_process
 vi.mock('child_process', async (importOriginal) => {
@@ -9,6 +10,15 @@ vi.mock('child_process', async (importOriginal) => {
         execSync: vi.fn(),
         execFileSync: vi.fn(),
         spawnSync: vi.fn(),
+    };
+});
+
+// Mock fs
+vi.mock('fs', async (importOriginal) => {
+    return {
+        ...await importOriginal<typeof import('fs')>(),
+        mkdirSync: vi.fn(),
+        writeFileSync: vi.fn(),
     };
 });
 
@@ -66,5 +76,9 @@ describe('GitMessagesAdapter Security', () => {
         );
 
         expect(safeCall).toBeDefined();
+
+        // Verify fs calls were mocked (optional but good for debugging)
+        expect(vi.mocked(fs.mkdirSync)).toHaveBeenCalled();
+        expect(vi.mocked(fs.writeFileSync)).toHaveBeenCalled();
     });
 });
