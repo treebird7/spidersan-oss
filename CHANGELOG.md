@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-02-13
+### Added
+- **GitHub Actions Auto-Register Workflow**: Automatic branch registration on every push
+  - Extracts agent name from branch prefix (e.g., `claude/feature` → `claude`)
+  - Auto-detects changed files via git diff
+  - Runs conflict detection with TIER 2+ warnings
+  - Handles first push to new branches correctly
+  - Documented in `AUTO_REGISTER_USE_CASES.md` with 10 real-world scenarios
+
+### Fixed
+- GitHub workflow: Removed invalid `--branch` flag from `spidersan register` command
+- GitHub workflow: Added `spidersan init` step to initialize environment
+- GitHub workflow: Fixed file detection for first push to new branches (null SHA handling)
+
+### Documentation
+- Added comprehensive auto-register use cases guide
+- Updated README with GitHub Actions auto-register section
+- Added Lesson #12 to SPIDERSAN_LESSONS_LEARNED.md for workflow --branch flag issue
+
 ## [0.4.3] - 2026-01-27
 ### Added
 - `spidersan welcome` onboarding command for core.
