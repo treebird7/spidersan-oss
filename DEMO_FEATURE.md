@@ -19,3 +19,7 @@ Other agents working in the repo can now:
 - Know which files are being modified
 - Get warned if they try to modify the same files
 - Check the merge order to avoid conflicts
+
+## Update: Second Push Test
+
+This update will trigger the workflow again, and this time it will properly detect the changed files since it can diff from the previous commit.
