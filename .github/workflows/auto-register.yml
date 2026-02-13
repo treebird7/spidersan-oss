@@ -32,7 +32,10 @@ jobs:
       
       - name: Install Spidersan
         run: npm install -g spidersan
-      
+
+      - name: Initialize Spidersan
+        run: spidersan init
+
       - name: Extract commit info
         id: commit
         run: |
