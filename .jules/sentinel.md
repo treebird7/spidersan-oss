@@ -9,3 +9,8 @@
 **Vulnerability:** Prototype pollution via `setNestedValue` and `deepMerge` in configuration handling. Attackers could inject properties into `Object.prototype` via malicious config keys (e.g., `__proto__`).
 **Learning:** Utility functions that traverse or merge objects based on user input must explicitly block access to `__proto__`, `constructor`, and `prototype`.
 **Prevention:** Always validate keys against a deny-list before recursive merge or assignment operations.
+
+## 2026-02-14 - Branch Name Command Injection
+**Vulnerability:** Command injection via malicious git branch names (e.g., `test;./pwn`) in `GitMessagesAdapter`.
+**Learning:** Git branch names can contain characters like `;` and `.` which, when interpolated into `execSync`, allow arbitrary command execution. Git's validation is not sufficient to prevent shell injection.
+**Prevention:** Never use `execSync` with branch names. Use `execFileSync` to treat branch names as data, not code.

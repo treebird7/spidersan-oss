@@ -9,7 +9,7 @@
  * Near-real-time coordination on pull. Works across machines with git remote.
  */
 
-import { execSync, spawnSync, execFileSync } from 'child_process';
+import { spawnSync, execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import type {
@@ -43,7 +43,7 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
     async isAvailable(): Promise<boolean> {
         // Check if we're in a git repository
         try {
-            execSync('git rev-parse --git-dir', {
+            execFileSync('git', ['rev-parse', '--git-dir'], {
                 cwd: this.basePath,
                 stdio: 'ignore',
             });
@@ -70,7 +70,7 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
      */
     private branchExists(): boolean {
         try {
-            execSync(`git rev-parse --verify ${MESSAGES_BRANCH}`, {
+            execFileSync('git', ['rev-parse', '--verify', MESSAGES_BRANCH], {
                 cwd: this.basePath,
                 stdio: 'ignore',
             });
@@ -88,58 +88,56 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
 
         if (!this.branchExists()) {
             // Create orphan branch with an initial commit
-            const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', {
+            const currentBranch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
                 cwd: this.basePath,
                 encoding: 'utf-8',
             }).trim();
 
             try {
                 // Create orphan branch
-                execSync(`git checkout --orphan ${MESSAGES_BRANCH}`, {
+                execFileSync('git', ['checkout', '--orphan', MESSAGES_BRANCH], {
                     cwd: this.basePath,
                     stdio: 'ignore',
                 });
 
                 // Remove all files from index
-                execSync('git rm -rf . 2>/dev/null || true', {
-                    cwd: this.basePath,
-                    stdio: 'ignore',
-                    shell: '/bin/bash',
-                });
+                try {
+                    execFileSync('git', ['rm', '-rf', '.'], {
+                        cwd: this.basePath,
+                        stdio: 'ignore',
+                    });
+                } catch {
+                    // Ignore error if nothing to remove
+                }
 
-                // Create initial structure
-                execSync('mkdir -p inbox outbox', {
-                    cwd: this.basePath,
-                    stdio: 'ignore',
-                    shell: '/bin/bash',
-                });
+                // Create initial structure using fs instead of shell
+                fs.mkdirSync(path.join(this.basePath, 'inbox'), { recursive: true });
+                fs.mkdirSync(path.join(this.basePath, 'outbox'), { recursive: true });
 
-                // Create .gitkeep files
-                execSync('touch inbox/.gitkeep outbox/.gitkeep', {
-                    cwd: this.basePath,
-                    stdio: 'ignore',
-                    shell: '/bin/bash',
-                });
+                // Create .gitkeep files using fs
+                fs.writeFileSync(path.join(this.basePath, 'inbox', '.gitkeep'), '');
+                fs.writeFileSync(path.join(this.basePath, 'outbox', '.gitkeep'), '');
 
-                execSync('git add inbox/.gitkeep outbox/.gitkeep', {
+                execFileSync('git', ['add', 'inbox/.gitkeep', 'outbox/.gitkeep'], {
                     cwd: this.basePath,
                     stdio: 'ignore',
                 });
 
-                execSync('git commit -m "Initialize spidersan messages branch"', {
+                execFileSync('git', ['commit', '-m', 'Initialize spidersan messages branch'], {
                     cwd: this.basePath,
                     stdio: 'ignore',
                 });
 
                 // Return to original branch
-                execSync(`git checkout ${currentBranch}`, {
+                // Security: Use execFileSync to prevent command injection from branch name
+                execFileSync('git', ['checkout', currentBranch], {
                     cwd: this.basePath,
                     stdio: 'ignore',
                 });
             } catch (error) {
                 // Try to recover to original branch
                 try {
-                    execSync(`git checkout ${currentBranch}`, {
+                    execFileSync('git', ['checkout', currentBranch], {
                         cwd: this.basePath,
                         stdio: 'ignore',
                     });
@@ -209,7 +207,7 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
         filePath: string,
         content: string
     ): Promise<boolean> {
-        const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', {
+        const currentBranch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
             cwd: this.basePath,
             encoding: 'utf-8',
         }).trim();
@@ -217,7 +215,7 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
         // Stash any uncommitted changes
         let hasStash = false;
         try {
-            const stashResult = execSync('git stash', {
+            const stashResult = execFileSync('git', ['stash'], {
                 cwd: this.basePath,
                 encoding: 'utf-8',
             });
@@ -256,10 +254,9 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
 
             // Try to push if remote exists
             try {
-                execSync('git push origin spidersan/messages 2>/dev/null', {
+                execFileSync('git', ['push', 'origin', 'spidersan/messages'], {
                     cwd: this.basePath,
                     stdio: 'ignore',
-                    shell: '/bin/bash',
                 });
             } catch {
                 // No remote or push failed - that's okay
@@ -269,6 +266,7 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
         } finally {
             // Return to original branch
             try {
+                // Security: Use execFileSync to prevent command injection from branch name
                 execFileSync('git', ['checkout', currentBranch], {
                     cwd: this.basePath,
                     stdio: 'ignore',
@@ -342,10 +340,9 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
 
         // Try to pull latest if remote exists
         try {
-            execSync('git fetch origin spidersan/messages:spidersan/messages 2>/dev/null', {
+            execFileSync('git', ['fetch', 'origin', 'spidersan/messages:spidersan/messages'], {
                 cwd: this.basePath,
                 stdio: 'ignore',
-                shell: '/bin/bash',
             });
         } catch {
             // No remote or fetch failed
