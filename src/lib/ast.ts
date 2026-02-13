@@ -46,8 +46,6 @@ export class ASTParser {
 
     private extractSymbols(tree: Parser.Tree): SymbolInfo[] {
         const symbols: SymbolInfo[] = [];
-        const cursor = tree.walk();
-
         const visit = (node: Parser.SyntaxNode) => {
             if (node.type === 'function_declaration' || node.type === 'class_declaration' || node.type === 'method_definition') {
                 const nameNode = node.childForFieldName('name');
@@ -55,7 +53,7 @@ export class ASTParser {
                     const content = node.text;
                     symbols.push({
                         name: nameNode.text,
-                        type: node.type.replace('_declaration', '').replace('_definition', '') as any,
+                        type: node.type.replace('_declaration', '').replace('_definition', '') as SymbolInfo['type'],
                         startLine: node.startPosition.row + 1, // 1-indexed for humans
                         endLine: node.endPosition.row + 1,
                         content: content,

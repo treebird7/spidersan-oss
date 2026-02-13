@@ -110,14 +110,14 @@ autoCommand
         if (!configEnabled && cliPaths.length === 0 && !options.force) {
             console.error('❌ Auto-watch is disabled in config.');
             console.error('   Enable it in .spidersanrc or pass --paths / --force.');
-            return;
+            process.exit(1);
         }
 
         const paths = cliPaths.length > 0 ? cliPaths : autoConfig.paths;
         if (paths.length === 0) {
             console.error('❌ No auto-watch paths configured.');
             console.error('   Set autoWatch.paths in .spidersanrc or pass --paths.');
-            return;
+            process.exit(1);
         }
 
         const configuredAgent = config.agent.name?.trim();
@@ -131,7 +131,7 @@ autoCommand
         const script = process.argv[1];
         if (!script) {
             console.error('❌ Could not resolve CLI script path.');
-            return;
+            process.exit(1);
         }
 
         const args = [
@@ -159,7 +159,7 @@ autoCommand
 
         if (!child.pid) {
             console.error('❌ Failed to start auto-watch.');
-            return;
+            process.exit(1);
         }
 
         child.unref();

@@ -3,6 +3,7 @@ import { execSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import * as readline from 'readline';
 import { loadConfig } from '../lib/config.js';
+import { validateAgentId, sanitizeFilePaths } from '../lib/security.js';
 
 function getCurrentBranch(): string {
     try {
@@ -86,7 +87,9 @@ export const registerCommand = new Command('register')
         let files: string[] = [];
 
         if (options.files) {
-            files = options.files.split(',').map((f: string) => f.trim());
+            files = sanitizeFilePaths(
+                options.files.split(',').map((f: string) => f.trim()).filter(Boolean)
+            );
         } else if (options.auto) {
             files = getChangedFiles();
             if (files.length > 0) {
@@ -98,7 +101,16 @@ export const registerCommand = new Command('register')
         }
 
         const configuredAgent = config.agent.name?.trim();
-        const resolvedAgent = (options.agent || process.env.SPIDERSAN_AGENT || configuredAgent || '').trim() || undefined;
+        const rawAgent = (options.agent || process.env.SPIDERSAN_AGENT || configuredAgent || '').trim() || undefined;
+        let resolvedAgent = rawAgent;
+        if (resolvedAgent) {
+            try {
+                resolvedAgent = validateAgentId(resolvedAgent);
+            } catch {
+                console.error(`❌ Invalid agent ID: "${resolvedAgent}". Must be alphanumeric with - or _.`);
+                process.exit(1);
+            }
+        }
 
         // Check if branch already registered
         const existing = await storage.get(branchName);

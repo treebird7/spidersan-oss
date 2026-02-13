@@ -9,7 +9,7 @@ import { Command } from 'commander';
 import { execSync } from 'child_process';
 import { readFile } from 'fs/promises';
 import { getStorage } from '../storage/index.js';
-import { loadConfig, type SpidersanConfig } from '../lib/config.js';
+import { loadConfig } from '../lib/config.js';
 import { minimatch } from 'minimatch';
 
 function getCurrentBranch(): string {
@@ -22,8 +22,9 @@ function getCurrentBranch(): string {
 
 function getChangedFiles(): string[] {
     try {
-        const diff = execSync('git diff --name-only main...HEAD 2>/dev/null || git diff --name-only HEAD~1', {
-            encoding: 'utf-8'
+        const diff = execSync('git diff --name-only main...HEAD 2>/dev/null || git diff --name-only HEAD~1 2>/dev/null || git diff --name-only HEAD 2>/dev/null', {
+            encoding: 'utf-8',
+            stdio: ['pipe', 'pipe', 'ignore']
         });
         return diff.trim().split('\n').filter(Boolean);
     } catch {
@@ -165,8 +166,6 @@ export const readyCheckCommand = new Command('ready-check')
         } else {
             console.log('❌ Branch is NOT ready to merge.');
             console.log('   Tip: Use --skip-wip to bypass WIP detection');
-            if (options.strict) {
-                process.exit(1);
-            }
+            process.exit(1);
         }
     });

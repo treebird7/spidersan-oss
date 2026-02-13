@@ -3,7 +3,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
     test: {
         // Only include our test files, not node_modules
-        include: ['tests/**/*.test.ts', 'src/**/*.test.ts'],
+        include: ['tests/**/*.test.ts', 'test/**/*.spec.ts', 'src/**/*.test.ts'],
 
         // Explicitly exclude node_modules in all subdirectories
         exclude: [
