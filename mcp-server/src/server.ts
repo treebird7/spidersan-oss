@@ -15,6 +15,7 @@ import * as storage from './lib/storage.js';
 // License check removed for OSS version
 import { existsSync, realpathSync } from 'fs';
 import { resolve, isAbsolute } from 'path';
+import { execSync } from 'child_process';
 
 // Security: Validate directory is safe to watch
 function validateWatchDirectory(dir: string | undefined): string {
@@ -44,28 +45,44 @@ const server = new McpServer({
     version: '1.2.3',
 });
 
+function getRepoRootForDir(dir: string): string {
+    try {
+        return execSync('git rev-parse --show-toplevel', { cwd: dir, encoding: 'utf-8' }).trim();
+    } catch {
+        return dir;
+    }
+}
+
+function resolveSpidersanCliForDir(dir: string): { command: string; argsPrefix: string[] } {
+    const repoRoot = getRepoRootForDir(dir);
+    const localCli = resolve(repoRoot, 'dist', 'bin', 'spidersan.js');
+    if (existsSync(localCli)) {
+        return { command: process.execPath, argsPrefix: [localCli] };
+    }
+    return { command: 'spidersan', argsPrefix: [] };
+}
+
 // Tool: list_branches
 server.tool(
     'list_branches',
     'List all registered branches in the current project',
     {
-        status: z.enum(['all', 'active', 'merged', 'abandoned']).optional()
-            .describe('Filter by status (default: active)'),
+        status: z.enum(['all', 'active', 'completed', 'merged', 'abandoned']).optional()
+            .describe('Filter by status (default: active). Note: "merged" is an alias for "completed".'),
     },
     async ({ status = 'active' }) => {
-        if (!storage.isInitialized()) {
-            return {
-                content: [{ type: 'text', text: '❌ Spidersan not initialized. Run: spidersan init' }],
-            };
-        }
+        // MCP uses per-repo registry at <git-root>/.spidersan/registry.json.
+        // If none exists yet, treat as empty.
 
-        const branches = status === 'all'
+        const normalizedStatus = status === 'merged' ? 'completed' : status;
+
+        const branches = normalizedStatus === 'all'
             ? storage.listBranches()
-            : storage.listBranches().filter(b => b.status === status);
+            : storage.listBranches().filter(b => b.status === normalizedStatus);
 
-        if (branches.length === 0) {
+        if (!storage.isInitialized() || branches.length === 0) {
             return {
-                content: [{ type: 'text', text: `📋 No ${status} branches registered` }],
+                content: [{ type: 'text', text: `📋 No ${status} branches registered for this repo yet` }],
             };
         }
 
@@ -92,7 +109,7 @@ server.tool(
     async () => {
         if (!storage.isInitialized()) {
             return {
-                content: [{ type: 'text', text: '❌ Spidersan not initialized. Run: spidersan init' }],
+                content: [{ type: 'text', text: '✅ No file conflicts detected (no branches registered for this repo yet)' }],
             };
         }
 
@@ -125,7 +142,7 @@ server.tool(
     async () => {
         if (!storage.isInitialized()) {
             return {
-                content: [{ type: 'text', text: '❌ Spidersan not initialized. Run: spidersan init' }],
+                content: [{ type: 'text', text: '📋 No active branches to merge (no branches registered for this repo yet)' }],
             };
         }
 
@@ -194,7 +211,7 @@ server.tool(
     async ({ branch }) => {
         if (!storage.isInitialized()) {
             return {
-                content: [{ type: 'text', text: '❌ Spidersan not initialized' }],
+                content: [{ type: 'text', text: '❌ No registry found for this repo yet (nothing to mark merged)' }],
             };
         }
 
@@ -209,7 +226,7 @@ server.tool(
             }
         }
 
-        const success = storage.updateBranchStatus(branchName, 'merged');
+        const success = storage.updateBranchStatus(branchName, 'completed');
         if (!success) {
             return {
                 content: [{ type: 'text', text: `❌ Branch not found: ${branchName}` }],
@@ -232,7 +249,7 @@ server.tool(
     async ({ branch }) => {
         if (!storage.isInitialized()) {
             return {
-                content: [{ type: 'text', text: '❌ Spidersan not initialized' }],
+                content: [{ type: 'text', text: '❌ No registry found for this repo yet (nothing to abandon)' }],
             };
         }
 
@@ -270,7 +287,7 @@ server.tool(
     async ({ branch }) => {
         if (!storage.isInitialized()) {
             return {
-                content: [{ type: 'text', text: '❌ Spidersan not initialized' }],
+                content: [{ type: 'text', text: '❌ No branches registered for this repo yet' }],
             };
         }
 
@@ -344,8 +361,10 @@ server.tool(
         if (hub) args.push('--hub');
         if (quiet) args.push('--quiet');
 
+        const cli = resolveSpidersanCliForDir(safeDir);
+
         // Spawn detached process
-        const proc = spawn('spidersan', args, {
+        const proc = spawn(cli.command, [...cli.argsPrefix, ...args], {
             detached: true,
             stdio: 'ignore',
             cwd: safeDir,
@@ -378,23 +397,34 @@ server.tool(
         return new Promise((resolve) => {
             // Security: Use execFile with explicit arguments instead of shell command
             // This prevents command injection and only targets spidersan watch processes
-            execFile('pkill', ['-f', 'spidersan watch'], (error) => {
-                if (error) {
-                    resolve({
-                        content: [{
-                            type: 'text',
-                            text: '⚠️ No watch process found or unable to stop. It may not be running.'
-                        }],
-                    });
-                } else {
-                    resolve({
-                        content: [{
-                            type: 'text',
-                            text: '✅ Watch mode stopped.'
-                        }],
-                    });
-                }
-            });
+            const patterns: Array<[string, string]> = [
+                ['-f', 'spidersan watch'],
+                ['-f', 'dist/bin/spidersan.js watch'],
+                ['-f', 'spidersan.js watch'],
+            ];
+
+            let stoppedAny = false;
+            let pending = patterns.length;
+
+            const finish = () => {
+                if (pending > 0) return;
+                resolve({
+                    content: [{
+                        type: 'text',
+                        text: stoppedAny
+                            ? '✅ Watch mode stopped.'
+                            : '⚠️ No watch process found or unable to stop. It may not be running.'
+                    }],
+                });
+            };
+
+            for (const pattern of patterns) {
+                execFile('pkill', [...pattern], (error) => {
+                    if (!error) stoppedAny = true;
+                    pending -= 1;
+                    finish();
+                });
+            }
         });
     }
 );
