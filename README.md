@@ -172,7 +172,10 @@ git push origin yourname/new-feature
 
 **Note:** This complements (doesn't replace) local `spidersan watch` for real-time file monitoring.
 
-[See detailed use cases →](./AUTO_REGISTER_USE_CASES.md)
+**Installation:**
+- [📖 Complete Installation Guide →](./INSTALL_AUTO_REGISTER.md)
+- [🎯 Use Cases & Examples →](./AUTO_REGISTER_USE_CASES.md)
+- [🤖 Claude Code Skill →](./.claude/skills/install-auto-register.md)
 
 ### 🦺 Rescue Mode
 
