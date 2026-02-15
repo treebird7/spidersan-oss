@@ -15,7 +15,7 @@ import * as storage from './lib/storage.js';
 // License check removed for OSS version
 import { existsSync, realpathSync, mkdirSync } from 'fs';
 import { readFile, writeFile } from 'fs/promises';
-import { resolve, isAbsolute } from 'path';
+import { resolve, isAbsolute, sep } from 'path';
 import { execSync, execFile } from 'child_process';
 import { homedir } from 'os';
 import { promisify } from 'util';
@@ -480,11 +480,23 @@ server.tool(
 
         const contextFiles = Array.from(fileSet).slice(0, 5);
         const context = [] as Array<{ file: string; content: string }>;
+        let repoRoot = cwd;
+        try {
+            repoRoot = realpathSync(getRepoRootForDir(cwd));
+        } catch {
+            repoRoot = realpathSync(cwd);
+        }
+        const repoRootPrefix = repoRoot.endsWith(sep) ? repoRoot : `${repoRoot}${sep}`;
 
         for (const file of contextFiles) {
             const absolutePath = isAbsolute(file) ? file : resolve(cwd, file);
             try {
-                const content = await readFile(absolutePath, 'utf-8');
+                const realPath = realpathSync(absolutePath);
+                if (!realPath.startsWith(repoRootPrefix)) {
+                    context.push({ file, content: '(skipped: outside repo root)' });
+                    continue;
+                }
+                const content = await readFile(realPath, 'utf-8');
                 context.push({ file, content: content.slice(0, 2000) });
             } catch {
                 context.push({ file, content: '(unreadable)' });
@@ -923,8 +935,8 @@ server.tool(
     },
     async ({ branch, target, title, description, reviewers, draft }) => {
         const repoDir = process.cwd();
-        const targetBranch = target || 'main';
-        let sourceBranch = branch;
+        const targetBranch = (target || 'main').trim();
+        let sourceBranch = branch?.trim();
 
         try {
             if (!sourceBranch) {
@@ -945,6 +957,38 @@ server.tool(
                 content: [{
                     type: 'text',
                     text: JSON.stringify({ success: false, error: 'Unable to determine current branch' }, null, 2)
+                }],
+            };
+        }
+
+        const sourceError = await ensureValidBranchName(sourceBranch, repoDir);
+        if (sourceError) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: sourceError }, null, 2)
+                }],
+            };
+        }
+
+        const targetError = await ensureValidBranchName(targetBranch, repoDir);
+        if (targetError) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: targetError }, null, 2)
+                }],
+            };
+        }
+
+        if (sourceBranch === targetBranch) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        success: false,
+                        error: 'Source and target branches must be different'
+                    }, null, 2)
                 }],
             };
         }
@@ -978,7 +1022,7 @@ server.tool(
         try {
             const readyResult = await execFileAsync(
                 cli.command,
-                [...cli.argsPrefix, 'ready-check', '--json'],
+                [...cli.argsPrefix, 'ready-check', sourceBranch, '--target', targetBranch, '--json'],
                 { cwd: repoDir }
             );
             const readyPayload = JSON.parse(readyResult.stdout || '{}');
