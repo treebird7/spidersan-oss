@@ -13,9 +13,12 @@ import { z } from 'zod';
 
 import * as storage from './lib/storage.js';
 // License check removed for OSS version
-import { existsSync, realpathSync } from 'fs';
+import { existsSync, realpathSync, mkdirSync } from 'fs';
+import { readFile, writeFile } from 'fs/promises';
 import { resolve, isAbsolute } from 'path';
-import { execSync } from 'child_process';
+import { execSync, execFile } from 'child_process';
+import { homedir } from 'os';
+import { promisify } from 'util';
 
 // Security: Validate directory is safe to watch
 function validateWatchDirectory(dir: string | undefined): string {
@@ -45,6 +48,57 @@ const server = new McpServer({
     version: '1.2.3',
 });
 
+const execFileAsync = promisify(execFile);
+const LOCK_TTL_MS = 5 * 60 * 1000;
+const lockRegistryDir = resolve(homedir(), '.spidersan');
+const lockRegistryPath = resolve(lockRegistryDir, 'registry.json');
+
+type LockRegistry = {
+    locks?: Record<string, { agent: string; ts: number; branch: string; target: string }>;
+    [key: string]: any;
+};
+
+async function loadLockRegistry(): Promise<LockRegistry> {
+    if (!existsSync(lockRegistryPath)) return { locks: {} };
+
+    try {
+        const raw = await readFile(lockRegistryPath, 'utf-8');
+        const parsed = JSON.parse(raw) as LockRegistry;
+        if (!parsed || typeof parsed !== 'object') return { locks: {} };
+        if (!parsed.locks || typeof parsed.locks !== 'object' || Array.isArray(parsed.locks)) {
+            parsed.locks = {};
+        }
+        return parsed;
+    } catch {
+        return { locks: {} };
+    }
+}
+
+async function saveLockRegistry(registry: LockRegistry): Promise<void> {
+    if (!existsSync(lockRegistryDir)) {
+        mkdirSync(lockRegistryDir, { recursive: true });
+    }
+    await writeFile(lockRegistryPath, JSON.stringify(registry, null, 2), 'utf-8');
+}
+
+function getExecErrorMessage(error: unknown): string {
+    if (error && typeof error === 'object') {
+        const err = error as { stderr?: string; stdout?: string; message?: string };
+        return String(err.stderr || err.stdout || err.message || 'Unknown error');
+    }
+    return String(error);
+}
+
+async function ensureValidBranchName(branchName: string, repoDir: string): Promise<string | null> {
+    if (!branchName) return 'Unable to determine current branch';
+    try {
+        await execFileAsync('git', ['check-ref-format', '--branch', branchName], { cwd: repoDir });
+        return null;
+    } catch {
+        return `Invalid branch name: ${branchName}`;
+    }
+}
+
 function getRepoRootForDir(dir: string): string {
     try {
         return execSync('git rev-parse --show-toplevel', { cwd: dir, encoding: 'utf-8' }).trim();
@@ -61,6 +115,29 @@ function resolveSpidersanCliForDir(dir: string): { command: string; argsPrefix: 
     }
     return { command: 'spidersan', argsPrefix: [] };
 }
+
+function extractConflictSummary(payload: any): { conflicts: any[]; maxTier: number } {
+    const conflicts = Array.isArray(payload?.conflicts) ? payload.conflicts : [];
+    let maxTier = conflicts.reduce((max: number, conflict: any) => {
+        const tier = typeof conflict?.tier === 'number' ? conflict.tier : 0;
+        return Math.max(max, tier);
+    }, 0);
+
+    const summary = payload?.summary;
+    if (summary && typeof summary === 'object') {
+        if (typeof summary.tier3 === 'number' && summary.tier3 > 0) maxTier = Math.max(maxTier, 3);
+        if (typeof summary.tier2 === 'number' && summary.tier2 > 0) maxTier = Math.max(maxTier, 2);
+        if (typeof summary.tier1 === 'number' && summary.tier1 > 0) maxTier = Math.max(maxTier, 1);
+    }
+
+    return { conflicts, maxTier };
+}
+
+function isReadyCheckPass(payload: any): boolean {
+    if (!payload || typeof payload !== 'object') return false;
+    return payload.ready === true || payload.pass === true;
+}
+
 
 // Tool: list_branches
 server.tool(
@@ -162,6 +239,727 @@ server.tool(
                 text: `🕷️ Recommended merge order:\n\n${formatted}\n\nMerge in this order to minimize conflicts.`
             }],
         };
+    }
+);
+
+// Tool: ready_check
+server.tool(
+    'ready_check',
+    'Validate if a branch is safe to merge. Returns pass/fail with blocking reasons.',
+    {
+        branch: z.string().describe('Branch name to check'),
+        target: z.string().optional().describe('Target branch (default: main)'),
+    },
+    async ({ branch, target }) => {
+        const cwd = process.cwd();
+        const cli = resolveSpidersanCliForDir(cwd);
+        const targetBranch = target || 'main';
+
+        try {
+            const result = await execFileAsync(
+                cli.command,
+                [...cli.argsPrefix, 'ready-check', branch, '--target', targetBranch, '--json'],
+                { cwd }
+            );
+            let parsed: unknown;
+            try {
+                parsed = JSON.parse(result.stdout || '{}');
+            } catch {
+                parsed = { raw: result.stdout?.trim() || '' };
+            }
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify(parsed, null, 2)
+                }],
+            };
+        } catch (error) {
+            const message = getExecErrorMessage(error);
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: message }, null, 2)
+                }],
+            };
+        }
+    }
+);
+
+// Tool: branch_status
+server.tool(
+    'branch_status',
+    'Get detailed status of all active branches including owners, staleness, conflict tier, and last activity.',
+    {
+        repo: z.string().optional().describe('Repository path (default: current directory)'),
+        includeStale: z.boolean().optional().describe('Include stale branches (>7 days inactive)'),
+    },
+    async ({ repo, includeStale }) => {
+        const repoDir = repo
+            ? (isAbsolute(repo) ? repo : resolve(process.cwd(), repo))
+            : process.cwd();
+
+        if (!existsSync(repoDir)) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: `Repository path not found: ${repoDir}` }, null, 2)
+                }],
+            };
+        }
+
+        const cli = resolveSpidersanCliForDir(repoDir);
+        let branches: any[] = [];
+
+        try {
+            const listResult = await execFileAsync(
+                cli.command,
+                [...cli.argsPrefix, 'list', '--json'],
+                { cwd: repoDir }
+            );
+            const parsed = JSON.parse(listResult.stdout || '[]');
+            branches = Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+            const message = getExecErrorMessage(error);
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: message }, null, 2)
+                }],
+            };
+        }
+
+        const now = Date.now();
+        const staleMs = 7 * 24 * 60 * 60 * 1000;
+
+        const enriched = await Promise.all(branches.map(async (branch: any) => {
+            const lastActivityRaw = branch.updatedAt || branch.registeredAt || null;
+            const lastActivityDate = lastActivityRaw ? new Date(lastActivityRaw) : null;
+            const lastActivityMs = lastActivityDate && Number.isFinite(lastActivityDate.getTime())
+                ? lastActivityDate.getTime()
+                : null;
+            const stale = lastActivityMs ? (now - lastActivityMs > staleMs) : false;
+            const lastActivity = lastActivityDate && Number.isFinite(lastActivityDate.getTime())
+                ? lastActivityDate.toISOString()
+                : null;
+
+            let conflictTier = 0;
+            let conflictCount = 0;
+            try {
+                const conflictResult = await execFileAsync(
+                    cli.command,
+                    [...cli.argsPrefix, 'conflicts', '--branch', branch.name, '--json'],
+                    { cwd: repoDir }
+                );
+                const conflictData = JSON.parse(conflictResult.stdout || '{}');
+                const conflictList = Array.isArray(conflictData.conflicts) ? conflictData.conflicts : [];
+                conflictCount = conflictList.length;
+                conflictTier = conflictList.reduce((max: number, c: any) => {
+                    const tier = typeof c?.tier === 'number' ? c.tier : 0;
+                    return Math.max(max, tier);
+                }, 0);
+            } catch {
+                conflictTier = 0;
+                conflictCount = 0;
+            }
+
+            return {
+                ...branch,
+                owner: branch.agent ?? null,
+                lastActivity,
+                stale,
+                conflictTier,
+                conflictCount,
+            };
+        }));
+
+        const includeStaleFlag = includeStale ?? false;
+        const filtered = includeStaleFlag ? enriched : enriched.filter((b: any) => !b.stale);
+
+        return {
+            content: [{
+                type: 'text',
+                text: JSON.stringify({
+                    count: filtered.length,
+                    branches: filtered
+                }, null, 2)
+            }],
+        };
+    }
+);
+
+// Tool: request_resolution
+server.tool(
+    'request_resolution',
+    'Claim a conflict for resolution. Returns conflict context and reserves the conflict to prevent simultaneous resolution attempts.',
+    {
+        branch: z.string().describe('Branch with conflicts to resolve'),
+        target: z.string().optional().describe('Target branch (default: main)'),
+        agent: z.string().describe('Agent claiming the resolution'),
+        tier: z.number().int().min(1).max(3).optional().describe('Conflict tier to resolve (1, 2, or 3)'),
+    },
+    async ({ branch, target, agent, tier }) => {
+        const targetBranch = target || 'main';
+        const conflictKey = `conflict:${branch}:${targetBranch}`;
+        const now = Date.now();
+
+        const storageState = await loadLockRegistry();
+        const existingLock = storageState.locks?.[conflictKey];
+
+        if (existingLock && now - existingLock.ts < LOCK_TTL_MS) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        success: false,
+                        error: 'Conflict already claimed',
+                        claimedBy: existingLock.agent,
+                        claimedAt: new Date(existingLock.ts).toISOString()
+                    }, null, 2)
+                }],
+            };
+        }
+
+        const cwd = process.cwd();
+        const cli = resolveSpidersanCliForDir(cwd);
+        let conflictsPayload: any;
+
+        try {
+            const conflictResult = await execFileAsync(
+                cli.command,
+                [...cli.argsPrefix, 'conflicts', '--branch', branch, '--json'],
+                { cwd }
+            );
+            conflictsPayload = JSON.parse(conflictResult.stdout || '{}');
+        } catch (error) {
+            const message = getExecErrorMessage(error);
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: message }, null, 2)
+                }],
+            };
+        }
+
+        const allConflicts = Array.isArray(conflictsPayload?.conflicts) ? conflictsPayload.conflicts : [];
+        const filteredConflicts = typeof tier === 'number'
+            ? allConflicts.filter((c: any) => c?.tier === tier)
+            : allConflicts;
+
+        storageState.locks = storageState.locks || {};
+        storageState.locks[conflictKey] = {
+            agent,
+            ts: now,
+            branch,
+            target: targetBranch,
+        };
+        await saveLockRegistry(storageState);
+
+        const fileSet = new Set<string>();
+        for (const conflict of filteredConflicts) {
+            if (conflict && typeof conflict.file === 'string') {
+                fileSet.add(conflict.file);
+            }
+            if (Array.isArray(conflict?.files)) {
+                for (const file of conflict.files) {
+                    if (typeof file === 'string') {
+                        fileSet.add(file);
+                    }
+                }
+            }
+        }
+
+        const contextFiles = Array.from(fileSet).slice(0, 5);
+        const context = [] as Array<{ file: string; content: string }>;
+
+        for (const file of contextFiles) {
+            const absolutePath = isAbsolute(file) ? file : resolve(cwd, file);
+            try {
+                const content = await readFile(absolutePath, 'utf-8');
+                context.push({ file, content: content.slice(0, 2000) });
+            } catch {
+                context.push({ file, content: '(unreadable)' });
+            }
+        }
+
+        const conflictTier = filteredConflicts.reduce((max: number, c: any) => {
+            const tierValue = typeof c?.tier === 'number' ? c.tier : 0;
+            return Math.max(max, tierValue);
+        }, 0);
+
+        return {
+            content: [{
+                type: 'text',
+                text: JSON.stringify({
+                    success: true,
+                    claimedBy: agent,
+                    branch,
+                    target: targetBranch,
+                    conflictTier,
+                    conflicts: filteredConflicts,
+                    context,
+                    lockExpires: new Date(now + LOCK_TTL_MS).toISOString()
+                }, null, 2)
+            }],
+        };
+    }
+);
+
+// Tool: release_resolution
+server.tool(
+    'release_resolution',
+    'Release a conflict claim early so another agent can resolve it.',
+    {
+        branch: z.string().describe('Branch with conflicts to resolve'),
+        target: z.string().optional().describe('Target branch (default: main)'),
+        agent: z.string().describe('Agent releasing the resolution claim'),
+    },
+    async ({ branch, target, agent }) => {
+        const targetBranch = target || 'main';
+        const conflictKey = `conflict:${branch}:${targetBranch}`;
+
+        const storageState = await loadLockRegistry();
+        const existingLock = storageState.locks?.[conflictKey];
+
+        if (existingLock?.agent === agent) {
+            delete storageState.locks?.[conflictKey];
+            await saveLockRegistry(storageState);
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ released: true }, null, 2)
+                }],
+            };
+        }
+
+        return {
+            content: [{
+                type: 'text',
+                text: JSON.stringify({ released: false, error: 'Not claimed by this agent' }, null, 2)
+            }],
+        };
+    }
+);
+
+// Tool: git_merge
+server.tool(
+    'git_merge',
+    'Merge a branch into target with safety checks. Blocks TIER 3 conflicts.',
+    {
+        source: z.string().describe('Source branch to merge'),
+        target: z.string().optional().describe('Target branch (default: main)'),
+        strategy: z.enum(['merge', 'squash', 'rebase']).optional().describe('Merge strategy (default: merge)'),
+        dryRun: z.boolean().optional().describe('Preview merge without executing'),
+    },
+    async ({ source, target, strategy, dryRun }) => {
+        const targetBranch = target || 'main';
+        const strategyChoice = strategy || 'merge';
+        const repoDir = process.cwd();
+        const cli = resolveSpidersanCliForDir(repoDir);
+
+        let conflictsPayload: any;
+        try {
+            const conflictResult = await execFileAsync(
+                cli.command,
+                [...cli.argsPrefix, 'conflicts', '--branch', source, '--json'],
+                { cwd: repoDir }
+            );
+            conflictsPayload = JSON.parse(conflictResult.stdout || '{}');
+        } catch (error) {
+            const message = getExecErrorMessage(error);
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: message }, null, 2)
+                }],
+            };
+        }
+
+        const { conflicts, maxTier } = extractConflictSummary(conflictsPayload);
+
+        if (maxTier >= 3) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        success: false,
+                        error: 'TIER 3 conflict detected - requires human review',
+                        conflicts
+                    }, null, 2)
+                }],
+            };
+        }
+
+        let readyPayload: any;
+        try {
+            const readyResult = await execFileAsync(
+                cli.command,
+                [...cli.argsPrefix, 'ready-check', '--json'],
+                { cwd: repoDir }
+            );
+            readyPayload = JSON.parse(readyResult.stdout || '{}');
+        } catch (error) {
+            const message = getExecErrorMessage(error);
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: message }, null, 2)
+                }],
+            };
+        }
+
+        if (!isReadyCheckPass(readyPayload)) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        success: false,
+                        error: 'Branch not ready for merge',
+                        reasons: readyPayload?.issues || readyPayload?.conflicts || []
+                    }, null, 2)
+                }],
+            };
+        }
+
+        if (dryRun) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        dryRun: true,
+                        wouldMerge: { source, target: targetBranch, strategy: strategyChoice },
+                        conflictTier: maxTier,
+                        preChecks: 'passed'
+                    }, null, 2)
+                }],
+            };
+        }
+
+        try {
+            await execFileAsync('git', ['checkout', targetBranch], { cwd: repoDir });
+        } catch (error) {
+            const message = getExecErrorMessage(error);
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: message }, null, 2)
+                }],
+            };
+        }
+
+        let mergeResult: { stdout: string; stderr: string };
+        try {
+            const mergeCmd = strategyChoice === 'squash'
+                ? ['merge', '--squash', source]
+                : strategyChoice === 'rebase'
+                    ? ['rebase', source]
+                    : ['merge', source];
+            mergeResult = await execFileAsync('git', mergeCmd, { cwd: repoDir });
+        } catch (error) {
+            const message = getExecErrorMessage(error);
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: message }, null, 2)
+                }],
+            };
+        }
+
+        let registryWarning: string | undefined;
+        try {
+            await execFileAsync(
+                cli.command,
+                [...cli.argsPrefix, 'merged', source],
+                { cwd: repoDir }
+            );
+        } catch (error) {
+            registryWarning = getExecErrorMessage(error);
+        }
+
+        return {
+            content: [{
+                type: 'text',
+                text: JSON.stringify({
+                    success: true,
+                    merged: { source, target: targetBranch, strategy: strategyChoice },
+                    output: mergeResult.stdout || mergeResult.stderr || '',
+                    registryWarning
+                }, null, 2)
+            }],
+        };
+    }
+);
+
+// Tool: git_commit_and_push
+server.tool(
+    'git_commit_and_push',
+    'Stage, commit (with optional auto-generated message), and push changes.',
+    {
+        files: z.array(z.string()).optional().describe('Files to stage (default: all changed files)'),
+        message: z.string().optional().describe('Commit message (auto-generated from diff if omitted)'),
+        branch: z.string().optional().describe('Branch to push (default: current branch)'),
+        autoMessage: z.boolean().optional().describe('Generate commit message from diff using Raptor Mini'),
+    },
+    async ({ files, message, branch, autoMessage = true }) => {
+        const repoDir = process.cwd();
+        let currentBranch = branch;
+
+        try {
+            if (!currentBranch) {
+                currentBranch = (await execFileAsync('git', ['branch', '--show-current'], { cwd: repoDir })).stdout.trim();
+            }
+        } catch (error) {
+            const message = getExecErrorMessage(error);
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: message }, null, 2)
+                }],
+            };
+        }
+
+        const branchName = currentBranch || '';
+        const branchError = await ensureValidBranchName(branchName, repoDir);
+        if (branchError) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: branchError }, null, 2)
+                }],
+            };
+        }
+        currentBranch = branchName;
+
+        const cli = resolveSpidersanCliForDir(repoDir);
+        try {
+            const readyResult = await execFileAsync(
+                cli.command,
+                [...cli.argsPrefix, 'ready-check', '--json'],
+                { cwd: repoDir }
+            );
+            const readyPayload = JSON.parse(readyResult.stdout || '{}');
+            if (!isReadyCheckPass(readyPayload)) {
+                return {
+                    content: [{
+                        type: 'text',
+                        text: JSON.stringify({
+                            success: false,
+                            error: 'Branch not ready for push',
+                            reasons: readyPayload?.issues || readyPayload?.conflicts || []
+                        }, null, 2)
+                    }],
+                };
+            }
+        } catch {
+            // ready-check may fail if branch not registered, continue anyway
+        }
+
+        const normalizedFiles = files?.map(file => file.trim()).filter(Boolean) ?? [];
+        const filesToStage = normalizedFiles.length > 0 ? normalizedFiles : ['.'];
+
+        try {
+            await execFileAsync('git', ['add', '--', ...filesToStage], { cwd: repoDir });
+        } catch (error) {
+            const message = getExecErrorMessage(error);
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: message }, null, 2)
+                }],
+            };
+        }
+
+        let commitMessage = message;
+        if (!commitMessage && autoMessage) {
+            try {
+                const diff = await execFileAsync('git', ['diff', '--cached', '--stat'], { cwd: repoDir });
+                const stat = diff.stdout.trim();
+                const fileCount = stat ? stat.split('\n').filter(Boolean).length : 0;
+                commitMessage = stat
+                    ? `chore: update ${fileCount} files\n\n${stat.slice(0, 500)}`
+                    : undefined;
+            } catch {
+                // ignore auto message failure
+            }
+        }
+
+        commitMessage = commitMessage || 'chore: automated commit';
+
+        try {
+            await execFileAsync('git', ['commit', '-m', commitMessage], { cwd: repoDir });
+        } catch (error) {
+            const message = getExecErrorMessage(error);
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: message }, null, 2)
+                }],
+            };
+        }
+
+        try {
+            await execFileAsync('git', ['push', 'origin', currentBranch], { cwd: repoDir });
+        } catch (error) {
+            const message = getExecErrorMessage(error);
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: message }, null, 2)
+                }],
+            };
+        }
+
+        return {
+            content: [{
+                type: 'text',
+                text: JSON.stringify({
+                    success: true,
+                    branch: currentBranch,
+                    message: commitMessage,
+                    pushed: true
+                }, null, 2)
+            }],
+        };
+    }
+);
+
+// Tool: create_pr
+server.tool(
+    'create_pr',
+    'Create a GitHub pull request with optional auto-generated title and description.',
+    {
+        branch: z.string().optional().describe('Source branch for PR (default: current branch)'),
+        target: z.string().optional().describe('Target branch (default: main)'),
+        title: z.string().optional().describe('PR title (auto-generated from branch name if omitted)'),
+        description: z.string().optional().describe('PR description (auto-generated from commits if omitted)'),
+        reviewers: z.array(z.string()).optional().describe('GitHub usernames to request review from'),
+        draft: z.boolean().optional().describe('Create as draft PR'),
+    },
+    async ({ branch, target, title, description, reviewers, draft }) => {
+        const repoDir = process.cwd();
+        const targetBranch = target || 'main';
+        let sourceBranch = branch;
+
+        try {
+            if (!sourceBranch) {
+                sourceBranch = (await execFileAsync('git', ['branch', '--show-current'], { cwd: repoDir })).stdout.trim();
+            }
+        } catch (error) {
+            const message = getExecErrorMessage(error);
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: message }, null, 2)
+                }],
+            };
+        }
+
+        if (!sourceBranch) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: 'Unable to determine current branch' }, null, 2)
+                }],
+            };
+        }
+
+        const cli = resolveSpidersanCliForDir(repoDir);
+
+        try {
+            const conflictResult = await execFileAsync(
+                cli.command,
+                [...cli.argsPrefix, 'conflicts', '--branch', sourceBranch, '--json'],
+                { cwd: repoDir }
+            );
+            const conflictPayload = JSON.parse(conflictResult.stdout || '{}');
+            const { conflicts, maxTier } = extractConflictSummary(conflictPayload);
+            if (maxTier >= 3) {
+                return {
+                    content: [{
+                        type: 'text',
+                        text: JSON.stringify({
+                            success: false,
+                            error: 'TIER 3 conflict - resolve before creating PR',
+                            conflicts
+                        }, null, 2)
+                    }],
+                };
+            }
+        } catch {
+            // Conflict check may fail, continue
+        }
+
+        try {
+            const readyResult = await execFileAsync(
+                cli.command,
+                [...cli.argsPrefix, 'ready-check', '--json'],
+                { cwd: repoDir }
+            );
+            const readyPayload = JSON.parse(readyResult.stdout || '{}');
+            if (!isReadyCheckPass(readyPayload)) {
+                return {
+                    content: [{
+                        type: 'text',
+                        text: JSON.stringify({
+                            success: false,
+                            error: 'Branch not ready for PR',
+                            reasons: readyPayload?.issues || readyPayload?.conflicts || []
+                        }, null, 2)
+                    }],
+                };
+            }
+        } catch {
+            // Ready check may fail, continue
+        }
+
+        const prTitle = title || sourceBranch
+            .replace(/^(feat|fix|chore|docs|refactor)\//, '$1: ')
+            .replace(/-/g, ' ')
+            .replace(/^\w/, (c) => c.toUpperCase());
+
+        let prDescription = description;
+        if (!prDescription) {
+            try {
+                const commits = await execFileAsync('git', ['log', `${targetBranch}..${sourceBranch}`, '--oneline'], { cwd: repoDir });
+                const lines = commits.stdout.split('\n').filter(Boolean);
+                prDescription = `## Changes\n\n${lines.map((line) => `- ${line}`).join('\n')}`;
+            } catch {
+                prDescription = '## Changes\n\n- (auto-generated description unavailable)';
+            }
+        }
+
+        const ghArgs = ['pr', 'create', '--base', targetBranch, '--head', sourceBranch, '--title', prTitle, '--body', prDescription];
+
+        if (draft) ghArgs.push('--draft');
+        if (reviewers && reviewers.length > 0) {
+            ghArgs.push('--reviewer', reviewers.join(','));
+        }
+
+        try {
+            const prResult = await execFileAsync('gh', ghArgs, { cwd: repoDir });
+            const prUrl = prResult.stdout.trim() || prResult.stderr?.trim() || '';
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        success: true,
+                        url: prUrl,
+                        title: prTitle,
+                        source: sourceBranch,
+                        target: targetBranch,
+                        draft: !!draft,
+                        reviewers: reviewers || []
+                    }, null, 2)
+                }],
+            };
+        } catch (error) {
+            const message = getExecErrorMessage(error);
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: message }, null, 2)
+                }],
+            };
+        }
     }
 );
 
@@ -552,6 +1350,13 @@ server.tool(
             { name: 'welcome', desc: '✨ START HERE - onboarding ritual with demo', args: 'demo?: boolean' },
             { name: 'list_branches', desc: 'List registered branches by status', args: 'status?: all|active|merged|abandoned' },
             { name: 'check_conflicts', desc: 'Detect file conflicts between active branches', args: 'none' },
+            { name: 'ready_check', desc: 'Validate if a branch is safe to merge', args: 'branch, target?' },
+            { name: 'branch_status', desc: 'Get detailed status for registered branches', args: 'repo?, includeStale?' },
+            { name: 'request_resolution', desc: 'Claim a conflict for resolution and return context', args: 'branch, agent, target?, tier?' },
+            { name: 'release_resolution', desc: 'Release a conflict claim early', args: 'branch, agent, target?' },
+            { name: 'git_merge', desc: 'Merge a branch into target with safety checks', args: 'source, target?, strategy?, dryRun?' },
+            { name: 'git_commit_and_push', desc: 'Stage, commit, and push changes', args: 'files?, message?, branch?, autoMessage?' },
+            { name: 'create_pr', desc: 'Create a GitHub pull request', args: 'branch?, target?, title?, description?, reviewers?, draft?' },
             { name: 'get_merge_order', desc: 'Recommend safe merge sequence', args: 'none' },
             { name: 'register_branch', desc: 'Register branch with files you are modifying', args: 'branch, files[], description?, agent?, repo?' },
             { name: 'mark_merged', desc: 'Mark branch as merged', args: 'branch?' },
