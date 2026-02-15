@@ -9,3 +9,8 @@
 **Vulnerability:** Prototype pollution via `setNestedValue` and `deepMerge` in configuration handling. Attackers could inject properties into `Object.prototype` via malicious config keys (e.g., `__proto__`).
 **Learning:** Utility functions that traverse or merge objects based on user input must explicitly block access to `__proto__`, `constructor`, and `prototype`.
 **Prevention:** Always validate keys against a deny-list before recursive merge or assignment operations.
+
+## 2026-02-14 - Missing Input Validation on Registration
+**Vulnerability:** `register` command accepted raw input for files and agent IDs, potentially allowing registration of malicious data (though not directly exploitable for RCE, it could pollute the system).
+**Learning:** Input validation should be applied at the entry point of the system (e.g., CLI commands), not just when data is consumed.
+**Prevention:** Use centralized validation functions (like `validateFilePath`, `validateAgentId`) immediately upon receiving user input.
