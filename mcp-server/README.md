@@ -38,6 +38,7 @@ Add to `~/.cursor/mcp.json` or Claude Desktop MCP config:
 
 | Tool | Description |
 |------|-------------|
+| `welcome` | ✨ START HERE - onboarding ritual with demo |
 | `list_branches` | List all registered branches (filter by status) |
 | `check_conflicts` | Check for file conflicts between active branches |
 | `get_merge_order` | Get recommended merge order based on dependencies |
@@ -47,6 +48,7 @@ Add to `~/.cursor/mcp.json` or Claude Desktop MCP config:
 | `get_branch_info` | Get detailed info about a branch |
 | `start_watch` | **NEW!** Start daemon mode - watches and auto-registers |
 | `stop_watch` | **NEW!** Stop the background file watcher |
+| `list_tools` | List all available tools with descriptions |
 
 ## Example Usage
 
