@@ -138,6 +138,16 @@ function isReadyCheckPass(payload: any): boolean {
     return payload.ready === true || payload.pass === true;
 }
 
+async function getCurrentBranchName(repoDir: string): Promise<string | null> {
+    try {
+        const current = await execFileAsync('git', ['branch', '--show-current'], { cwd: repoDir });
+        const branch = current.stdout.trim();
+        return branch.length > 0 ? branch : null;
+    } catch {
+        return null;
+    }
+}
+
 
 // Tool: list_branches
 server.tool(
@@ -551,16 +561,48 @@ server.tool(
         dryRun: z.boolean().optional().describe('Preview merge without executing'),
     },
     async ({ source, target, strategy, dryRun }) => {
-        const targetBranch = target || 'main';
-        const strategyChoice = strategy || 'merge';
         const repoDir = process.cwd();
         const cli = resolveSpidersanCliForDir(repoDir);
+        const sourceBranch = source.trim();
+        const targetBranch = (target || 'main').trim();
+        const sourceError = await ensureValidBranchName(sourceBranch, repoDir);
+        if (sourceError) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: sourceError }, null, 2)
+                }],
+            };
+        }
+        const targetError = await ensureValidBranchName(targetBranch, repoDir);
+        if (targetError) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: targetError }, null, 2)
+                }],
+            };
+        }
+
+        if (sourceBranch === targetBranch) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        success: false,
+                        error: 'Source and target branches must be different'
+                    }, null, 2)
+                }],
+            };
+        }
+
+        const strategyChoice = strategy || 'merge';
 
         let conflictsPayload: any;
         try {
             const conflictResult = await execFileAsync(
                 cli.command,
-                [...cli.argsPrefix, 'conflicts', '--branch', source, '--json'],
+                [...cli.argsPrefix, 'conflicts', '--branch', sourceBranch, '--json'],
                 { cwd: repoDir }
             );
             conflictsPayload = JSON.parse(conflictResult.stdout || '{}');
@@ -589,6 +631,35 @@ server.tool(
             };
         }
 
+        const originalBranch = await getCurrentBranchName(repoDir);
+        let switchedForReadyCheck = false;
+        let restoreWarning: string | undefined;
+
+        const restoreBranch = async () => {
+            if (switchedForReadyCheck && originalBranch) {
+                try {
+                    await execFileAsync('git', ['checkout', originalBranch], { cwd: repoDir });
+                } catch (error) {
+                    restoreWarning = getExecErrorMessage(error);
+                }
+            }
+        };
+
+        if (!originalBranch || originalBranch !== sourceBranch) {
+            try {
+                await execFileAsync('git', ['checkout', sourceBranch], { cwd: repoDir });
+                switchedForReadyCheck = true;
+            } catch (error) {
+                const message = getExecErrorMessage(error);
+                return {
+                    content: [{
+                        type: 'text',
+                        text: JSON.stringify({ success: false, error: message }, null, 2)
+                    }],
+                };
+            }
+        }
+
         let readyPayload: any;
         try {
             const readyResult = await execFileAsync(
@@ -598,37 +669,53 @@ server.tool(
             );
             readyPayload = JSON.parse(readyResult.stdout || '{}');
         } catch (error) {
-            const message = getExecErrorMessage(error);
-            return {
-                content: [{
-                    type: 'text',
-                    text: JSON.stringify({ success: false, error: message }, null, 2)
-                }],
-            };
+            const raw = (error as { stdout?: string; stderr?: string })?.stdout
+                || (error as { stdout?: string; stderr?: string })?.stderr
+                || '';
+            if (raw) {
+                try {
+                    readyPayload = JSON.parse(raw);
+                } catch {
+                    readyPayload = { raw: raw.trim() };
+                }
+            } else {
+                const message = getExecErrorMessage(error);
+                await restoreBranch();
+                return {
+                    content: [{
+                        type: 'text',
+                        text: JSON.stringify({ success: false, error: message, restoreWarning }, null, 2)
+                    }],
+                };
+            }
         }
 
         if (!isReadyCheckPass(readyPayload)) {
+            await restoreBranch();
             return {
                 content: [{
                     type: 'text',
                     text: JSON.stringify({
                         success: false,
                         error: 'Branch not ready for merge',
-                        reasons: readyPayload?.issues || readyPayload?.conflicts || []
+                        reasons: readyPayload?.issues || readyPayload?.conflicts || [],
+                        restoreWarning
                     }, null, 2)
                 }],
             };
         }
 
         if (dryRun) {
+            await restoreBranch();
             return {
                 content: [{
                     type: 'text',
                     text: JSON.stringify({
                         dryRun: true,
-                        wouldMerge: { source, target: targetBranch, strategy: strategyChoice },
+                        wouldMerge: { source: sourceBranch, target: targetBranch, strategy: strategyChoice },
                         conflictTier: maxTier,
-                        preChecks: 'passed'
+                        preChecks: 'passed',
+                        restoreWarning
                     }, null, 2)
                 }],
             };
@@ -649,10 +736,10 @@ server.tool(
         let mergeResult: { stdout: string; stderr: string };
         try {
             const mergeCmd = strategyChoice === 'squash'
-                ? ['merge', '--squash', source]
+                ? ['merge', '--squash', sourceBranch]
                 : strategyChoice === 'rebase'
-                    ? ['rebase', source]
-                    : ['merge', source];
+                    ? ['rebase', sourceBranch]
+                    : ['merge', sourceBranch];
             mergeResult = await execFileAsync('git', mergeCmd, { cwd: repoDir });
         } catch (error) {
             const message = getExecErrorMessage(error);
@@ -668,7 +755,7 @@ server.tool(
         try {
             await execFileAsync(
                 cli.command,
-                [...cli.argsPrefix, 'merged', source],
+                [...cli.argsPrefix, 'merged', sourceBranch],
                 { cwd: repoDir }
             );
         } catch (error) {
@@ -680,7 +767,7 @@ server.tool(
                 type: 'text',
                 text: JSON.stringify({
                     success: true,
-                    merged: { source, target: targetBranch, strategy: strategyChoice },
+                    merged: { source: sourceBranch, target: targetBranch, strategy: strategyChoice },
                     output: mergeResult.stdout || mergeResult.stderr || '',
                     registryWarning
                 }, null, 2)
