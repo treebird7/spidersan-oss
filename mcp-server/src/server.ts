@@ -263,12 +263,10 @@ server.tool(
     async ({ branch, target }) => {
         const cwd = process.cwd();
         const cli = resolveSpidersanCliForDir(cwd);
-        const targetBranch = target || 'main';
-
         try {
             const result = await execFileAsync(
                 cli.command,
-                [...cli.argsPrefix, 'ready-check', branch, '--target', targetBranch, '--json'],
+                [...cli.argsPrefix, 'ready-check', '--json'],
                 { cwd }
             );
             let parsed: unknown;
@@ -276,6 +274,16 @@ server.tool(
                 parsed = JSON.parse(result.stdout || '{}');
             } catch {
                 parsed = { raw: result.stdout?.trim() || '' };
+            }
+            if (branch && typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+                const payload = parsed as Record<string, unknown>;
+                if (payload.branch && payload.branch !== branch) {
+                    payload.requestedBranch = branch;
+                }
+                if (target) {
+                    payload.requestedTarget = target;
+                }
+                parsed = payload;
             }
             return {
                 content: [{
@@ -326,8 +334,12 @@ server.tool(
                 [...cli.argsPrefix, 'list', '--json'],
                 { cwd: repoDir }
             );
-            const parsed = JSON.parse(listResult.stdout || '[]');
-            branches = Array.isArray(parsed) ? parsed : [];
+            try {
+                const parsed = JSON.parse(listResult.stdout || '[]');
+                branches = Array.isArray(parsed) ? parsed : [];
+            } catch {
+                branches = [];
+            }
         } catch (error) {
             const message = getExecErrorMessage(error);
             return {
