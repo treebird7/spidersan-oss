@@ -12,24 +12,7 @@ import { Command } from 'commander';
 import { execSync, execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
-
-// Security: Input validation patterns
-const VALID_AGENT_ID = /^[a-z0-9][a-z0-9_-]{0,30}$/i;
-const VALID_BRANCH_NAME = /^[a-zA-Z0-9][a-zA-Z0-9/_.-]{0,99}$/;
-
-function validateAgentId(agentId: string): string {
-    if (!VALID_AGENT_ID.test(agentId)) {
-        throw new Error(`Invalid agent ID: "${agentId.slice(0, 20)}..." (must be alphanumeric with - or _)`);
-    }
-    return agentId;
-}
-
-function validateBranchName(branch: string): string {
-    if (!VALID_BRANCH_NAME.test(branch)) {
-        throw new Error(`Invalid branch name: "${branch.slice(0, 20)}..."`);
-    }
-    return branch;
-}
+import { validateAgentId, validateBranchName } from '../lib/security.js';
 
 // Config
 const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
