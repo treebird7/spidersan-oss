@@ -227,7 +227,7 @@ async function runWizard(): Promise<void> {
 export const configCommand = new Command('config')
     .description('View and edit Spidersan configuration');
 
-// Internal helper for tests; kept non-exported to avoid expanding the public API surface.
+// Internal helper exported for prototype pollution tests. Should only be used in test environments.
 export const _testable = {
     setNestedValue,
     getNestedValue,
