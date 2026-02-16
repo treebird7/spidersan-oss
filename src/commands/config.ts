@@ -228,7 +228,7 @@ export const configCommand = new Command('config')
     .description('View and edit Spidersan configuration');
 
 // Internal helper for tests; kept non-exported to avoid expanding the public API surface.
-const _testable = {
+export const _testable = {
     setNestedValue,
     getNestedValue,
 };
