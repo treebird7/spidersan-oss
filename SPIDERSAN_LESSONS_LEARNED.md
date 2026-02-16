@@ -179,3 +179,38 @@ spidersan register \
 **Lesson:** Verify CLI interfaces before writing workflows. Check command help or source code to confirm available flags.
 
 **Pattern:** When a command operates on "current context" (branch, repo, etc.), it typically auto-detects rather than requiring explicit parameters.
+
+## 13. Branch-Local Registry Limits Multi-Agent Visibility (16-Feb-26)
+**Problem:** `.spidersan/registry.json` lives in the git working tree. When `torrent create` checks out a new task branch, the registry on that branch is a stale snapshot from when the branch was created.
+**Cause:** Git branches have independent file trees — changes to registry on one branch don't appear on others until merge.
+**Symptom:** Agent A registers files on task branch A. Agent B on main (or task branch B) can't see A's registration.
+**Impact:** Defeats the purpose of coordination — agents can't see each other's intent.
+
+**Workaround:**
+- Use `torrent decompose` (register-only, no branch switch) for bulk task creation
+- Stay on main for global visibility, only `torrent create` when ready to code
+- Manually commit registry changes and cherry-pick to main if needed
+
+**Proper fix needed:** Move registry to `.git/spidersan/` (outside working tree), use an orphan branch (like `spidersan/messages`), or add a `register --branch` flag with cross-branch write capability.
+
+**Lesson:** Coordination metadata should never live in the same tree as the code being coordinated. It needs a separate namespace.
+
+## 14. Torrent Belongs in Ecosystem, Not Core (16-Feb-26)
+**Problem:** Torrent command was initially wired into spidersan core (`src/commands/torrent.ts`, `index.ts`, `spidersan.ts`) but it depends on Hub notifications and ecosystem-level patterns.
+**Fix:** Moved to `spidersan-ecosystem` plugin. Imports from `spidersan` package (proper plugin pattern). Removed from core `index.ts` and `spidersan.ts`.
+**Lesson:** Features that depend on external services (Hub, Myceliumail) or ecosystem conventions should live in the ecosystem plugin, not core. Core should remain dependency-free and self-contained.
+
+## 15. Cross-Reference Branches with PRs Before Triage (16-Feb-26)
+**Problem:** 8 of 14 branches had changes that were already merged to main via other PRs. Without checking, we'd have tried to merge superseded code.
+**Fix:** Always cross-reference local branches with GitHub PRs before triaging:
+```bash
+spidersan list              # Local branches
+gh pr list --state all      # GitHub PRs
+# Compare: which branches have merged PRs? Which PRs target non-main branches?
+```
+**Pattern:** A branch can be "active" in the registry but "superseded" in reality. The registry doesn't know about PRs. Always check both sources.
+
+## 16. Synthetic Test Fixtures for Coordination Features (16-Feb-26)
+**Problem:** Torrent and conflict detection are hard to test without realistic multi-agent data.
+**Fix:** Created `tests/fixtures/mammoth-registry.json` — 41 tasks, 5 agents, 55 files, 9 conflict hotspots, 3-level nesting. Can be loaded into any `.spidersan/registry.json` for testing.
+**Pattern:** Save registry snapshots from real or realistic test sessions as fixtures. They're more valuable than unit test mocks for coordination features.
