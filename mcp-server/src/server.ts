@@ -17,6 +17,7 @@ import { existsSync, realpathSync, mkdirSync } from 'fs';
 import { readFile, writeFile } from 'fs/promises';
 import { resolve, isAbsolute, sep } from 'path';
 import { execSync, execFile } from 'child_process';
+import { randomUUID } from 'crypto';
 import { homedir } from 'os';
 import { promisify } from 'util';
 
@@ -50,27 +51,56 @@ const server = new McpServer({
 
 const execFileAsync = promisify(execFile);
 const LOCK_TTL_MS = 5 * 60 * 1000;
+const MAX_FILE_LOCK_TTL_MINUTES = 24 * 60;
 const lockRegistryDir = resolve(homedir(), '.spidersan');
 const lockRegistryPath = resolve(lockRegistryDir, 'registry.json');
 
+type ConflictLock = { agent: string; ts: number; branch: string; target: string };
+type FileLock = { file: string; agent: string; reason?: string; expires: number; token: string };
+
 type LockRegistry = {
-    locks?: Record<string, { agent: string; ts: number; branch: string; target: string }>;
+    locks?: FileLock[];
+    conflictLocks?: Record<string, ConflictLock>;
     [key: string]: any;
 };
 
 async function loadLockRegistry(): Promise<LockRegistry> {
-    if (!existsSync(lockRegistryPath)) return { locks: {} };
+    if (!existsSync(lockRegistryPath)) return { locks: [], conflictLocks: {} };
 
     try {
         const raw = await readFile(lockRegistryPath, 'utf-8');
         const parsed = JSON.parse(raw) as LockRegistry;
-        if (!parsed || typeof parsed !== 'object') return { locks: {} };
-        if (!parsed.locks || typeof parsed.locks !== 'object' || Array.isArray(parsed.locks)) {
-            parsed.locks = {};
+        if (!parsed || typeof parsed !== 'object') return { locks: [], conflictLocks: {} };
+
+        const legacyLocks = parsed.locks;
+        if (Array.isArray(legacyLocks)) {
+            parsed.locks = legacyLocks;
+        } else if (legacyLocks && typeof legacyLocks === 'object') {
+            parsed.conflictLocks = {
+                ...(parsed.conflictLocks || {}),
+                ...(legacyLocks as Record<string, ConflictLock>),
+            };
+            parsed.locks = [];
+        } else {
+            parsed.locks = [];
         }
+
+        if (!parsed.conflictLocks || typeof parsed.conflictLocks !== 'object' || Array.isArray(parsed.conflictLocks)) {
+            parsed.conflictLocks = {};
+        }
+
+        const now = Date.now();
+        parsed.locks = parsed.locks.filter((lock) =>
+            lock &&
+            typeof lock.file === 'string' &&
+            typeof lock.agent === 'string' &&
+            typeof lock.expires === 'number' &&
+            lock.expires > now
+        );
+
         return parsed;
     } catch {
-        return { locks: {} };
+        return { locks: [], conflictLocks: {} };
     }
 }
 
@@ -136,6 +166,23 @@ function extractConflictSummary(payload: any): { conflicts: any[]; maxTier: numb
 function isReadyCheckPass(payload: any): boolean {
     if (!payload || typeof payload !== 'object') return false;
     return payload.ready === true || payload.pass === true;
+}
+
+function globToRegex(pattern: string): RegExp {
+    let regex = '^';
+    for (const char of pattern) {
+        if (char === '*') {
+            regex += '.*';
+            continue;
+        }
+        if (char === '?') {
+            regex += '.';
+            continue;
+        }
+        regex += char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+    regex += '$';
+    return new RegExp(regex);
 }
 
 async function getCurrentBranchName(repoDir: string): Promise<string | null> {
@@ -425,7 +472,7 @@ server.tool(
         const now = Date.now();
 
         const storageState = await loadLockRegistry();
-        const existingLock = storageState.locks?.[conflictKey];
+        const existingLock = storageState.conflictLocks?.[conflictKey];
 
         if (existingLock && now - existingLock.ts < LOCK_TTL_MS) {
             return {
@@ -467,8 +514,8 @@ server.tool(
             ? allConflicts.filter((c: any) => c?.tier === tier)
             : allConflicts;
 
-        storageState.locks = storageState.locks || {};
-        storageState.locks[conflictKey] = {
+        storageState.conflictLocks = storageState.conflictLocks || {};
+        storageState.conflictLocks[conflictKey] = {
             agent,
             ts: now,
             branch,
@@ -552,10 +599,10 @@ server.tool(
         const conflictKey = `conflict:${branch}:${targetBranch}`;
 
         const storageState = await loadLockRegistry();
-        const existingLock = storageState.locks?.[conflictKey];
+        const existingLock = storageState.conflictLocks?.[conflictKey];
 
         if (existingLock?.agent === agent) {
-            delete storageState.locks?.[conflictKey];
+            delete storageState.conflictLocks?.[conflictKey];
             await saveLockRegistry(storageState);
             return {
                 content: [{
@@ -569,6 +616,299 @@ server.tool(
             content: [{
                 type: 'text',
                 text: JSON.stringify({ released: false, error: 'Not claimed by this agent' }, null, 2)
+            }],
+        };
+    }
+);
+
+// Tool: lock_files
+server.tool(
+    'lock_files',
+    'Lock files to prevent concurrent edits. Returns lock token.',
+    {
+        files: z.array(z.string()).min(1).describe('File paths to lock (relative or absolute)'),
+        agent: z.string().describe('Agent requesting lock'),
+        reason: z.string().optional().describe('Why files are being locked'),
+        ttl: z.number().int().positive().optional().describe('Lock timeout in minutes (default: 30)'),
+    },
+    async ({ files, agent, reason, ttl }) => {
+        const registry = await loadLockRegistry();
+        const now = Date.now();
+        const effectiveTtl = typeof ttl === 'number' ? ttl : 30;
+        const boundedTtl = Math.min(effectiveTtl, MAX_FILE_LOCK_TTL_MINUTES);
+
+        registry.locks = Array.isArray(registry.locks)
+            ? registry.locks.filter(lock => lock.expires > now)
+            : [];
+
+        const conflicts: Array<{ file: string; lockedBy: string }> = [];
+        for (const file of files) {
+            const existing = registry.locks.find(lock => lock.file === file && lock.expires > now);
+            if (existing && existing.agent !== agent) {
+                conflicts.push({ file, lockedBy: existing.agent });
+            }
+        }
+
+        if (conflicts.length > 0) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        success: false,
+                        error: 'Files already locked',
+                        conflicts
+                    })
+                }]
+            };
+        }
+
+        const lockToken = randomUUID();
+        const expires = now + (boundedTtl * 60 * 1000);
+
+        for (const file of files) {
+            registry.locks = registry.locks.filter(lock => !(lock.file === file && lock.agent === agent));
+            registry.locks.push({ file, agent, reason, expires, token: lockToken });
+        }
+
+        await saveLockRegistry(registry);
+
+        return {
+            content: [{
+                type: 'text',
+                text: JSON.stringify({
+                    success: true,
+                    lockToken,
+                    files: files.length,
+                    expiresAt: new Date(expires).toISOString()
+                })
+            }]
+        };
+    }
+);
+
+// Tool: unlock_files
+server.tool(
+    'unlock_files',
+    'Release file locks. Requires agent match or lock token.',
+    {
+        files: z.array(z.string()).optional().describe('File paths to unlock (omit to unlock all by agent)'),
+        agent: z.string().optional().describe('Agent releasing lock'),
+        token: z.string().optional().describe('Lock token (alternative to agent)'),
+        force: z.boolean().optional().describe('Force unlock (admin only)'),
+    },
+    async ({ files, agent, token, force = false }) => {
+        const registry = await loadLockRegistry();
+
+        if (!Array.isArray(registry.locks) || registry.locks.length === 0) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: true, released: 0, remaining: 0 })
+                }]
+            };
+        }
+
+        const now = Date.now();
+        registry.locks = registry.locks.filter(lock => lock.expires > now);
+
+        let released = 0;
+        registry.locks = registry.locks.filter(lock => {
+            const matchesFiles = !files || files.includes(lock.file);
+            const matchesAgent = agent && lock.agent === agent;
+            const matchesToken = token && lock.token === token;
+
+            if (matchesFiles && (matchesAgent || matchesToken || force)) {
+                released++;
+                return false;
+            }
+            return true;
+        });
+
+        await saveLockRegistry(registry);
+
+        return {
+            content: [{
+                type: 'text',
+                text: JSON.stringify({
+                    success: true,
+                    released,
+                    remaining: registry.locks.length
+                })
+            }]
+        };
+    }
+);
+
+// Tool: who_owns
+server.tool(
+    'who_owns',
+    'Query who owns, locks, or is working on specific files.',
+    {
+        files: z.array(z.string()).optional().describe('File paths to query'),
+        pattern: z.string().optional().describe('Glob pattern to match files (alternative to files array)'),
+    },
+    async ({ files = [], pattern }) => {
+        const branches = storage.listBranches();
+        const lockRegistry = await loadLockRegistry();
+        const now = Date.now();
+
+        const activeLocks = Array.isArray(lockRegistry.locks)
+            ? lockRegistry.locks.filter(lock => lock.expires > now)
+            : [];
+
+        const allFiles = new Set<string>();
+        for (const branch of branches) {
+            for (const file of branch.files || []) {
+                allFiles.add(file);
+            }
+        }
+        for (const lock of activeLocks) {
+            if (lock?.file) {
+                allFiles.add(lock.file);
+            }
+        }
+
+        let filesToCheck = Array.from(new Set(files));
+        if (pattern) {
+            const regex = globToRegex(pattern);
+            filesToCheck = [...allFiles].filter(file => regex.test(file));
+        }
+
+        const results = filesToCheck.map(file => {
+            const owners = new Set<string>();
+            const entry = {
+                file,
+                lock: null as null | { agent: string; reason?: string; expires: string },
+                branches: [] as Array<{ name: string; agent?: string }>,
+                owners: [] as string[],
+            };
+
+            const lock = activeLocks.find(item => item.file === file && item.expires > now);
+            if (lock) {
+                entry.lock = {
+                    agent: lock.agent,
+                    reason: lock.reason,
+                    expires: new Date(lock.expires).toISOString(),
+                };
+                if (lock.agent) owners.add(lock.agent);
+            }
+
+            for (const branch of branches) {
+                if (branch.status === 'active' && branch.files?.includes(file)) {
+                    entry.branches.push({ name: branch.name, agent: branch.agent });
+                    if (branch.agent) owners.add(branch.agent);
+                }
+            }
+
+            entry.owners = [...owners];
+            return entry;
+        });
+
+        return {
+            content: [{
+                type: 'text',
+                text: JSON.stringify({
+                    queried: filesToCheck.length,
+                    results,
+                    summary: results
+                        .filter(result => result.owners.length > 0)
+                        .map(result => `${result.file}: ${result.owners.join(', ')}`),
+                })
+            }],
+        };
+    }
+);
+
+// Tool: intent_scan
+server.tool(
+    'intent_scan',
+    'Scan for potential conflicts before starting work. Analyzes task files and registered branches.',
+    {
+        files: z.array(z.string()).min(1).describe('Files you intend to modify'),
+        agent: z.string().describe('Agent planning the work'),
+        taskId: z.string().optional().describe('Optional task ID for context'),
+    },
+    async ({ files, agent, taskId }) => {
+        const registry = storage.loadRegistry();
+        const lockRegistry = await loadLockRegistry();
+        const conflicts: Array<{ file: string; branch: string; agent?: string; severity: 'high' }> = [];
+        const warnings: Array<{ file: string; nearbyFile: string; branch: string; agent?: string; severity: 'medium' }> = [];
+        const locks: Array<{ file: string; lockedBy: string; reason?: string; expires: string }> = [];
+        const now = Date.now();
+
+        const branches = registry ? Object.values(registry.branches || {}) : [];
+
+        for (const file of files) {
+            const lock = lockRegistry.locks?.find(l =>
+                l.file === file && l.expires > now && l.agent !== agent
+            );
+            if (lock) {
+                locks.push({
+                    file,
+                    lockedBy: lock.agent,
+                    reason: lock.reason,
+                    expires: new Date(lock.expires).toISOString(),
+                });
+            }
+
+            for (const branch of branches) {
+                if (branch.status === 'active' && branch.agent !== agent) {
+                    if (branch.files?.includes(file)) {
+                        conflicts.push({
+                            file,
+                            branch: branch.name,
+                            agent: branch.agent,
+                            severity: 'high',
+                        });
+                    }
+
+                    const fileDir = file.split('/').slice(0, -1).join('/');
+                    for (const bf of branch.files || []) {
+                        const bfDir = bf.split('/').slice(0, -1).join('/');
+                        if (fileDir === bfDir && bf !== file) {
+                            warnings.push({
+                                file,
+                                nearbyFile: bf,
+                                branch: branch.name,
+                                agent: branch.agent,
+                                severity: 'medium',
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        const safe = conflicts.length === 0 && locks.length === 0;
+        const response: {
+            safe: boolean;
+            fileCount: number;
+            conflicts: typeof conflicts;
+            locks: typeof locks;
+            warnings: typeof warnings;
+            recommendation: string;
+            taskId?: string;
+        } = {
+            safe,
+            fileCount: files.length,
+            conflicts,
+            locks,
+            warnings,
+            recommendation: safe
+                ? 'Clear to proceed'
+                : locks.length > 0
+                    ? 'Wait for locks to release or contact lock owner'
+                    : 'Coordinate with conflicting agents before proceeding',
+        };
+
+        if (taskId) {
+            response.taskId = taskId;
+        }
+
+        return {
+            content: [{
+                type: 'text',
+                text: JSON.stringify(response),
             }],
         };
     }
@@ -1497,6 +1837,10 @@ server.tool(
             { name: 'branch_status', desc: 'Get detailed status for registered branches', args: 'repo?, includeStale?' },
             { name: 'request_resolution', desc: 'Claim a conflict for resolution and return context', args: 'branch, agent, target?, tier?' },
             { name: 'release_resolution', desc: 'Release a conflict claim early', args: 'branch, agent, target?' },
+            { name: 'lock_files', desc: 'Lock files to prevent concurrent edits', args: 'files[], agent, reason?, ttl?' },
+            { name: 'unlock_files', desc: 'Release file locks', args: 'files?, agent?, token?, force?' },
+            { name: 'who_owns', desc: 'Query file ownership, locks, and active branches', args: 'files?, pattern?' },
+            { name: 'intent_scan', desc: 'Scan for potential conflicts before starting work', args: 'files[], agent, taskId?' },
             { name: 'git_merge', desc: 'Merge a branch into target with safety checks', args: 'source, target?, strategy?, dryRun?' },
             { name: 'git_commit_and_push', desc: 'Stage, commit, and push changes', args: 'files?, message?, branch?, autoMessage?' },
             { name: 'create_pr', desc: 'Create a GitHub pull request', args: 'branch?, target?, title?, description?, reviewers?, draft?' },
