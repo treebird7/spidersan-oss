@@ -1,3 +1,5 @@
+import { resolve, relative, isAbsolute } from 'path';
+
 /**
  * Spidersan Security Utilities
  * 
@@ -130,4 +132,31 @@ export const sanitizeFilePath = validateFilePath;
 const VALID_MESSAGE_ID = /^[a-z0-9][a-z0-9_-]{0,64}$/i;
 export function isValidMessageId(messageId: string): boolean {
     return typeof messageId === 'string' && VALID_MESSAGE_ID.test(messageId);
+}
+
+/**
+ * Validate that a file path resolves to a location inside the current repository.
+ * Prevents arbitrary file read/write vulnerabilities via path traversal or absolute paths.
+ *
+ * @param filePath The path to validate
+ * @param rootDir The root directory (defaults to CWD)
+ * @returns The resolved absolute path if valid
+ * @throws Error if path is outside rootDir
+ */
+export function validateRepoPath(filePath: string, rootDir: string = process.cwd()): string {
+    if (!filePath || typeof filePath !== 'string') {
+        throw new Error('File path is required');
+    }
+
+    const resolved = resolve(rootDir, filePath);
+    const rel = relative(rootDir, resolved);
+
+    // Check if path is outside root (starts with ..) or is absolute (on different drive on Windows)
+    // Note: on Linux/Mac relative() returns relative path, on Windows it might be absolute if different drive.
+    // Checking isAbsolute(rel) handles the different drive case.
+    if (rel.startsWith('..') || isAbsolute(rel)) {
+        throw new Error(`Security Error: Path "${filePath}" resolves outside the repository.`);
+    }
+
+    return resolved;
 }
