@@ -10,7 +10,10 @@
     "scripts": {
         "build": "tsc",
         "dev": "tsc --watch",
-        "start": "node dist/server.js"
+        "start": "node dist/server.js",
+        "test": "node ../node_modules/vitest/vitest.mjs --config vitest.config.ts",
+        "test:run": "node ../node_modules/vitest/vitest.mjs run --config vitest.config.ts",
+        "test:coverage": "node ../node_modules/vitest/vitest.mjs run --coverage --config vitest.config.ts"
     },
     "keywords": [
         "mcp",
