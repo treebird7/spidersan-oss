@@ -1,6 +1,5 @@
 {
-  "myceliumail.agentId": "ssan",
-  "mcp.servers": {
+  "servers": {
     "spidersan-local": {
       "enabled": true,
       "command": "node",

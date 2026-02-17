@@ -1,23 +1,26 @@
 /**
  * Spidersan Storage Adapter for MCP
- * 
+ *
  * Interfaces with the main Spidersan registry.
- * Uses global storage at ~/.spidersan/ for MCP access.
+ *
+ * IMPORTANT:
+ * - Prefer per-repo registry at <git-root>/.spidersan/registry.json when available.
+ * - Fall back to CWD-based .spidersan/registry.json when git root cannot be determined.
+ *
+ * This avoids cross-repo “phantom conflicts” and aligns MCP behavior with the CLI.
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { homedir } from 'os';
 import { execSync } from 'child_process';
 
-// Global registry location (not tied to specific repo)
-const REGISTRY_DIR = join(homedir(), '.spidersan');
+const LOCAL_REGISTRY_DIRNAME = '.spidersan';
 const REGISTRY_FILE = 'registry.json';
 
 export interface Branch {
     name: string;
     files: string[];
-    status: 'active' | 'merged' | 'abandoned' | 'stale';
+    status: 'active' | 'completed' | 'abandoned';
     description?: string;
     agent?: string;
     dependencies?: string[];
@@ -27,16 +30,28 @@ export interface Branch {
 }
 
 export interface Registry {
-    version: number;
-    branches: Branch[];
-    updatedAt: string;
+    version: string;
+    branches: Record<string, Branch>;
+    projectId?: string;
 }
 
 /**
  * Get the path to the registry file
  */
 function getRegistryPath(): string {
-    return join(REGISTRY_DIR, REGISTRY_FILE);
+    return join(getRegistryDir(), REGISTRY_FILE);
+}
+
+function getRepoRoot(): string {
+    try {
+        return execSync('git rev-parse --show-toplevel', { encoding: 'utf-8' }).trim();
+    } catch {
+        return process.cwd();
+    }
+}
+
+function getRegistryDir(): string {
+    return join(getRepoRoot(), LOCAL_REGISTRY_DIRNAME);
 }
 
 /**
@@ -54,7 +69,41 @@ export function loadRegistry(): Registry | null {
     if (!existsSync(path)) return null;
 
     try {
-        return JSON.parse(readFileSync(path, 'utf-8'));
+        const parsed = JSON.parse(readFileSync(path, 'utf-8')) as unknown;
+
+        // Current (core) format: { version: "1.0", branches: { [name]: BranchLike } }
+        if (
+            parsed &&
+            typeof parsed === 'object' &&
+            'branches' in parsed &&
+            typeof (parsed as { branches: unknown }).branches === 'object' &&
+            !Array.isArray((parsed as { branches: unknown }).branches)
+        ) {
+            const registry = parsed as Registry;
+            registry.version = typeof registry.version === 'string' ? registry.version : '1.0';
+            registry.branches = registry.branches || {};
+            return registry;
+        }
+
+        // Legacy MCP-only format: { version: number, branches: Branch[] }
+        if (
+            parsed &&
+            typeof parsed === 'object' &&
+            'branches' in parsed &&
+            Array.isArray((parsed as { branches: unknown }).branches)
+        ) {
+            const legacy = parsed as { version?: unknown; branches: Branch[] };
+            const branches: Record<string, Branch> = {};
+            for (const branch of legacy.branches) {
+                if (branch?.name) branches[branch.name] = branch;
+            }
+            return {
+                version: typeof legacy.version === 'string' ? legacy.version : '1.0',
+                branches,
+            };
+        }
+
+        return { version: '1.0', branches: {} };
     } catch {
         return null;
     }
@@ -64,8 +113,9 @@ export function loadRegistry(): Registry | null {
  * Save the registry
  */
 function saveRegistry(registry: Registry): void {
-    if (!existsSync(REGISTRY_DIR)) {
-        mkdirSync(REGISTRY_DIR, { recursive: true });
+    const registryDir = getRegistryDir();
+    if (!existsSync(registryDir)) {
+        mkdirSync(registryDir, { recursive: true });
     }
     writeFileSync(getRegistryPath(), JSON.stringify(registry, null, 2));
 }
@@ -75,7 +125,7 @@ function saveRegistry(registry: Registry): void {
  */
 export function listBranches(): Branch[] {
     const registry = loadRegistry();
-    return registry?.branches || [];
+    return registry ? Object.values(registry.branches || {}) : [];
 }
 
 /**
@@ -89,8 +139,9 @@ export function listActiveBranches(): Branch[] {
  * Get a specific branch
  */
 export function getBranch(name: string): Branch | null {
-    const branches = listBranches();
-    return branches.find(b => b.name === name) || null;
+    const registry = loadRegistry();
+    if (!registry) return null;
+    return registry.branches?.[name] || null;
 }
 
 /**
@@ -108,23 +159,19 @@ export function getCurrentBranch(): string {
  * Register or update a branch
  */
 export function registerBranch(branch: Omit<Branch, 'registeredAt' | 'updatedAt'>): Branch {
-    const registry = loadRegistry() || { version: 1, branches: [], updatedAt: '' };
+    const registry = loadRegistry() || { version: '1.0', branches: {} };
     const now = new Date().toISOString();
 
-    const existing = registry.branches.findIndex(b => b.name === branch.name);
+    const existing = registry.branches[branch.name];
     const fullBranch: Branch = {
+        ...(existing || ({} as Branch)),
         ...branch,
-        registeredAt: existing >= 0 ? registry.branches[existing].registeredAt : now,
+        // preserve original registration time if present
+        registeredAt: existing?.registeredAt || now,
         updatedAt: now,
     };
 
-    if (existing >= 0) {
-        registry.branches[existing] = fullBranch;
-    } else {
-        registry.branches.push(fullBranch);
-    }
-
-    registry.updatedAt = now;
+    registry.branches[branch.name] = fullBranch;
     saveRegistry(registry);
 
     return fullBranch;
@@ -137,12 +184,11 @@ export function updateBranchStatus(name: string, status: Branch['status']): bool
     const registry = loadRegistry();
     if (!registry) return false;
 
-    const branch = registry.branches.find(b => b.name === name);
+    const branch = registry.branches?.[name];
     if (!branch) return false;
 
     branch.status = status;
     branch.updatedAt = new Date().toISOString();
-    registry.updatedAt = new Date().toISOString();
 
     saveRegistry(registry);
     return true;

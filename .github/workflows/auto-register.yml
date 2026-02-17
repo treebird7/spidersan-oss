@@ -32,7 +32,10 @@ jobs:
       
       - name: Install Spidersan
         run: npm install -g spidersan
-      
+
+      - name: Initialize Spidersan
+        run: spidersan init
+
       - name: Extract commit info
         id: commit
         run: |
@@ -48,7 +51,14 @@ jobs:
           fi
           
           # Get changed files in this push
-          FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | tr '\n' ',' | sed 's/,$//')
+          # Handle first push to new branch (before SHA is all zeros)
+          if [[ "${{ github.event.before }}" == "0000000000000000000000000000000000000000" ]]; then
+            # First push - get all files in the commit
+            FILES=$(git diff-tree --no-commit-id --name-only -r ${{ github.sha }} | tr '\n' ',' | sed 's/,$//')
+          else
+            # Regular push - diff between before and after
+            FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | tr '\n' ',' | sed 's/,$//')
+          fi
           
           echo "agent=$AGENT" >> $GITHUB_OUTPUT
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
@@ -65,10 +75,9 @@ jobs:
           echo "🕷️ Auto-registering branch..."
           spidersan register \
             --agent "${{ steps.commit.outputs.agent }}" \
-            --branch "${{ steps.commit.outputs.branch }}" \
             --files "${{ steps.commit.outputs.files }}" \
             --description "Auto-registered via GitHub Actions"
-          
+
           echo "✅ Branch registered with Spidersan"
       
       - name: Check for conflicts

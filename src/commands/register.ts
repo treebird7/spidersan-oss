@@ -3,6 +3,7 @@ import { execSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import * as readline from 'readline';
 import { loadConfig } from '../lib/config.js';
+import { validateFilePath, validateAgentId } from '../lib/security.js';
 
 function getCurrentBranch(): string {
     try {
@@ -23,6 +24,10 @@ function getChangedFiles(): string[] {
     } catch {
         return [];
     }
+}
+
+export function validateRegistrationFiles(files: string[]): void {
+    files.forEach(f => validateFilePath(f));
 }
 
 async function promptForFiles(detectedFiles: string[]): Promise<string[]> {
@@ -97,8 +102,32 @@ export const registerCommand = new Command('register')
             files = await promptForFiles(detected);
         }
 
+        // Security: Validate ALL file paths before storing (Sentinel 2026-02-18)
+        try {
+            validateRegistrationFiles(files);
+        } catch (err) {
+            if (err instanceof Error) {
+                console.error(`❌ Security Error: ${err.message}`);
+            } else {
+                console.error('❌ Security Error: Invalid file path');
+            }
+            process.exit(1);
+        }
+
         const configuredAgent = config.agent.name?.trim();
         const resolvedAgent = (options.agent || process.env.SPIDERSAN_AGENT || configuredAgent || '').trim() || undefined;
+
+        // Security: Validate agent ID if present
+        if (resolvedAgent) {
+            try {
+                validateAgentId(resolvedAgent);
+            } catch (err) {
+                if (err instanceof Error) {
+                    console.error(`❌ Security Error: ${err.message}`);
+                }
+                process.exit(1);
+            }
+        }
 
         // Check if branch already registered
         const existing = await storage.get(branchName);

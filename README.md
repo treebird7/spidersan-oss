@@ -139,6 +139,44 @@ spidersan auto status
 spidersan auto stop
 ```
 
+### 🤖 GitHub Actions Auto-Register (NEW!)
+
+**Zero-effort branch registration via GitHub workflow**
+
+When enabled, every push to a branch automatically:
+- ✅ Registers the branch with Spidersan
+- ✅ Detects changed files via git diff
+- ✅ Checks for conflicts with other branches
+- ✅ Reports TIER 2+ conflicts as workflow warnings
+- ✅ Extracts agent name from branch prefix (e.g., `claude/feature` → `claude`)
+
+**Setup:**
+1. Workflow is already included: `.github/workflows/auto-register.yml`
+2. Just push to any branch (except main/staging)
+3. View results in GitHub Actions tab
+
+**Example:**
+```bash
+git checkout -b yourname/new-feature
+git add src/api.ts
+git commit -m "feat: add new endpoint"
+git push origin yourname/new-feature
+# ✅ Auto-registered in ~15 seconds!
+```
+
+**Benefits:**
+- No manual `spidersan register` needed
+- Works across all contributors and AI agents
+- Conflict warnings appear in CI checks
+- Perfect for multi-agent repositories
+
+**Note:** This complements (doesn't replace) local `spidersan watch` for real-time file monitoring.
+
+**Installation:**
+- [📖 Complete Installation Guide →](./INSTALL_AUTO_REGISTER.md)
+- [🎯 Use Cases & Examples →](./AUTO_REGISTER_USE_CASES.md)
+- [🤖 Claude Code Skill →](./.claude/skills/install-auto-register.md)
+
 ### 🦺 Rescue Mode
 
 Got a repo with 10+ abandoned branches? Let Spidersan clean up the mess:
