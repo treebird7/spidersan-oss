@@ -9,7 +9,7 @@
  * Near-real-time coordination on pull. Works across machines with git remote.
  */
 
-import { execSync, spawnSync, execFileSync } from 'child_process';
+import { spawnSync, execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import type {
@@ -43,7 +43,7 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
     async isAvailable(): Promise<boolean> {
         // Check if we're in a git repository
         try {
-            execSync('git rev-parse --git-dir', {
+            execFileSync('git', ['rev-parse', '--git-dir'], {
                 cwd: this.basePath,
                 stdio: 'ignore',
             });
@@ -70,7 +70,7 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
      */
     private branchExists(): boolean {
         try {
-            execSync(`git rev-parse --verify ${MESSAGES_BRANCH}`, {
+            execFileSync('git', ['rev-parse', '--verify', MESSAGES_BRANCH], {
                 cwd: this.basePath,
                 stdio: 'ignore',
             });
@@ -88,7 +88,7 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
 
         if (!this.branchExists()) {
             // Create orphan branch with an initial commit
-            const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', {
+            const currentBranch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
                 cwd: this.basePath,
                 encoding: 'utf-8',
             }).trim();
@@ -107,16 +107,20 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
                         stdio: 'ignore',
                     });
                 } catch {
-                    // Ignore error if nothing to remove (e.g. empty repo)
+                    // Ignore if nothing to remove
                 }
 
-                // Create initial structure - use fs instead of shell
-                fs.mkdirSync(path.join(this.basePath, 'inbox'), { recursive: true });
-                fs.mkdirSync(path.join(this.basePath, 'outbox'), { recursive: true });
+                // Create initial structure
+                const inboxDir = path.join(this.basePath, 'inbox');
+                const outboxDir = path.join(this.basePath, 'outbox');
 
-                // Create .gitkeep files - use fs instead of shell
-                fs.writeFileSync(path.join(this.basePath, 'inbox/.gitkeep'), '');
-                fs.writeFileSync(path.join(this.basePath, 'outbox/.gitkeep'), '');
+                fs.mkdirSync(inboxDir, { recursive: true });
+                fs.mkdirSync(outboxDir, { recursive: true });
+
+                // Create .gitkeep files
+                fs.writeFileSync(path.join(inboxDir, '.gitkeep'), '');
+                fs.writeFileSync(path.join(outboxDir, '.gitkeep'), '');
+
 
                 execFileSync('git', ['add', 'inbox/.gitkeep', 'outbox/.gitkeep'], {
                     cwd: this.basePath,
@@ -206,7 +210,7 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
         filePath: string,
         content: string
     ): Promise<boolean> {
-        const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', {
+        const currentBranch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
             cwd: this.basePath,
             encoding: 'utf-8',
         }).trim();
@@ -214,7 +218,7 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
         // Stash any uncommitted changes
         let hasStash = false;
         try {
-            const stashResult = execSync('git stash', {
+            const stashResult = execFileSync('git', ['stash'], {
                 cwd: this.basePath,
                 encoding: 'utf-8',
             });
@@ -350,7 +354,7 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
         const messages: Message[] = [];
 
         for (const file of files) {
-            const content = this.readFromBranch(`inbox/${agentId}/${file}`);
+            const content = this.readFromBranch(file);
             if (content) {
                 try {
                     const msg = JSON.parse(content) as Message;

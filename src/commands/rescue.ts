@@ -12,6 +12,7 @@ import { execSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import { existsSync, mkdirSync, copyFileSync } from 'fs';
 import { join, basename } from 'path';
+import { validateRepoPath } from '../lib/security.js';
 
 export const rescueCommand = new Command('rescue')
     .description('🚑 Rescue Mode - Scan for and salvage rogue work')
@@ -73,9 +74,19 @@ export const rescueCommand = new Command('rescue')
 
         // Salvage Operation
         if (options.salvage) {
-            const target = options.salvage;
-            if (!untracked.includes(target) && existsSync(target)) {
-                console.log(`⚠️  File '${target}' is tracked by git. Use git commands instead.`);
+            // Security: Validate path is within repo to prevent arbitrary file read
+            let target = options.salvage;
+            try {
+                target = validateRepoPath(target);
+            } catch (err) {
+                if (err instanceof Error) {
+                    console.error(`❌ Security Error: ${err.message}`);
+                }
+                process.exit(1);
+            }
+
+            if (!untracked.includes(options.salvage) && existsSync(target)) {
+                console.log(`⚠️  File '${options.salvage}' is tracked by git. Use git commands instead.`);
             }
 
             const salvageDir = 'salvage';
@@ -83,17 +94,27 @@ export const rescueCommand = new Command('rescue')
 
             const dest = join(salvageDir, basename(target));
             copyFileSync(target, dest);
-            console.log(`✅ Salvaged '${target}' to '${dest}'`);
+            console.log(`✅ Salvaged '${basename(target)}' to '${dest}'`);
             return;
         }
 
         // Abandon Operation
         if (options.abandon) {
-            const target = options.abandon;
+            let target = options.abandon;
+            // Security: Validate path is within repo
+            try {
+                target = validateRepoPath(target);
+            } catch (err) {
+                if (err instanceof Error) {
+                    console.error(`❌ Security Error: ${err.message}`);
+                }
+                process.exit(1);
+            }
+
             // In a real CLI we'd ask for confirmation, for now just warn
-            console.log(`⚠️  Deleting '${target}'... (Simulated)`);
+            console.log(`⚠️  Deleting '${basename(target)}'... (Simulated)`);
             // rmSync(target); // Safety first for this demo
-            console.log(`🗑️  Abandoned '${target}'`);
+            console.log(`🗑️  Abandoned '${basename(target)}'`);
             return;
         }
 

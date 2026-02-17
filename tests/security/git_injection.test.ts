@@ -13,12 +13,16 @@ vi.mock('child_process', async (importOriginal) => {
     };
 });
 
-// Mock fs
+// Mock fs to prevent actual file system operations
 vi.mock('fs', async (importOriginal) => {
     return {
         ...await importOriginal<typeof import('fs')>(),
         mkdirSync: vi.fn(),
         writeFileSync: vi.fn(),
+        readFileSync: vi.fn(),
+        readdirSync: vi.fn(() => []),
+        existsSync: vi.fn(() => false),
+        statSync: vi.fn(),
     };
 });
 
