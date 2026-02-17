@@ -121,6 +121,7 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
                 fs.writeFileSync(path.join(inboxDir, '.gitkeep'), '');
                 fs.writeFileSync(path.join(outboxDir, '.gitkeep'), '');
 
+
                 execFileSync('git', ['add', 'inbox/.gitkeep', 'outbox/.gitkeep'], {
                     cwd: this.basePath,
                     stdio: 'ignore',

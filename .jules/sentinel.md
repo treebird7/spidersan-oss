@@ -10,6 +10,11 @@
 **Learning:** Utility functions that traverse or merge objects based on user input must explicitly block access to `__proto__`, `constructor`, and `prototype`.
 **Prevention:** Always validate keys against a deny-list before recursive merge or assignment operations.
 
+## 2026-02-12 - Git Command Injection in Messages Adapter
+**Vulnerability:** `GitMessagesAdapter` used `execSync` with interpolated branch names (`git checkout ${currentBranch}`), which allowed command injection if a branch name contained shell metacharacters.
+**Learning:** Even if Git restricts branch names, defensive coding requires avoiding shell interpolation for any variable input.
+**Prevention:** Use `execFileSync` or `spawnSync` with an array of arguments for all git commands, and prefer Node.js `fs` APIs over shell commands for file operations.
+
 ## 2026-02-14 - Missing Input Validation on Registration
 **Vulnerability:** `register` command accepted raw input for files and agent IDs, potentially allowing registration of malicious data (though not directly exploitable for RCE, it could pollute the system).
 **Learning:** Input validation should be applied at the entry point of the system (e.g., CLI commands), not just when data is consumed.
