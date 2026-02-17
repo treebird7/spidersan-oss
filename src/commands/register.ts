@@ -26,6 +26,10 @@ function getChangedFiles(): string[] {
     }
 }
 
+export function validateRegistrationFiles(files: string[]): void {
+    files.forEach(f => validateFilePath(f));
+}
+
 async function promptForFiles(detectedFiles: string[]): Promise<string[]> {
     const rl = readline.createInterface({
         input: process.stdin,
@@ -88,17 +92,6 @@ export const registerCommand = new Command('register')
 
         if (options.files) {
             files = options.files.split(',').map((f: string) => f.trim());
-            // Security: Validate file paths (Sherlocksan 2026-01-02)
-            try {
-                files.forEach(f => validateFilePath(f));
-            } catch (err) {
-                if (err instanceof Error) {
-                    console.error(`❌ Security Error: ${err.message}`);
-                } else {
-                    console.error('❌ Security Error: Invalid file path');
-                }
-                process.exit(1);
-            }
         } else if (options.auto) {
             files = getChangedFiles();
             if (files.length > 0) {
@@ -107,6 +100,18 @@ export const registerCommand = new Command('register')
         } else if (options.interactive) {
             const detected = getChangedFiles();
             files = await promptForFiles(detected);
+        }
+
+        // Security: Validate ALL file paths before storing (Sentinel 2026-02-18)
+        try {
+            validateRegistrationFiles(files);
+        } catch (err) {
+            if (err instanceof Error) {
+                console.error(`❌ Security Error: ${err.message}`);
+            } else {
+                console.error('❌ Security Error: Invalid file path');
+            }
+            process.exit(1);
         }
 
         const configuredAgent = config.agent.name?.trim();
