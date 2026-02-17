@@ -80,5 +80,9 @@ describe('GitMessagesAdapter Security', () => {
         );
 
         expect(safeCall).toBeDefined();
+
+        // Verify fs calls were mocked (optional but good for debugging)
+        expect(vi.mocked(fs.mkdirSync)).toHaveBeenCalled();
+        expect(vi.mocked(fs.writeFileSync)).toHaveBeenCalled();
     });
 });
