@@ -345,6 +345,7 @@ server.tool(
                     type: 'text',
                     text: JSON.stringify({ success: false, error: message }, null, 2)
                 }],
+                isError: true,
             };
         }
     }
@@ -369,6 +370,7 @@ server.tool(
                     type: 'text',
                     text: JSON.stringify({ success: false, error: `Repository path not found: ${repoDir}` }, null, 2)
                 }],
+                isError: true,
             };
         }
 
@@ -394,6 +396,7 @@ server.tool(
                     type: 'text',
                     text: JSON.stringify({ success: false, error: message }, null, 2)
                 }],
+                isError: true,
             };
         }
 
@@ -485,6 +488,7 @@ server.tool(
                         claimedAt: new Date(existingLock.ts).toISOString()
                     }, null, 2)
                 }],
+                isError: true,
             };
         }
 
@@ -506,6 +510,7 @@ server.tool(
                     type: 'text',
                     text: JSON.stringify({ success: false, error: message }, null, 2)
                 }],
+                isError: true,
             };
         }
 
@@ -658,7 +663,8 @@ server.tool(
                         error: 'Files already locked',
                         conflicts
                     })
-                }]
+                }],
+                isError: true,
             };
         }
 
@@ -936,6 +942,7 @@ server.tool(
                     type: 'text',
                     text: JSON.stringify({ success: false, error: sourceError }, null, 2)
                 }],
+                isError: true,
             };
         }
         const targetError = await ensureValidBranchName(targetBranch, repoDir);
@@ -945,6 +952,7 @@ server.tool(
                     type: 'text',
                     text: JSON.stringify({ success: false, error: targetError }, null, 2)
                 }],
+                isError: true,
             };
         }
 
@@ -957,6 +965,7 @@ server.tool(
                         error: 'Source and target branches must be different'
                     }, null, 2)
                 }],
+                isError: true,
             };
         }
 
@@ -977,6 +986,7 @@ server.tool(
                     type: 'text',
                     text: JSON.stringify({ success: false, error: message }, null, 2)
                 }],
+                isError: true,
             };
         }
 
@@ -992,6 +1002,7 @@ server.tool(
                         conflicts
                     }, null, 2)
                 }],
+                isError: true,
             };
         }
 
@@ -1020,6 +1031,7 @@ server.tool(
                         type: 'text',
                         text: JSON.stringify({ success: false, error: message }, null, 2)
                     }],
+                    isError: true,
                 };
             }
         }
@@ -1050,6 +1062,7 @@ server.tool(
                         type: 'text',
                         text: JSON.stringify({ success: false, error: message, restoreWarning }, null, 2)
                     }],
+                    isError: true,
                 };
             }
         }
@@ -1066,6 +1079,7 @@ server.tool(
                         restoreWarning
                     }, null, 2)
                 }],
+                isError: true,
             };
         }
 
@@ -1094,6 +1108,7 @@ server.tool(
                     type: 'text',
                     text: JSON.stringify({ success: false, error: message }, null, 2)
                 }],
+                isError: true,
             };
         }
 
@@ -1112,6 +1127,7 @@ server.tool(
                     type: 'text',
                     text: JSON.stringify({ success: false, error: message }, null, 2)
                 }],
+                isError: true,
             };
         }
 
@@ -1165,6 +1181,7 @@ server.tool(
                     type: 'text',
                     text: JSON.stringify({ success: false, error: message }, null, 2)
                 }],
+                isError: true,
             };
         }
 
@@ -1176,6 +1193,7 @@ server.tool(
                     type: 'text',
                     text: JSON.stringify({ success: false, error: branchError }, null, 2)
                 }],
+                isError: true,
             };
         }
         currentBranch = branchName;
@@ -1198,6 +1216,7 @@ server.tool(
                             reasons: readyPayload?.issues || readyPayload?.conflicts || []
                         }, null, 2)
                     }],
+                    isError: true,
                 };
             }
         } catch {
@@ -1216,6 +1235,7 @@ server.tool(
                     type: 'text',
                     text: JSON.stringify({ success: false, error: message }, null, 2)
                 }],
+                isError: true,
             };
         }
 
@@ -1244,6 +1264,7 @@ server.tool(
                     type: 'text',
                     text: JSON.stringify({ success: false, error: message }, null, 2)
                 }],
+                isError: true,
             };
         }
 
@@ -1256,6 +1277,7 @@ server.tool(
                     type: 'text',
                     text: JSON.stringify({ success: false, error: message }, null, 2)
                 }],
+                isError: true,
             };
         }
 
@@ -1301,6 +1323,7 @@ server.tool(
                     type: 'text',
                     text: JSON.stringify({ success: false, error: message }, null, 2)
                 }],
+                isError: true,
             };
         }
 
@@ -1310,6 +1333,7 @@ server.tool(
                     type: 'text',
                     text: JSON.stringify({ success: false, error: 'Unable to determine current branch' }, null, 2)
                 }],
+                isError: true,
             };
         }
 
@@ -1320,6 +1344,7 @@ server.tool(
                     type: 'text',
                     text: JSON.stringify({ success: false, error: sourceError }, null, 2)
                 }],
+                isError: true,
             };
         }
 
@@ -1330,6 +1355,7 @@ server.tool(
                     type: 'text',
                     text: JSON.stringify({ success: false, error: targetError }, null, 2)
                 }],
+                isError: true,
             };
         }
 
@@ -1342,6 +1368,7 @@ server.tool(
                         error: 'Source and target branches must be different'
                     }, null, 2)
                 }],
+                isError: true,
             };
         }
 
@@ -1365,6 +1392,7 @@ server.tool(
                             conflicts
                         }, null, 2)
                     }],
+                    isError: true,
                 };
             }
         } catch {
@@ -1388,6 +1416,7 @@ server.tool(
                             reasons: readyPayload?.issues || readyPayload?.conflicts || []
                         }, null, 2)
                     }],
+                    isError: true,
                 };
             }
         } catch {
@@ -1441,6 +1470,7 @@ server.tool(
                     type: 'text',
                     text: JSON.stringify({ success: false, error: message }, null, 2)
                 }],
+                isError: true,
             };
         }
     }
@@ -1493,6 +1523,7 @@ server.tool(
         if (!storage.isInitialized()) {
             return {
                 content: [{ type: 'text', text: '❌ No registry found for this repo yet (nothing to mark merged)' }],
+                isError: true,
             };
         }
 
@@ -1503,6 +1534,7 @@ server.tool(
             } catch {
                 return {
                     content: [{ type: 'text', text: '❌ Could not determine current branch' }],
+                    isError: true,
                 };
             }
         }
@@ -1511,6 +1543,7 @@ server.tool(
         if (!success) {
             return {
                 content: [{ type: 'text', text: `❌ Branch not found: ${branchName}` }],
+                isError: true,
             };
         }
 
@@ -1531,6 +1564,7 @@ server.tool(
         if (!storage.isInitialized()) {
             return {
                 content: [{ type: 'text', text: '❌ No registry found for this repo yet (nothing to abandon)' }],
+                isError: true,
             };
         }
 
@@ -1541,6 +1575,7 @@ server.tool(
             } catch {
                 return {
                     content: [{ type: 'text', text: '❌ Could not determine current branch' }],
+                    isError: true,
                 };
             }
         }
@@ -1549,6 +1584,7 @@ server.tool(
         if (!success) {
             return {
                 content: [{ type: 'text', text: `❌ Branch not found: ${branchName}` }],
+                isError: true,
             };
         }
 
@@ -1569,6 +1605,7 @@ server.tool(
         if (!storage.isInitialized()) {
             return {
                 content: [{ type: 'text', text: '❌ No branches registered for this repo yet' }],
+                isError: true,
             };
         }
 
@@ -1579,6 +1616,7 @@ server.tool(
             } catch {
                 return {
                     content: [{ type: 'text', text: '❌ Could not determine current branch' }],
+                    isError: true,
                 };
             }
         }
@@ -1587,6 +1625,7 @@ server.tool(
         if (!info) {
             return {
                 content: [{ type: 'text', text: `❌ Branch not registered: ${branchName}\n\nUse register_branch to register it.` }],
+                isError: true,
             };
         }
 
@@ -1628,6 +1667,7 @@ server.tool(
                     type: 'text',
                     text: `❌ ${(error as Error).message}`
                 }],
+                isError: true,
             };
         }
 
