@@ -404,6 +404,69 @@ spidersan conflicts
 
 ---
 
+## 8. Fork Sync — Safe Cherry-Picking from Public Fork to Private Branch
+
+**Scenario:** You maintain a private fork of an open-source repo (with private integrations), and the public fork has new commits you want to selectively pull in without overwriting your private changes.
+
+**Problem Solved:** A naive `git merge fork/main` would silently revert private-branch architecture decisions (e.g. replacing WhatsApp with Discord) and reintroduce incompatible code.
+
+**Spidersan Solution:**
+
+```bash
+# Step 1: Register your private branch's files
+spidersan register \
+  --files "src/discord.ts,src/config.ts,src/container-runner.ts,src/index.ts" \
+  --agent my-private-branch \
+  -d "Discord integration, envoak secrets, sansan config"
+
+# Step 2: Create a local branch from the fork, register it too
+git checkout -b fork-candidate fork/main
+spidersan register \
+  --files "src/whatsapp.ts,src/config.ts,src/container-runner.ts,src/index.ts" \
+  --agent upstream-fork \
+  -d "Upstream: is_bot_message, setup skill, security fixes"
+
+# Step 3: Run conflict detection
+spidersan conflicts
+# Output:
+# 🔴 TIER 3 (BLOCK): my-private-branch
+#    🔴 src/whatsapp-auth.ts
+#    🟠 src/config.ts
+#    🟠 src/container-runner.ts
+#    🟠 src/index.ts
+#    🟠 package.json
+#    → Merge blocked. Resolve conflict first.
+
+# Step 4: Per-commit analysis instead of blind merge
+git log --oneline private/main..fork/main
+git diff --name-only <sha>^..<sha>   # inspect each commit's files
+
+# Step 5: Cherry-pick only the safe ones
+git checkout my-private-branch
+git cherry-pick <ci-commit> <assets-commit> <new-skill-commit>
+# → resolve any conflicts surgically
+
+# Step 6: Handle security/bug fixes with care
+git cherry-pick <security-commit>
+# → resolve keeping your architecture, taking the security logic
+```
+
+**What Spidersan caught:**
+- `src/whatsapp-auth.ts` — 🔴 TIER 3 BLOCK: both branches fundamentally rewrote this file
+- `src/config.ts` — 🟠 PAUSE: fork has `ASSISTANT_NAME = 'Andy'`, private has `'sansan'` + `DISCORD_BOT_TOKEN`
+- `package.json` — 🟠 PAUSE: fork adds `qrcode` (WhatsApp QR auth), private adds `discord.js`, `openai`
+
+**Skip criteria identified via conflict analysis:**
+- Any commit touching files where your branch replaced the underlying platform (WhatsApp → Discord)
+- Large refactors assuming the old architecture
+- CI workflows testing functionality you've removed
+
+**Result:** 11 of 26 fork commits safely cherry-picked with no regressions. 15 skipped (WhatsApp-specific or already superseded).
+
+**Hashtags:** `#fork-sync` `#cherry-pick` `#conflict-prevention` `#private-fork` `#selective-merge`
+
+---
+
 ---
 
 # Agent Inner Documentation
