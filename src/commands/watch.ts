@@ -59,7 +59,7 @@ async function postConflictToChat(branch: string, agent: string, conflicts: Conf
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                agent: 'ssan',
+                agent: 'spidersan',
                 name: 'Spidersan',
                 message,
                 glyph: '🕷️'

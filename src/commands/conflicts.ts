@@ -105,7 +105,7 @@ async function notifyHub(branch: string, conflicts: Array<{ branch: string; file
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                agent: 'ssan',
+                agent: 'spidersan',
                 name: 'Spidersan',
                 message,
                 glyph: '🕷️'
@@ -134,7 +134,7 @@ async function wakeConflictingAgent(
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                sender: 'ssan',
+                sender: 'spidersan',
                 reason: `Conflict on ${theirBranch} - need resolution`
             })
         });

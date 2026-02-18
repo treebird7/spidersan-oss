@@ -15,12 +15,20 @@ tsconfig.json
 __tests__/
 coverage/
 
-# Documentation (keep README)
+# Documentation — exclude all .md except these three
 docs/
-*.md
-!README.md
-!LICENSE.md
-!CHANGELOG.md
+BACKLOG.md
+BEST_PRACTICES.md
+CLAUDE.md
+CONTRIBUTING.md
+DEMO_FEATURE.md
+INSTALL_AUTO_REGISTER.md
+MAINTENANCE_TASKS.md
+RELEASE_NOTES_0.4.0.md
+SECURITY.md
+SPIDERSAN_LESSONS_LEARNED.md
+AUTO_REGISTER_USE_CASES.md
+spidersan-oss-onepager.md
 
 # Development configs
 .editorconfig
