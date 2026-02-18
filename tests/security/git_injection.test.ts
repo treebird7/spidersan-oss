@@ -37,18 +37,19 @@ describe('GitMessagesAdapter Security', () => {
 
         // Setup mocks
         vi.mocked(cp.execSync).mockImplementation((cmd, options) => {
-            const command = cmd.toString();
-            // Mock isAvailable check
-            if (command.includes('git rev-parse --git-dir')) return '.git';
-            // Mock branchExists check -> fail so it tries to create
-            if (command.includes('git rev-parse --verify spidersan/messages')) throw new Error('Not found');
-            // Mock getCurrentBranch -> return malicious payload
-            if (command.includes('git rev-parse --abbrev-ref HEAD')) return maliciousBranch;
             return '';
         });
 
         // Mock execFileSync to avoid errors during execution
-        vi.mocked(cp.execFileSync).mockReturnValue(Buffer.from(''));
+        vi.mocked(cp.execFileSync).mockImplementation((file, args, options) => {
+            // Mock isAvailable check
+            if (args && args[0] === 'rev-parse' && args[1] === '--git-dir') return '.git';
+            // Mock branchExists check -> fail so it tries to create
+            if (args && args[0] === 'rev-parse' && args[1] === '--verify') throw new Error('Not found');
+            // Mock getCurrentBranch -> return malicious payload
+            if (args && args[0] === 'rev-parse' && args[1] === '--abbrev-ref') return maliciousBranch;
+            return Buffer.from('');
+        });
 
         // Trigger ensureBranch via send
         try {
