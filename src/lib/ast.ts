@@ -48,14 +48,16 @@ export class ASTParser {
         const symbols: SymbolInfo[] = [];
         const cursor = tree.walk();
 
-        const visit = (node: Parser.SyntaxNode) => {
-            if (node.type === 'function_declaration' || node.type === 'class_declaration' || node.type === 'method_definition') {
+        let reachedRoot = false;
+        while (!reachedRoot) {
+            if (cursor.nodeType === 'function_declaration' || cursor.nodeType === 'class_declaration' || cursor.nodeType === 'method_definition') {
+                const node = cursor.currentNode;
                 const nameNode = node.childForFieldName('name');
                 if (nameNode) {
                     const content = node.text;
                     symbols.push({
                         name: nameNode.text,
-                        type: node.type.replace('_declaration', '').replace('_definition', '') as any,
+                        type: node.type.replace('_declaration', '').replace('_definition', '') as SymbolInfo['type'],
                         startLine: node.startPosition.row + 1, // 1-indexed for humans
                         endLine: node.endPosition.row + 1,
                         content: content,
@@ -64,13 +66,27 @@ export class ASTParser {
                 }
             }
 
-            for (let i = 0; i < node.childCount; i++) {
-                const child = node.child(i);
-                if (child) visit(child);
+            if (cursor.gotoFirstChild()) {
+                continue;
             }
-        };
 
-        visit(tree.rootNode);
+            if (cursor.gotoNextSibling()) {
+                continue;
+            }
+
+            let retracing = true;
+            while (retracing) {
+                if (!cursor.gotoParent()) {
+                    retracing = false;
+                    reachedRoot = true;
+                } else {
+                    if (cursor.gotoNextSibling()) {
+                        retracing = false;
+                    }
+                }
+            }
+        }
+
         return symbols;
     }
 

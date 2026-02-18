@@ -264,7 +264,10 @@ export class MycmailAdapter implements MessageStorageAdapter {
             const data = JSON.parse(result.stdout);
 
             // Map mycmail format to our Message format
-            let messages: Message[] = (data.messages || data || []).map((msg: any) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const rawMessages = (data.messages || data || []);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            let messages: Message[] = rawMessages.map((msg: any) => {
                 const parsed = this.parseMessageBody(msg.body || msg.content || '');
                 return {
                     id: msg.id || generateMessageId(),
