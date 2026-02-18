@@ -57,7 +57,7 @@ export class ASTParser {
                     const content = node.text;
                     symbols.push({
                         name: nameNode.text,
-                        type: node.type.replace('_declaration', '').replace('_definition', '') as any,
+                        type: node.type.replace('_declaration', '').replace('_definition', '') as SymbolInfo['type'],
                         startLine: node.startPosition.row + 1, // 1-indexed for humans
                         endLine: node.endPosition.row + 1,
                         content: content,
