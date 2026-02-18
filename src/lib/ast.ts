@@ -48,14 +48,17 @@ export class ASTParser {
         const symbols: SymbolInfo[] = [];
         const cursor = tree.walk();
 
-        const visit = (node: Parser.SyntaxNode) => {
-            if (node.type === 'function_declaration' || node.type === 'class_declaration' || node.type === 'method_definition') {
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+            const type = cursor.nodeType;
+            if (type === 'function_declaration' || type === 'class_declaration' || type === 'method_definition') {
+                const node = cursor.currentNode;
                 const nameNode = node.childForFieldName('name');
                 if (nameNode) {
                     const content = node.text;
                     symbols.push({
                         name: nameNode.text,
-                        type: node.type.replace('_declaration', '').replace('_definition', '') as any,
+                        type: type.replace('_declaration', '').replace('_definition', '') as SymbolInfo['type'],
                         startLine: node.startPosition.row + 1, // 1-indexed for humans
                         endLine: node.endPosition.row + 1,
                         content: content,
@@ -64,14 +67,23 @@ export class ASTParser {
                 }
             }
 
-            for (let i = 0; i < node.childCount; i++) {
-                const child = node.child(i);
-                if (child) visit(child);
+            if (cursor.gotoFirstChild()) {
+                continue;
             }
-        };
 
-        visit(tree.rootNode);
-        return symbols;
+            if (cursor.gotoNextSibling()) {
+                continue;
+            }
+
+            let climbed = false;
+            while (cursor.gotoParent()) {
+                if (cursor.gotoNextSibling()) {
+                    climbed = true;
+                    break;
+                }
+            }
+            if (!climbed) return symbols;
+        }
     }
 
     /**
