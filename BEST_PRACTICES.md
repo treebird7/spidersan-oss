@@ -58,3 +58,11 @@ When a repo accumulates stale/conflicting branches across multiple agents:
 - Use `git checkout <branch> -- <file>` to extract specific files — faster than `spidersan rescue`
 - Compare compiled dist files (if source is missing) against source to verify parity
 - Always check if the branch's changes were superseded by already-merged PRs before salvaging
+
+## GitOps Publish Workflow (Feb-26)
+- Before `npm publish`, always: sync registry → clean merged branches → rebase on main → run tests → publish
+- Use `git branch --merged main` to find branches the registry still tracks as "active" but are already merged
+- Use `spidersan mark_merged` (MCP) or `spidersan merged` (CLI) to reconcile — the registry does not auto-detect PR merges
+- Run `spidersan conflicts` before and after cleanup to measure improvement (e.g., 43 → 13 conflicts)
+- Run `spidersan ready-check` before creating PRs or publishing — catches WIP markers and blocking issues
+- Commit `package-lock.json` changes from `npm audit fix` alongside your feature commits, not separately

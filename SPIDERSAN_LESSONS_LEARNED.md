@@ -214,3 +214,35 @@ gh pr list --state all      # GitHub PRs
 **Problem:** Torrent and conflict detection are hard to test without realistic multi-agent data.
 **Fix:** Created `tests/fixtures/mammoth-registry.json` — 41 tasks, 5 agents, 55 files, 9 conflict hotspots, 3-level nesting. Can be loaded into any `.spidersan/registry.json` for testing.
 **Pattern:** Save registry snapshots from real or realistic test sessions as fixtures. They're more valuable than unit test mocks for coordination features.
+
+## 17. Spidersan MCP as GitOps Co-Pilot (18-Feb-26)
+**Problem:** Manual gitops workflows (sync registry, identify merged branches, rebase, fix tests, publish) are error-prone and easy to forget steps.
+**Fix:** Used Spidersan MCP tools as an integrated gitops workflow:
+```bash
+# 1. Sync registry with git state
+spidersan sync
+
+# 2. Identify branches already merged to main
+git branch --merged main  # Found 3 branches still "active" in registry
+
+# 3. Clean registry via MCP mark_merged
+spidersan-mcp mark_merged <branch>  # Cleaned 3 stale entries
+
+# 4. Rebase current branch on updated main
+git rebase main  # 14 commits cleanly rebased
+
+# 5. Verify with ready-check + conflicts
+spidersan ready-check  # PASS
+spidersan conflicts     # Reduced from 43 → 13 conflicts
+
+# 6. Fix broken test, run full suite, publish
+npm run test:run  # 47/47 passing
+npm publish       # v0.4.5 published
+```
+**Results:** Conflict count dropped from 43 to 13 files by cleaning merged branches. Registry was out of sync with 3 branches that had already been merged via PRs.
+**Pattern:** Run `git branch --merged main` regularly and mark those branches in Spidersan. The registry doesn't auto-detect PR merges — you must reconcile manually. The MCP `mark_merged` + `check_conflicts` + `ready_check` loop is the fastest way to do this.
+
+## 18. Test Mocks Must Mirror Source Code Patterns (18-Feb-26)
+**Problem:** `git_injection.test.ts` was failing because it mocked `execSync` for git rev-parse calls, but the source code (`git-messages.ts`) had been hardened to use `execFileSync` exclusively. The mock setup never triggered, so `branchExists()` didn't behave as expected and no `checkout` call was recorded.
+**Fix:** Rewrote the mock to use a single `execFileSync` implementation that handles all git subcommands (rev-parse, checkout, stash, etc.) with proper return types based on whether `encoding: 'utf-8'` was specified.
+**Pattern:** When security-hardening changes the API surface (e.g., `execSync` → `execFileSync`), tests that verify the hardening must be updated in the same PR. A test that passes by accident (because the mocked function is never called) is worse than no test at all.

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Fork Sync Use Case**: New documentation pattern for safely cherry-picking commits from a public fork into a private branch using spidersan conflict detection (`docs/USE_CASES.md` Use Case #8)
 - **Fork Sync Best Practices**: Per-commit classification workflow (SAFE / NEEDS-REVIEW / SKIP) documented in `BEST_PRACTICES.md`
+- **Task Torrenting Command**: `spidersan torrent` for branch-per-task workflow management (create, status, complete, merge-order, tree, decompose)
 
 ### Fixed
 - **Security: Command injection in git adapter** — `execSync` with string interpolation replaced with `execFileSync`/`spawnSync` with argument arrays across all git operations (PR #13)
@@ -18,12 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Security: Input validation bypass in register** — File path and agent ID validation now covers all input sources (flags, auto-detection, prompts) in `register` and `conflicts --cleanup` commands (PR #14, #16)
 - **Security: Git command injection** — Comprehensive fix for remaining injection vectors (PR #17)
 - `_testable` export from `config.ts` for prototype pollution tests
+- **Test: git_injection test mocks aligned with execFileSync** — Test was mocking `execSync` but source code uses `execFileSync` exclusively; updated mocks to properly simulate branch operations
+
+### Changed
+- **npm audit fix**: Resolved high-severity vulnerability in `@isaacs/brace-expansion`
 
 ### Documentation
 - Fork Sync use case with full spidersan workflow example
 - Best practices: Fork Sync Workflow section
 - Auto-register use cases guide (`AUTO_REGISTER_USE_CASES.md`)
 - MCP integration config for Copilot
+- GitOps session recap: Spidersan-assisted registry sync, branch cleanup, rebase, and publish workflow
 
 
 ### Added
