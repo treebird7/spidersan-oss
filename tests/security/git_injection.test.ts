@@ -35,20 +35,21 @@ describe('GitMessagesAdapter Security', () => {
         const adapter = new GitMessagesAdapter();
         const maliciousBranch = 'main; touch pwned';
 
-        // Setup mocks
-        vi.mocked(cp.execSync).mockImplementation((cmd, options) => {
-            const command = cmd.toString();
-            // Mock isAvailable check
-            if (command.includes('git rev-parse --git-dir')) return '.git';
-            // Mock branchExists check -> fail so it tries to create
-            if (command.includes('git rev-parse --verify spidersan/messages')) throw new Error('Not found');
-            // Mock getCurrentBranch -> return malicious payload
-            if (command.includes('git rev-parse --abbrev-ref HEAD')) return maliciousBranch;
-            return '';
+        // Setup mocks — source code uses execFileSync for all git calls
+        vi.mocked(cp.execFileSync).mockImplementation((_file, args, options) => {
+            const argsArr = args as string[];
+            const returnsString = (options as Record<string, unknown>)?.encoding === 'utf-8';
+            // Mock branchExists: git rev-parse --verify spidersan/messages -> fail so it creates
+            if (argsArr?.[0] === 'rev-parse' && argsArr?.[1] === '--verify') throw new Error('Not found');
+            // Mock getCurrentBranch: git rev-parse --abbrev-ref HEAD -> return malicious payload
+            if (argsArr?.[0] === 'rev-parse' && argsArr?.[1] === '--abbrev-ref')
+                return returnsString ? maliciousBranch : Buffer.from(maliciousBranch);
+            // Mock stash: return "No local changes" to skip stash pop
+            if (argsArr?.[0] === 'stash' && argsArr?.length === 1)
+                return returnsString ? 'No local changes to save' : Buffer.from('No local changes to save');
+            // All other execFileSync calls succeed
+            return returnsString ? '' : Buffer.from('');
         });
-
-        // Mock execFileSync to avoid errors during execution
-        vi.mocked(cp.execFileSync).mockReturnValue(Buffer.from(''));
 
         // Trigger ensureBranch via send
         try {
