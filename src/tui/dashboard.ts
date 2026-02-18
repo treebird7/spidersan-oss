@@ -1,4 +1,5 @@
 import blessed from 'blessed';
+import { escapeBlessed } from '../lib/security.js';
 
 interface DashboardState {
     connectedAgents: string[];
@@ -156,7 +157,9 @@ export class SpidersanDashboard {
 
     private updateHeader() {
         const time = new Date().toLocaleTimeString();
-        const agents = this.state.connectedAgents.join(', ') || 'Waiting for heartbeats...';
+        // Security: Escape agent names to prevent markup injection
+        const safeAgents = this.state.connectedAgents.map(a => escapeBlessed(a));
+        const agents = safeAgents.join(', ') || 'Waiting for heartbeats...';
         this.headerBox.setContent(
             ` 🕷️ SPIDERSAN MONITOR  |  🕒 ${time}\n` +
             ` 📡 AGENTS: ${agents}`
@@ -171,7 +174,8 @@ export class SpidersanDashboard {
 
         const items = this.state.activeLocks.map(l => {
             const age = Math.floor((Date.now() - l.time) / 1000 / 60);
-            return `🔒 ${l.symbol} ({yellow-fg}${l.agent}{/}) - ${age}m`;
+            // Security: Escape dynamic content
+            return `🔒 ${escapeBlessed(l.symbol)} ({yellow-fg}${escapeBlessed(l.agent)}{/}) - ${age}m`;
         });
         this.locksBox.setItems(items);
     }
@@ -179,7 +183,8 @@ export class SpidersanDashboard {
     private updateTasks() {
         const items = this.state.activeTasks.map(t => {
             const statusIcon = t.status === 'implementing' ? '⚙️' : '⏳';
-            return `${statusIcon} [${t.title}] - ${t.owner}`;
+            // Security: Escape dynamic content
+            return `${statusIcon} [${escapeBlessed(t.title)}] - ${escapeBlessed(t.owner)}`;
         });
 
         if (items.length === 0) {
@@ -201,8 +206,12 @@ export class SpidersanDashboard {
                 const color = isConflict ? '{red-fg}' : '{green-fg}';
                 const icon = isConflict ? '🔴' : '🟢';
 
-                content += `${color}${icon} ${file}{/}\n`;
-                content += `   └─ 👥 ${agents.join(', ')}\n\n`;
+                // Security: Escape dynamic content
+                const safeFile = escapeBlessed(file);
+                const safeAgents = agents.map(a => escapeBlessed(a)).join(', ');
+
+                content += `${color}${icon} ${safeFile}{/}\n`;
+                content += `   └─ 👥 ${safeAgents}\n\n`;
             });
         }
 
@@ -216,7 +225,8 @@ export class SpidersanDashboard {
 
     public addLog(message: string) {
         const time = new Date().toLocaleTimeString();
-        this.logBox.add(`${time} | ${message}`);
+        // Security: Escape log message
+        this.logBox.add(`${time} | ${escapeBlessed(message)}`);
         this.logBox.scrollTo(this.logBox.getLines().length); // Scroll to bottom
         this.screen.render();
     }
