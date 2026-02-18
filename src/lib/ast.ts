@@ -48,46 +48,41 @@ export class ASTParser {
         const symbols: SymbolInfo[] = [];
         const cursor = tree.walk();
 
-        let recurse = true;
-
         // eslint-disable-next-line no-constant-condition
         while (true) {
-            if (recurse) {
-                const type = cursor.nodeType;
-                if (type === 'function_declaration' || type === 'class_declaration' || type === 'method_definition') {
-                    const node = cursor.currentNode;
-                    const nameNode = node.childForFieldName('name');
-                    if (nameNode) {
-                        const content = node.text;
-                        symbols.push({
-                            name: nameNode.text,
-                            type: type.replace('_declaration', '').replace('_definition', '') as SymbolInfo['type'],
-                            startLine: node.startPosition.row + 1, // 1-indexed for humans
-                            endLine: node.endPosition.row + 1,
-                            content: content,
-                            hash: this.computeHash(content)
-                        });
-                    }
+            const type = cursor.nodeType;
+            if (type === 'function_declaration' || type === 'class_declaration' || type === 'method_definition') {
+                const node = cursor.currentNode;
+                const nameNode = node.childForFieldName('name');
+                if (nameNode) {
+                    const content = node.text;
+                    symbols.push({
+                        name: nameNode.text,
+                        type: type.replace('_declaration', '').replace('_definition', '') as SymbolInfo['type'],
+                        startLine: node.startPosition.row + 1, // 1-indexed for humans
+                        endLine: node.endPosition.row + 1,
+                        content: content,
+                        hash: this.computeHash(content)
+                    });
                 }
             }
 
-            if (recurse && cursor.gotoFirstChild()) {
-                recurse = true;
-            } else {
+            if (cursor.gotoFirstChild()) {
+                continue;
+            }
+
+            if (cursor.gotoNextSibling()) {
+                continue;
+            }
+
+            let climbed = false;
+            while (cursor.gotoParent()) {
                 if (cursor.gotoNextSibling()) {
-                    recurse = true;
-                } else {
-                    let climbed = false;
-                    while (cursor.gotoParent()) {
-                        if (cursor.gotoNextSibling()) {
-                            recurse = true;
-                            climbed = true;
-                            break;
-                        }
-                    }
-                    if (!climbed) return symbols;
+                    climbed = true;
+                    break;
                 }
             }
+            if (!climbed) return symbols;
         }
     }
 
