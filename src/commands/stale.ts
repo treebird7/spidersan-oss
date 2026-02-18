@@ -11,12 +11,14 @@ import type { Branch } from '../storage/adapter.js';
 import { spawnSync } from 'child_process';
 import { existsSync, readFileSync, appendFileSync } from 'fs';
 import { resolve } from 'path';
+import { validateAgentId } from '../lib/security.js';
 
 /**
  * Send notification to agent via mycmail
  */
 function notifyAgentViaMycmail(agentId: string, branchName: string, daysOld: number): boolean {
     try {
+        validateAgentId(agentId);
         const subject = `⚠️ Stale branch: ${branchName}`;
         const message = `Your branch "${branchName}" has been inactive for ${daysOld} days.\n\nActions:\n- Run: spidersan cleanup\n- Or resume work and push updates`;
         
@@ -42,6 +44,7 @@ function notifyAgentViaMycmail(agentId: string, branchName: string, daysOld: num
  */
 function updatePendingTaskFile(agentId: string, branchName: string, daysOld: number): boolean {
     try {
+        validateAgentId(agentId);
         // Try common locations for .pending_task.md
         const possiblePaths = [
             resolve(process.cwd(), '.pending_task.md'),
@@ -77,6 +80,12 @@ function updatePendingTaskFile(agentId: string, branchName: string, daysOld: num
         return false;
     }
 }
+
+/** @internal */
+export const _testable = {
+    updatePendingTaskFile,
+    notifyAgentViaMycmail
+};
 
 export const staleCommand = new Command('stale')
     .description('Show stale branches (not updated recently)')
