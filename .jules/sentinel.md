@@ -29,3 +29,8 @@
 **Vulnerability:** The `register` command validated files provided via `--files` flag but failed to validate files obtained via `--auto` (git diff) or `--interactive` (user input) modes.
 **Learning:** When a CLI command has multiple ways to obtain the same type of input (flags, auto-detection, prompts), validation logic must be applied to the *final* dataset, not just inside the block handling one specific input method.
 **Prevention:** Centralize validation logic immediately before the data is used or stored, ensuring it covers all possible input sources.
+
+## 2026-02-23 - TUI Markup Injection
+**Vulnerability:** Blessed Markup Injection in `SpidersanDashboard` via `tags: true` rendering. User-controlled strings (like agent names or task titles) could inject arbitrary markup (e.g., `{red-fg}`), disrupting the UI or spoofing content.
+**Learning:** TUI libraries like `blessed` that support markup tags must be treated similarly to HTML in web apps; untrusted input must be escaped before interpolation.
+**Prevention:** Use an escape function (like `escapeBlessed`) to sanitize all dynamic content before passing it to TUI components with markup enabled.
