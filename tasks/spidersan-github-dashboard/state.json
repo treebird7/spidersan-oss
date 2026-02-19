@@ -1,0 +1,77 @@
+{
+  "project": "spidersan-github-dashboard",
+  "description": "Cross-machine GitHub-aware branch coordination dashboard — registry sync via Supabase, GitHub API branch/PR/CI awareness, unified multi-repo view, and visual dashboard",
+  "created": "2026-02-19",
+  "context": {
+    "dreams_consolidated": [
+      "DREAM_spidersan_semantic_intelligence.md",
+      "DREAM_spidersan_mcp_v2_sessions_memory.md",
+      "DREAM_intelligent_domain_routing.md"
+    ],
+    "realism_pass": "Mappersan 2026-02-17 — 3 dreams → 2 layers (Intelligence + Routing)",
+    "one_pager_roadmap": "Q3 2026: VS Code extension + dashboard",
+    "existing_infra": [
+      "SpiderSan CLI (53 commands + 22 MCP tools)",
+      "Supabase storage adapter (src/storage/supabase.ts)",
+      "GitHub MCP Server (branches, PRs, CI, commits)",
+      "Envoak machine identity (machine.json)",
+      "Toaklink agent messaging",
+      "FlockView scaffold (packages/server + client)",
+      "Memoak API (embeddings + semantic search)"
+    ]
+  },
+  "features": {
+    "F1_supabase_registry_sync": {
+      "title": "Sync local .spidersan/registry.json to Supabase with machine_id tagging",
+      "status": false,
+      "worker_task": "tasks/spidersan-github-dashboard/F1_supabase_registry_sync.md",
+      "test_file": "tests/registry-sync.test.ts",
+      "depends_on": []
+    },
+    "F2_github_branch_inventory": {
+      "title": "GitHub API integration — fetch branches, PRs, CI status for configured repos",
+      "status": false,
+      "worker_task": "tasks/spidersan-github-dashboard/F2_github_branch_inventory.md",
+      "test_file": "tests/github-inventory.test.ts",
+      "depends_on": ["F1_supabase_registry_sync"]
+    },
+    "F3_cross_machine_conflict_detection": {
+      "title": "Unified conflict detection across machines and repos using synced registries",
+      "status": false,
+      "worker_task": "tasks/spidersan-github-dashboard/F3_cross_machine_conflict_detection.md",
+      "test_file": "tests/cross-machine-conflicts.test.ts",
+      "depends_on": ["F1_supabase_registry_sync", "F2_github_branch_inventory"]
+    },
+    "F4_smart_sync_advisor": {
+      "title": "Push/pull/stale advisor — recommend git operations per repo per machine",
+      "status": false,
+      "worker_task": "tasks/spidersan-github-dashboard/F4_smart_sync_advisor.md",
+      "test_file": "tests/sync-advisor.test.ts",
+      "depends_on": ["F2_github_branch_inventory"]
+    },
+    "F5_dashboard_tui": {
+      "title": "Terminal dashboard — cross-repo branch tree with conflict heatmap and sync status",
+      "status": false,
+      "worker_task": "tasks/spidersan-github-dashboard/F5_dashboard_tui.md",
+      "test_file": "tests/dashboard-tui.test.ts",
+      "depends_on": ["F3_cross_machine_conflict_detection", "F4_smart_sync_advisor"]
+    },
+    "F6_dashboard_web": {
+      "title": "FlockView integration — web dashboard for visual branch management",
+      "status": false,
+      "worker_task": "tasks/spidersan-github-dashboard/F6_dashboard_web.md",
+      "test_file": "tests/dashboard-web.test.ts",
+      "depends_on": ["F3_cross_machine_conflict_detection", "F4_smart_sync_advisor"]
+    }
+  },
+  "test_gate": {
+    "description": "All feature tests must pass before QA",
+    "handoff": "tasks/spidersan-github-dashboard/TEST_RUNNER.md",
+    "all_passed": false
+  },
+  "qa_gate": {
+    "description": "End-to-end: M1 registers branch → Supabase sync → M2 sees conflict → GitHub PR status matches → dashboard renders correctly",
+    "handoff": "tasks/spidersan-github-dashboard/QA_AUDIT.md",
+    "approved": false
+  }
+}
