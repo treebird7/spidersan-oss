@@ -27,6 +27,7 @@ import {
     configCommand,
     autoCommand,
     welcomeCommand,
+    registrySyncCommand,
     loadEcosystemCommands,
     getEcosystemStatus,
 } from '../commands/index.js';
@@ -97,6 +98,7 @@ program.addCommand(doctorCommand);
 program.addCommand(configCommand);
 program.addCommand(autoCommand);
 program.addCommand(welcomeCommand);
+program.addCommand(registrySyncCommand);
 
 async function main(): Promise<void> {
     const ecosystemCommands = await loadEcosystemCommands();

@@ -6,6 +6,13 @@
  */
 
 import type { StorageAdapter, Branch } from './adapter.js';
+import type {
+    SpiderRegistry,
+    MachineIdentity,
+    MachineRegistryView,
+    RegistryStatus,
+    RegistrySyncResult,
+} from '../types/cloud.js';
 
 interface SupabaseConfig {
     url: string;
@@ -262,6 +269,158 @@ export class SupabaseStorage implements StorageAdapter {
         if (!response.ok) return null;
         const rows = await response.json() as SupabaseBranchRow[];
         return rows[0] || null;
+    }
+
+    // ─── F1: Registry Sync (cross-machine awareness) ───
+
+    /**
+     * Push local branches to spider_registries table, tagged with machine identity.
+     * Uses upsert (ON CONFLICT UPDATE) to handle repeated pushes.
+     */
+    async pushRegistry(
+        machine: MachineIdentity,
+        repoName: string,
+        repoPath: string,
+        branches: Branch[],
+    ): Promise<RegistrySyncResult> {
+        const result: RegistrySyncResult = { pushed: 0, updated: 0, abandoned: 0, errors: [] };
+
+        // Upsert each branch
+        const rows = branches.map(b => ({
+            machine_id: machine.id,
+            machine_name: machine.name,
+            hostname: machine.hostname,
+            repo_path: repoPath,
+            repo_name: repoName,
+            branch_name: b.name,
+            files: b.files,
+            agent: b.agent || null,
+            description: b.description || null,
+            status: b.status,
+            synced_at: new Date().toISOString(),
+        }));
+
+        if (rows.length > 0) {
+            const response = await this.fetch(
+                'spider_registries?on_conflict=machine_id,repo_name,branch_name',
+                {
+                    method: 'POST',
+                    headers: { 'Prefer': 'resolution=merge-duplicates,return=representation' },
+                    body: JSON.stringify(rows),
+                },
+            );
+
+            if (!response.ok) {
+                const text = await response.text();
+                result.errors.push(`Push failed: ${text}`);
+                return result;
+            }
+
+            result.pushed = rows.filter(r => r.status === 'active').length;
+            result.updated = rows.length - result.pushed;
+        }
+
+        // Mark branches that exist in Supabase for this machine+repo but not locally
+        const localNames = new Set(branches.map(b => b.name));
+        const existingResp = await this.fetch(
+            `spider_registries?machine_id=eq.${encodeURIComponent(machine.id)}` +
+            `&repo_name=eq.${encodeURIComponent(repoName)}` +
+            `&status=eq.active&select=branch_name`,
+        );
+
+        if (existingResp.ok) {
+            const existing = await existingResp.json() as Array<{ branch_name: string }>;
+            const toAbandon = existing.filter(e => !localNames.has(e.branch_name));
+
+            for (const row of toAbandon) {
+                await this.fetch(
+                    `spider_registries?machine_id=eq.${encodeURIComponent(machine.id)}` +
+                    `&repo_name=eq.${encodeURIComponent(repoName)}` +
+                    `&branch_name=eq.${encodeURIComponent(row.branch_name)}`,
+                    {
+                        method: 'PATCH',
+                        body: JSON.stringify({ status: 'abandoned', synced_at: new Date().toISOString() }),
+                    },
+                );
+                result.abandoned++;
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Pull other machines' registries for a repo (read-only view).
+     */
+    async pullRegistries(repoName: string, excludeMachine?: string): Promise<MachineRegistryView[]> {
+        let query = `spider_registries?repo_name=eq.${encodeURIComponent(repoName)}&status=eq.active&order=synced_at.desc`;
+        if (excludeMachine) {
+            query += `&machine_id=neq.${encodeURIComponent(excludeMachine)}`;
+        }
+
+        const response = await this.fetch(query);
+        if (!response.ok) throw new Error(`Pull failed: ${await response.text()}`);
+
+        const rows = await response.json() as SpiderRegistry[];
+
+        // Group by machine
+        const byMachine = new Map<string, MachineRegistryView>();
+        for (const row of rows) {
+            if (!byMachine.has(row.machine_id)) {
+                byMachine.set(row.machine_id, {
+                    machine_id: row.machine_id,
+                    machine_name: row.machine_name,
+                    hostname: row.hostname,
+                    branches: [],
+                    last_sync: row.synced_at,
+                });
+            }
+            const view = byMachine.get(row.machine_id)!;
+            view.branches.push(row);
+            if (row.synced_at > view.last_sync) {
+                view.last_sync = row.synced_at;
+            }
+        }
+
+        return Array.from(byMachine.values());
+    }
+
+    /**
+     * Get sync status across all machines for a repo (or all repos).
+     */
+    async getRegistryStatus(repoName?: string): Promise<RegistryStatus[]> {
+        let query = 'spider_registries?select=machine_id,machine_name,hostname,repo_name,status,synced_at';
+        if (repoName) {
+            query += `&repo_name=eq.${encodeURIComponent(repoName)}`;
+        }
+
+        const response = await this.fetch(query);
+        if (!response.ok) throw new Error(`Status failed: ${await response.text()}`);
+
+        const rows = await response.json() as SpiderRegistry[];
+
+        // Aggregate by machine
+        const byMachine = new Map<string, RegistryStatus>();
+        for (const row of rows) {
+            if (!byMachine.has(row.machine_id)) {
+                byMachine.set(row.machine_id, {
+                    machine_id: row.machine_id,
+                    machine_name: row.machine_name,
+                    hostname: row.hostname,
+                    branch_count: 0,
+                    active_count: 0,
+                    last_sync: row.synced_at,
+                    repos: [],
+                });
+            }
+            const status = byMachine.get(row.machine_id)!;
+            status.branch_count++;
+            if (row.status === 'active') status.active_count++;
+            if (row.synced_at > status.last_sync) status.last_sync = row.synced_at;
+            if (!status.repos.includes(row.repo_name)) status.repos.push(row.repo_name);
+        }
+
+        return Array.from(byMachine.values());
     }
 
 }
