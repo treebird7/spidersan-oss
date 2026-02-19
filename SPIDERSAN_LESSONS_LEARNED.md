@@ -84,102 +84,8 @@ excludeFiles: [
 - Document any `--skip-wip` decisions in the PR body and link to the lesson in `SPIDERSAN_LESSONS_LEARNED.md`.
 
 **Why this matters:** These patterns reduce wasted time, prevent unsafe merges, and make cross-agent collaboration auditable.
-## 9. Supabase Project Lifecycle Management (12-Feb-26)
-**Problem:** Spidersan auth fails with "Supabase authentication failed" even though credentials look correct  
-**Cause:** Free-tier Supabase projects get paused/deleted after inactivity, returning HTTP 404  
-**Symptom:** `curl https://[project].supabase.co` returns 404, all Supabase operations fail  
-**Impact:** Cross-machine branch coordination breaks, agents can't see each other's registered branches  
 
-**Fix:** Check Supabase dashboard project status:
-1. Visit supabase.com/dashboard
-2. Resume paused project OR migrate to active project
-3. Test with: `curl https://[project].supabase.co` (should return 404 for root, 401/200 for REST endpoints)
-
-**Prevention:** 
-- Use paid tier for production multi-machine coordination
-- Document which Supabase project is canonical (avoid duplicates)
-- Add health check to detect inactive projects early
-- Consider local storage for single-machine use
-
-**Key insight:** Without active Supabase, spidersan still works perfectly on local storage (`.spidersan/registry.json`) but loses cross-machine visibility.
-
-## 10. .env Validation Tools: Doctor vs Envoak (12-Feb-26)
-**Problem:** Spidersan doctor flags "line 28 has multiple '=' - likely missing newline" but file works fine  
-**Cause:** Base64 values with trailing `=` confuse simple regex-based linters  
-**Example:** `TOAK_API_KEY="DRfvRynfBo01HQjTjNq7DkNX+wIJPZhAvuUqNT7JdxQ="` has 2 `=` chars (one in value, one terminating base64)
-
-**Fix Options:**
-1. Quote the value: `KEY="value="` (recommended)
-2. Use Envoak for validation: `envoak check` (more sophisticated parser)
-3. Ignore false positive (doctor is overly strict)
-
-**Pattern:**
-```bash
-# ❌ Triggers false positive
-TOAK_API_KEY=DRfvRynfBo01HQjTjNq7DkNX+wIJPZhAvuUqNT7JdxQ=
-
-# ✅ Properly quoted
-TOAK_API_KEY="DRfvRynfBo01HQjTjNq7DkNX+wIJPZhAvuUqNT7JdxQ="
-
-# Validate
-envoak check  # More accurate than spidersan doctor for .env syntax
-```
-
-**Lesson:** Use the right tool for validation. Envoak's parser handles edge cases better than spidersan's simple lint.
-
-## 11. Storage Factory SUPABASE_URL Override Behavior (12-Feb-26)
-**Problem:** Setting `SPIDERSAN_ENV=local` doesn't force local storage if `SUPABASE_URL` is set  
-**Cause:** Storage factory checks for SUPABASE_URL presence first, ignoring SPIDERSAN_ENV  
-**Symptom:** Auth fails even with `SPIDERSAN_ENV=local`, can't fall back to local `.spidersan/registry.json`
-
-**Current behavior:**
-```typescript
-// Factory checks URL first, ENV second
-if (SUPABASE_URL && SUPABASE_KEY) → Supabase
-else → Local
-```
-
-**Workaround:** Clear SUPABASE vars to force local:
-```bash
-SUPABASE_URL="" SUPABASE_KEY="" spidersan register ...
-# OR comment out in .env temporarily
-```
-
-**Future improvement:** Respect SPIDERSAN_ENV=local as explicit override, even if Supabase vars exist.
-
-**Use case:** Testing local storage, working offline, or troubleshooting Supabase auth without editing .env.
-
-## 12. GitHub Workflow Invalid --branch Flag (13-Feb-26)
-**Problem:** Auto-register workflow fails with "unknown option '--branch'" when calling `spidersan register`
-**Cause:** Workflow assumed `register` command accepts `--branch` flag, but it auto-detects current branch from git context
-**Location:** `.github/workflows/auto-register.yml` line 68
-
-**Symptom:**
-```bash
-error: unknown option '--branch'
-spidersan register --agent "..." --branch "feature/x" --files "..."
-```
-
-**Fix:** Remove `--branch` flag from register command in workflow:
-```yaml
-# ❌ Wrong - register doesn't accept --branch
-spidersan register \
-  --agent "${{ steps.commit.outputs.agent }}" \
-  --branch "${{ steps.commit.outputs.branch }}" \
-  --files "${{ steps.commit.outputs.files }}"
-
-# ✅ Correct - auto-detects current branch
-spidersan register \
-  --agent "${{ steps.commit.outputs.agent }}" \
-  --files "${{ steps.commit.outputs.files }}"
-```
-
-**Note:** The `conflicts` command DOES support `--branch` flag - those usages are correct and should remain.
-
-**Lesson:** Verify CLI interfaces before writing workflows. Check command help or source code to confirm available flags.
-
-**Pattern:** When a command operates on "current context" (branch, repo, etc.), it typically auto-detects rather than requiring explicit parameters.
-## 8. npm `"files"` Field Overrides `.npmignore` (18-Feb-26)
+## 9. npm `"files"` Field Overrides `.npmignore` (18-Feb-26)
 **Problem:** Added `!CHANGELOG.md` to `.npmignore` negation — still excluded from published package.  
 **Root cause:** When `"files"` is set in `package.json`, it takes full precedence. `.npmignore` negations are irrelevant.  
 **Fix:** Add files explicitly to the `"files"` array in `package.json`.  
@@ -192,7 +98,7 @@ spidersan register \
 // .npmignore: !CHANGELOG.md
 ```
 
-## 9. Pre-Publish: Grep for Private Agent IDs (18-Feb-26)
+## 10. Pre-Publish: Grep for Private Agent IDs (18-Feb-26)
 **Problem:** Hardcoded private agent ID `'ssan'` shipped in Hub API calls in `watch.ts` and `conflicts.ts`.  
 **Fix:** Before `npm publish`, grep source for internal agent IDs and replace with public generic names.  
 ```bash

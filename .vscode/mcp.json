@@ -5,6 +5,18 @@
       "command": "node",
       "args": ["/Users/freedbird/Dev/spidersan/mcp-server/dist/server.js"],
       "env": {}
+    },
+    "toak": {
+      "enabled": true,
+      "command": "node",
+      "args": ["/Users/freedbird/Dev/toak/dist/server.js"],
+      "env": {}
+    },
+    "envoak": {
+      "enabled": true,
+      "command": "node",
+      "args": ["/Users/freedbird/Dev/envoak/dist/mcp/server.js"],
+      "env": {}
     }
   }
 }
