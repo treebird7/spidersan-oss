@@ -338,6 +338,7 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
     }
 
     async inbox(agentId: string, options: InboxOptions = {}): Promise<Message[]> {
+        validateAgentId(agentId);
         await this.ensureBranch();
 
         // Try to pull latest if remote exists
