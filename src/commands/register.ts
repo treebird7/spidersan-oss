@@ -3,7 +3,7 @@ import { execSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import * as readline from 'readline';
 import { loadConfig } from '../lib/config.js';
-import { validateFilePath, validateAgentId } from '../lib/security.js';
+import { validateAgentId, sanitizeFilePaths } from '../lib/security.js';
 
 function getCurrentBranch(): string {
     try {
@@ -27,7 +27,7 @@ function getChangedFiles(): string[] {
 }
 
 export function validateRegistrationFiles(files: string[]): void {
-    files.forEach(f => validateFilePath(f));
+    sanitizeFilePaths(files);
 }
 
 async function promptForFiles(detectedFiles: string[]): Promise<string[]> {
@@ -91,18 +91,9 @@ export const registerCommand = new Command('register')
         let files: string[] = [];
 
         if (options.files) {
-            files = options.files.split(',').map((f: string) => f.trim());
-            // Security: Validate file paths (Sherlocksan 2026-01-02)
-            try {
-                files.forEach(f => validateFilePath(f));
-            } catch (err) {
-                if (err instanceof Error) {
-                    console.error(`❌ Security Error: ${err.message}`);
-                } else {
-                    console.error('❌ Security Error: Invalid file path');
-                }
-                process.exit(1);
-            }
+            files = sanitizeFilePaths(
+                options.files.split(',').map((f: string) => f.trim()).filter(Boolean)
+            );
         } else if (options.auto) {
             files = getChangedFiles();
             if (files.length > 0) {
@@ -126,7 +117,16 @@ export const registerCommand = new Command('register')
         }
 
         const configuredAgent = config.agent.name?.trim();
-        const resolvedAgent = (options.agent || process.env.SPIDERSAN_AGENT || configuredAgent || '').trim() || undefined;
+        const rawAgent = (options.agent || process.env.SPIDERSAN_AGENT || configuredAgent || '').trim() || undefined;
+        let resolvedAgent = rawAgent;
+        if (resolvedAgent) {
+            try {
+                resolvedAgent = validateAgentId(resolvedAgent);
+            } catch {
+                console.error(`❌ Invalid agent ID: "${resolvedAgent}". Must be alphanumeric with - or _.`);
+                process.exit(1);
+            }
+        }
 
         // Security: Validate agent ID if present
         if (resolvedAgent) {

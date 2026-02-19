@@ -42,33 +42,35 @@ jobs:
           # Get agent name from commit author or branch prefix
           AUTHOR="${{ github.actor }}"
           BRANCH="${{ github.ref_name }}"
-          
+
           # Try to extract agent from branch name (e.g., sherlocksan/feature-x)
           if [[ "$BRANCH" == */* ]]; then
             AGENT=$(echo "$BRANCH" | cut -d'/' -f1)
           else
             AGENT="$AUTHOR"
           fi
-          
+
           # Get changed files in this push
-          # Handle first push to new branch (before SHA is all zeros)
-          if [[ "${{ github.event.before }}" == "0000000000000000000000000000000000000000" ]]; then
-            # First push - get all files in the commit
-            FILES=$(git diff-tree --no-commit-id --name-only -r ${{ github.sha }} | tr '\n' ',' | sed 's/,$//')
+          # Handle initial push where 'before' is all zeros
+          BEFORE="${{ github.event.before }}"
+          if [[ "$BEFORE" == "0000000000000000000000000000000000000000" ]]; then
+            FILES=$(git diff --name-only origin/main...${{ github.sha }} 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
           else
-            # Regular push - diff between before and after
-            FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | tr '\n' ',' | sed 's/,$//')
+            FILES=$(git diff --name-only "$BEFORE" ${{ github.sha }} | tr '\n' ',' | sed 's/,$//')
           fi
-          
+
           echo "agent=$AGENT" >> $GITHUB_OUTPUT
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           echo "files=$FILES" >> $GITHUB_OUTPUT
-          
+
           echo "🕷️ Detected:"
           echo "   Agent: $AGENT"
           echo "   Branch: $BRANCH"
           echo "   Files: $FILES"
-      
+
+      - name: Initialize Spidersan
+        run: spidersan init
+
       - name: Register with Spidersan
         if: steps.commit.outputs.files != ''
         run: |

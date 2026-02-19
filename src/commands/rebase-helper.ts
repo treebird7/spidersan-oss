@@ -28,8 +28,9 @@ export const rebaseHelperCommand = new Command('rebase-helper')
             try {
                 execSync('GIT_EDITOR=true GIT_SEQUENCE_EDITOR=true git rebase --abort', { stdio: 'inherit' });
                 console.log('✅ Rebase aborted successfully');
-            } catch (e) {
+            } catch {
                 console.error('❌ Failed to abort rebase non-interactively. Try aborting in your terminal.');
+                process.exit(1);
             }
             return;
         }
@@ -38,8 +39,9 @@ export const rebaseHelperCommand = new Command('rebase-helper')
             try {
                 execSync('GIT_EDITOR=true GIT_SEQUENCE_EDITOR=true git rebase --continue', { stdio: 'inherit' });
                 console.log('✅ Rebase continued (or completed).');
-            } catch (e) {
+            } catch {
                 console.error('❌ Failed to continue rebase non-interactively. Please resolve conflicts and run git rebase --continue');
+                process.exit(1);
             }
             return;
         }
