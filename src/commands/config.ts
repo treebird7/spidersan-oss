@@ -74,7 +74,7 @@ function setNestedValue(obj: Record<string, unknown>, path: string, value: unkno
 
     // Security: Prevent prototype pollution
     if (parts.some(p => p === '__proto__' || p === 'constructor' || p === 'prototype')) {
-        return;
+        throw new Error('Invalid config path: contains forbidden keys');
     }
 
     let current: Record<string, unknown> = obj;
