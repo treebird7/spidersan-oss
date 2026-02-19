@@ -92,6 +92,17 @@ export const registerCommand = new Command('register')
 
         if (options.files) {
             files = options.files.split(',').map((f: string) => f.trim());
+            // Security: Validate file paths (Sherlocksan 2026-01-02)
+            try {
+                files.forEach(f => validateFilePath(f));
+            } catch (err) {
+                if (err instanceof Error) {
+                    console.error(`❌ Security Error: ${err.message}`);
+                } else {
+                    console.error('❌ Security Error: Invalid file path');
+                }
+                process.exit(1);
+            }
         } else if (options.auto) {
             files = getChangedFiles();
             if (files.length > 0) {
