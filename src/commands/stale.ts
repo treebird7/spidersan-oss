@@ -11,12 +11,21 @@ import type { Branch } from '../storage/adapter.js';
 import { spawnSync } from 'child_process';
 import { existsSync, readFileSync, appendFileSync } from 'fs';
 import { resolve } from 'path';
+import { validateAgentId } from '../lib/security.js';
 
 /**
  * Send notification to agent via mycmail
  */
 function notifyAgentViaMycmail(agentId: string, branchName: string, daysOld: number): boolean {
     try {
+        // Security: Validate agent ID to prevent command injection
+        try {
+            validateAgentId(agentId);
+        } catch (e) {
+            console.warn(`⚠️ Skipping notification for invalid agent ID: ${agentId}`);
+            return false;
+        }
+
         const subject = `⚠️ Stale branch: ${branchName}`;
         const message = `Your branch "${branchName}" has been inactive for ${daysOld} days.\n\nActions:\n- Run: spidersan cleanup\n- Or resume work and push updates`;
         
@@ -42,6 +51,14 @@ function notifyAgentViaMycmail(agentId: string, branchName: string, daysOld: num
  */
 function updatePendingTaskFile(agentId: string, branchName: string, daysOld: number): boolean {
     try {
+        // Security: Validate agent ID to prevent path traversal
+        try {
+            validateAgentId(agentId);
+        } catch (e) {
+            console.warn(`⚠️ Skipping task update for invalid agent ID: ${agentId}`);
+            return false;
+        }
+
         // Try common locations for .pending_task.md
         const possiblePaths = [
             resolve(process.cwd(), '.pending_task.md'),
@@ -160,3 +177,8 @@ export const staleCommand = new Command('stale')
 
         console.log(`\nRun 'spidersan cleanup' to remove these.`);
     });
+
+export const _testable = {
+    notifyAgentViaMycmail,
+    updatePendingTaskFile
+};
