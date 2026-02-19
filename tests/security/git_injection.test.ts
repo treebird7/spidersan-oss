@@ -42,13 +42,27 @@ describe('GitMessagesAdapter Security', () => {
             if (command.includes('git rev-parse --git-dir')) return '.git';
             // Mock branchExists check -> fail so it tries to create
             if (command.includes('git rev-parse --verify spidersan/messages')) throw new Error('Not found');
-            // Mock getCurrentBranch -> return malicious payload
-            if (command.includes('git rev-parse --abbrev-ref HEAD')) return maliciousBranch;
             return '';
         });
 
         // Mock execFileSync to avoid errors during execution
-        vi.mocked(cp.execFileSync).mockReturnValue(Buffer.from(''));
+        vi.mocked(cp.execFileSync).mockImplementation((cmd, args, options) => {
+            const command = String(cmd);
+            const argsList = Array.isArray(args) ? args : [];
+
+            // Mock branch check -> fail so it tries to create
+            if (command === 'git' && argsList.includes('rev-parse') && argsList.includes('--verify') && argsList.includes('spidersan/messages')) {
+                throw new Error('Not found');
+            }
+
+            // Mock getCurrentBranch -> return malicious payload
+            if (command === 'git' && argsList.includes('rev-parse') && argsList.includes('--abbrev-ref')) {
+                // Return string because the code uses encoding: 'utf-8' and calls .trim()
+                return maliciousBranch as any;
+            }
+
+            return '' as any;
+        });
 
         // Trigger ensureBranch via send
         try {
@@ -70,6 +84,9 @@ describe('GitMessagesAdapter Security', () => {
 
         // The vulnerability is fixed if execSync is NOT called with the malicious string
         expect(dangerousCall).toBeUndefined();
+
+        // Debug prints
+        // console.log('Calls:', vi.mocked(cp.execFileSync).mock.calls);
 
         // Instead, execFileSync MUST be used correctly
         const safeCall = vi.mocked(cp.execFileSync).mock.calls.find(call =>
