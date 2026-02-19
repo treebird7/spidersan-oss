@@ -179,3 +179,23 @@ spidersan register \
 **Lesson:** Verify CLI interfaces before writing workflows. Check command help or source code to confirm available flags.
 
 **Pattern:** When a command operates on "current context" (branch, repo, etc.), it typically auto-detects rather than requiring explicit parameters.
+## 8. npm `"files"` Field Overrides `.npmignore` (18-Feb-26)
+**Problem:** Added `!CHANGELOG.md` to `.npmignore` negation — still excluded from published package.  
+**Root cause:** When `"files"` is set in `package.json`, it takes full precedence. `.npmignore` negations are irrelevant.  
+**Fix:** Add files explicitly to the `"files"` array in `package.json`.  
+**Pattern:**
+```json
+// ✅ Correct
+"files": ["dist", "README.md", "CHANGELOG.md", "LICENSE.md"]
+
+// ❌ Wrong — .npmignore negation is silently ignored when "files" exists
+// .npmignore: !CHANGELOG.md
+```
+
+## 9. Pre-Publish: Grep for Private Agent IDs (18-Feb-26)
+**Problem:** Hardcoded private agent ID `'ssan'` shipped in Hub API calls in `watch.ts` and `conflicts.ts`.  
+**Fix:** Before `npm publish`, grep source for internal agent IDs and replace with public generic names.  
+```bash
+grep -r "'ssan'\|\"ssan\"" dist/
+```
+**Pattern:** Any string that identifies a specific internal agent (not a config value) is a pre-publish risk.

@@ -520,6 +520,22 @@ mycmail inbox
 
 > **Note:** These are available commands, not automatic actions. Only run when the user explicitly asks you to start a session or run these commands.
 
+## Ecosystem Conventions (Learned)
+
+### Daily Collab
+- **Canonical location:** `treebird-internal/collab/daily/` — this is the source of truth
+- **Write via:** `node /Users/macbook/Dev/toak/dist/bin/toak.js collab "message"`
+- **Do NOT** write directly to `sansan-knowledge/collab/` — it is a one-way rsync mirror (`--delete`) and will wipe manually created files on next sync
+- `treesync` auto-commits changes to `treebird-internal` — no need to manually commit after editing files there
+
+### Skills Repo
+- **Canonical location:** `/Users/macbook/Dev/Skills` (capital S) — git-tracked, `treebird7/skills.git`
+- `/Dev/skills/` (lowercase) is stale — do not use
+
+### npm Publish Checklist
+- `"files"` field in `package.json` **overrides `.npmignore` entirely** — negations like `!CHANGELOG.md` are ignored; add files explicitly to `"files"` array
+- Before publishing: grep for hardcoded private agent IDs (e.g. `ssan`) in Hub API calls — replace with generic public name
+
 ## Architecture Overview
 
 ```
