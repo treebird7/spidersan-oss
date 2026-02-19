@@ -54,7 +54,7 @@ export class ASTParser {
         const cursor = tree.walk();
         let recurse = true;
 
-        while (true) {
+        while (true) { // eslint-disable-line no-constant-condition
             if (recurse) {
                 const type = cursor.nodeType;
                 if (type === 'function_declaration' || type === 'class_declaration' || type === 'method_definition') {
