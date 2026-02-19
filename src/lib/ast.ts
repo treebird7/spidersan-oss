@@ -44,31 +44,66 @@ export class ASTParser {
         return createHash('sha256').update(content).digest('hex');
     }
 
+    /**
+     * Extracts symbols (functions, classes, methods) from the AST.
+     * Uses an iterative traversal with TreeCursor for optimal performance
+     * and reduced memory allocation compared to recursive visitors.
+     */
     private extractSymbols(tree: Parser.Tree): SymbolInfo[] {
         const symbols: SymbolInfo[] = [];
-        const visit = (node: Parser.SyntaxNode) => {
-            if (node.type === 'function_declaration' || node.type === 'class_declaration' || node.type === 'method_definition') {
-                const nameNode = node.childForFieldName('name');
-                if (nameNode) {
-                    const content = node.text;
-                    symbols.push({
-                        name: nameNode.text,
-                        type: node.type.replace('_declaration', '').replace('_definition', '') as SymbolInfo['type'],
-                        startLine: node.startPosition.row + 1, // 1-indexed for humans
-                        endLine: node.endPosition.row + 1,
-                        content: content,
-                        hash: this.computeHash(content)
-                    });
+        const cursor = tree.walk();
+        let recurse = true;
+
+        while (true) {
+            if (recurse) {
+                const type = cursor.nodeType;
+                if (type === 'function_declaration' || type === 'class_declaration' || type === 'method_definition') {
+                    const node = cursor.currentNode;
+                    const nameNode = node.childForFieldName('name');
+                    if (nameNode) {
+                        const content = node.text;
+                        symbols.push({
+                            name: nameNode.text,
+                            type: type.replace('_declaration', '').replace('_definition', '') as SymbolInfo['type'],
+                            startLine: node.startPosition.row + 1, // 1-indexed for humans
+                            endLine: node.endPosition.row + 1,
+                            content: content,
+                            hash: this.computeHash(content)
+                        });
+                    }
                 }
             }
 
-            for (let i = 0; i < node.childCount; i++) {
-                const child = node.child(i);
-                if (child) visit(child);
+            if (recurse && cursor.gotoFirstChild()) {
+                recurse = true;
+            } else {
+                if (cursor.gotoNextSibling()) {
+                    recurse = true;
+                } else {
+                    if (cursor.gotoParent()) {
+                        recurse = false;
+                        // We are at parent, need to go to next sibling of parent
+                        // Loop continues to check gotoNextSibling
+                        // But gotoNextSibling is checked in the else branch of gotoFirstChild?
+                        // No.
+                        // logic:
+                        // 1. Try child. If success, continue (process child).
+                        // 2. If no child, try sibling. If success, continue (process sibling).
+                        // 3. If no sibling, go parent.
+                        //    If success (at parent), set recurse=false.
+                        //    Loop continues.
+                        //    Next iter: recurse is false.
+                        //    Skips process.
+                        //    Skips gotoFirstChild.
+                        //    Checks gotoNextSibling. If success, recurse=true, continue.
+                        //    If failure, gotoParent again.
+                    } else {
+                        break;
+                    }
+                }
             }
-        };
+        }
 
-        visit(tree.rootNode);
         return symbols;
     }
 
