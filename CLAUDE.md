@@ -565,3 +565,12 @@ npm run build         # TypeScript compilation
 
 **For detailed use cases, see:** `docs/USE_CASES.md`
 **For agent-specific quick reference, see:** `docs/AGENT_GUIDE.md`
+
+## Execution Boundaries
+
+| Action | Allowed | Notes |
+|--------|---------|-------|
+| Branch operations (read, register) | ✅ | Spidersan's domain |
+| Intent registration | ✅ | Spidersan's domain |
+| Code changes in other agents' files | ❌ | Registry only |
+| Force push / destructive git ops | ❌ | Never |
