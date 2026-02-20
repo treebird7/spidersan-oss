@@ -35,7 +35,7 @@ spidersan conflicts --tier 2      # Filter: TIER 2+ only (PAUSE, BLOCK)
 spidersan conflicts --tier 3      # Filter: TIER 3 only (BLOCK - security critical)
 spidersan conflicts --strict      # Exit 1 if TIER 2+ conflicts found
 spidersan conflicts --notify      # Post conflicts to Hub chat
-spidersan conflicts --wake        # Wake conflicting agents via Hub + mycmail
+spidersan conflicts --wake        # Wake conflicting agents via Hub + Toak
 spidersan conflicts --retry 60    # Re-check after 60s when using --wake
 spidersan merge-order             # Get optimal merge sequence
 spidersan ready-check             # Validate branch is merge-ready (no WIP markers)
@@ -57,10 +57,10 @@ spidersan cleanup                 # Remove stale branches
 spidersan sync                    # Sync registry with git
 ```
 
-### Session Lifecycle (Myceliumail Integration)
+### Session Lifecycle (Toak Integration)
 ```bash
 spidersan wake                    # Start session: sync, conflicts, announce presence
-spidersan wake --skip-mail        # Start session without mycmail
+spidersan wake --skip-mail        # Start session without Toak messaging
 spidersan pulse                   # Check web health and registry completeness
 spidersan pulse --quiet           # One-line health summary
 spidersan close                   # End session: show status, broadcast sign-off
@@ -92,13 +92,16 @@ spidersan depends <branch>        # Declare dependency on another branch
 spidersan depends                 # Show current dependencies
 ```
 
-### Agent Messaging (via Myceliumail)
+### Agent Messaging (via Toak)
 ```bash
-spidersan send <agent> <subject>  # Send message (wraps mycmail)
-spidersan send <agent> <subject> --encrypt  # Send encrypted
-spidersan inbox                   # Check inbox (wraps mycmail)
-spidersan read <id>               # Read message (wraps mycmail)
+# Send a Toak message
+TOAK_AGENT_ID=ssan envoak vault inject --key $(cat ~/.envoak/ssan.key) -- toak say <agent> "<message>"
+
+# Check inbox
+TOAK_AGENT_ID=ssan envoak vault inject --key $(cat ~/.envoak/ssan.key) -- toak inbox
 ```
+
+> **Note:** Spidersan's key is at `~/.envoak/ssan.key` (30d TTL). If missing, ping bsan to re-provision.
 
 ### Encryption
 ```bash
@@ -482,26 +485,19 @@ SUPABASE_KEY=...          # Supabase API key
 SPIDERSAN_AGENT=claude    # Your agent identifier
 ```
 
-### Encryption Setup (for Myceliumail)
+### Encryption Setup (for Toak via Envoak)
 ```bash
-spidersan keygen              # Generate keypair (run once per agent)
-# Keys stored in ~/.spidersan/keys/
-# Share your public key with agents you want encrypted comms with
+# Toak keys are provisioned by bsan and stored at ~/.envoak/ssan.key
+# If missing, ping bsan to re-provision:
+# TOAK_AGENT_ID=ssan envoak vault inject --key $(cat ~/.envoak/ssan.key) -- toak say bsan "ssan key missing"
 ```
 
-## Myceliumail Identity
-
-> **This agent is connected to the Mycelium network**
+## Toak Identity
 
 | Field | Value |
 |-------|-------|
 | Agent ID | `ssan` |
-| Public Key | `AJiuvd49I8uY819nnIZE4DoIugVnD/lA/2xksH5JtVo=` |
-
-```bash
-# Import ssan's key to send encrypted messages:
-mycmail key-import ssan AJiuvd49I8uY819nnIZE4DoIugVnD/lA/2xksH5JtVo=
-```
+| Key location | `~/.envoak/ssan.key` (30d TTL, provisioned by bsan) |
 
 ## Session Startup
 
@@ -515,7 +511,7 @@ cat .pending_task.md 2>/dev/null && rm .pending_task.md
 spidersan wake
 
 # Check inbox (optional)
-mycmail inbox
+TOAK_AGENT_ID=ssan envoak vault inject --key $(cat ~/.envoak/ssan.key) -- toak inbox
 ```
 
 > **Note:** These are available commands, not automatic actions. Only run when the user explicitly asks you to start a session or run these commands.
