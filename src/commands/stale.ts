@@ -11,12 +11,17 @@ import type { Branch } from '../storage/adapter.js';
 import { spawnSync } from 'child_process';
 import { existsSync, readFileSync, appendFileSync } from 'fs';
 import { resolve } from 'path';
+import { validateAgentId, validateBranchName } from '../lib/security.js';
 
 /**
  * Send notification to agent via mycmail
  */
-function notifyAgentViaMycmail(agentId: string, branchName: string, daysOld: number): boolean {
+export function notifyAgentViaMycmail(agentId: string, branchName: string, daysOld: number): boolean {
     try {
+        // Security: Validate inputs
+        validateAgentId(agentId);
+        validateBranchName(branchName);
+
         const subject = `⚠️ Stale branch: ${branchName}`;
         const message = `Your branch "${branchName}" has been inactive for ${daysOld} days.\n\nActions:\n- Run: spidersan cleanup\n- Or resume work and push updates`;
         
@@ -40,8 +45,12 @@ function notifyAgentViaMycmail(agentId: string, branchName: string, daysOld: num
 /**
  * Update agent's .pending_task.md file
  */
-function updatePendingTaskFile(agentId: string, branchName: string, daysOld: number): boolean {
+export function updatePendingTaskFile(agentId: string, branchName: string, daysOld: number): boolean {
     try {
+        // Security: Validate inputs
+        validateAgentId(agentId);
+        validateBranchName(branchName);
+
         // Try common locations for .pending_task.md
         const possiblePaths = [
             resolve(process.cwd(), '.pending_task.md'),

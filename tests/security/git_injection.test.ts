@@ -47,8 +47,18 @@ describe('GitMessagesAdapter Security', () => {
             return '';
         });
 
-        // Mock execFileSync to avoid errors during execution
-        vi.mocked(cp.execFileSync).mockReturnValue(Buffer.from(''));
+        // Mock execFileSync to handle git commands safely
+        vi.mocked(cp.execFileSync).mockImplementation((cmd, args: any) => {
+             // Mock rev-parse HEAD to return malicious branch name
+             if (cmd === 'git' && Array.isArray(args) && args.includes('rev-parse') && args.includes('--abbrev-ref') && args.includes('HEAD')) {
+                 return maliciousBranch as any;
+             }
+             // Mock git-dir check
+             if (cmd === 'git' && Array.isArray(args) && args.includes('rev-parse') && args.includes('--git-dir')) {
+                 return '.git' as any;
+             }
+             return '' as any;
+        });
 
         // Trigger ensureBranch via send
         try {
