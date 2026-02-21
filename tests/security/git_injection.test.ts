@@ -48,7 +48,21 @@ describe('GitMessagesAdapter Security', () => {
         });
 
         // Mock execFileSync to avoid errors during execution
-        vi.mocked(cp.execFileSync).mockReturnValue(Buffer.from(''));
+        // @ts-ignore - Mocking return type is tricky with overloads
+        vi.mocked(cp.execFileSync).mockImplementation((cmd, args) => {
+            // Mock git version for security check availability
+            if (cmd === 'git' && args && args[0] === 'rev-parse' && args[1] === '--git-dir') {
+                 return '.git';
+            }
+            // Mock branchExists check -> fail so it tries to create
+            if (cmd === 'git' && args && args[0] === 'rev-parse' && args[1] === '--verify' && args[2] === 'spidersan/messages') {
+                throw new Error('Not found');
+            }
+            if (cmd === 'git' && args && args[0] === 'rev-parse' && args[1] === '--abbrev-ref' && args[2] === 'HEAD') {
+                return maliciousBranch;
+            }
+            return '';
+        });
 
         // Trigger ensureBranch via send
         try {
@@ -78,6 +92,10 @@ describe('GitMessagesAdapter Security', () => {
             call[1][0] === 'checkout' &&
             call[1][1] === maliciousBranch
         );
+
+        if (!safeCall) {
+            console.log('Calls to execFileSync:', JSON.stringify(vi.mocked(cp.execFileSync).mock.calls, null, 2));
+        }
 
         expect(safeCall).toBeDefined();
 
