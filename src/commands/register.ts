@@ -3,7 +3,7 @@ import { execSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import * as readline from 'readline';
 import { loadConfig } from '../lib/config.js';
-import { validateAgentId, sanitizeFilePaths } from '../lib/security.js';
+import { validateAgentId, sanitizeFilePaths, validateFilePath } from '../lib/security.js';
 
 function getCurrentBranch(): string {
     try {
@@ -27,7 +27,7 @@ function getChangedFiles(): string[] {
 }
 
 export function validateRegistrationFiles(files: string[]): void {
-    sanitizeFilePaths(files);
+    files.forEach(file => validateFilePath(file));
 }
 
 async function promptForFiles(detectedFiles: string[]): Promise<string[]> {
