@@ -29,6 +29,8 @@ import {
     welcomeCommand,
     loadEcosystemCommands,
     getEcosystemStatus,
+    registrySyncCommand,
+    crossConflictsCommand,
 } from '../commands/index.js';
 import { checkForUpdates } from '../lib/update-check.js';
 
@@ -97,6 +99,8 @@ program.addCommand(doctorCommand);
 program.addCommand(configCommand);
 program.addCommand(autoCommand);
 program.addCommand(welcomeCommand);
+program.addCommand(registrySyncCommand);
+program.addCommand(crossConflictsCommand);
 
 async function main(): Promise<void> {
     const ecosystemCommands = await loadEcosystemCommands();

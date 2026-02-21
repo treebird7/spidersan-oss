@@ -6,6 +6,7 @@
  */
 
 import type { StorageAdapter, Branch } from './adapter.js';
+import type { MachineIdentity, MachineRegistryView } from '../types/cloud.js';
 
 interface SupabaseConfig {
     url: string;
@@ -262,6 +263,115 @@ export class SupabaseStorage implements StorageAdapter {
         if (!response.ok) return null;
         const rows = await response.json() as SupabaseBranchRow[];
         return rows[0] || null;
+    }
+
+    // ─── F1: Cross-Machine Registry Sync ───────────────────────────────────────
+
+    /**
+     * Push local branches to Supabase, tagged with machine identity.
+     * Uses branch_registry with machine_id columns (migration 20260220).
+     */
+    async pushRegistry(machine: MachineIdentity, repoName: string, repoPath: string, branches: Branch[]): Promise<{ pushed: number; updated: number; abandoned: number; errors: string[] }> {
+        let pushed = 0, updated = 0;
+        const errors: string[] = [];
+        for (const branch of branches) {
+            try {
+                const payload = {
+                    branch_name: branch.name,
+                    state: branch.status === 'active' ? 'active' : branch.status,
+                    files_changed: branch.files,
+                    description: branch.description || null,
+                    created_by_agent: branch.agent || null,
+                    machine_id: machine.id,
+                    machine_name: machine.name,
+                    hostname: machine.hostname,
+                    repo_name: repoName,
+                    repo_path: repoPath,
+                    updated_at: new Date().toISOString(),
+                };
+                const check = await this.fetch(`branch_registry?branch_name=eq.${encodeURIComponent(branch.name)}&machine_id=eq.${encodeURIComponent(machine.id)}`);
+                const existing = check.ok ? (await check.json() as unknown[]) : [];
+                if (Array.isArray(existing) && existing.length > 0) {
+                    await this.fetch(`branch_registry?branch_name=eq.${encodeURIComponent(branch.name)}&machine_id=eq.${encodeURIComponent(machine.id)}`, {
+                        method: 'PATCH',
+                        body: JSON.stringify(payload),
+                    });
+                    updated++;
+                } else {
+                    await this.fetch('branch_registry', {
+                        method: 'POST',
+                        body: JSON.stringify({ ...payload, created_at: new Date().toISOString() }),
+                    });
+                    pushed++;
+                }
+            } catch (err) {
+                errors.push(`${branch.name}: ${err instanceof Error ? err.message : String(err)}`);
+            }
+        }
+        return { pushed, updated, abandoned: 0, errors };
+    }
+
+    /**
+     * Pull registries from all OTHER machines (for cross-machine conflict detection).
+     */
+    async pullRegistries(repoName: string, excludeMachineId?: string): Promise<MachineRegistryView[]> {
+        let endpoint = `branch_registry?repo_name=eq.${encodeURIComponent(repoName)}&state=neq.abandoned&state=neq.merged`;
+        if (excludeMachineId) {
+            endpoint += `&machine_id=neq.${encodeURIComponent(excludeMachineId)}`;
+        }
+        const response = await this.fetch(endpoint);
+        if (!response.ok) throw new Error(`Failed to pull registries: ${await response.text()}`);
+        const rows = await response.json() as (SupabaseBranchRow & { machine_id?: string; machine_name?: string; repo_name?: string })[];
+
+        // Group by machine_id
+        const byMachine = new Map<string, typeof rows>();
+        for (const row of rows) {
+            const mid = row.machine_id || 'unknown';
+            if (!byMachine.has(mid)) byMachine.set(mid, []);
+            byMachine.get(mid)!.push(row);
+        }
+
+        const views: MachineRegistryView[] = [];
+        for (const [machineId, machineRows] of byMachine) {
+            views.push({
+                machine_id: machineId,
+                machine_name: machineRows[0].machine_name || machineId,
+                hostname: (machineRows[0] as unknown as { hostname?: string }).hostname || 'unknown',
+                repo_name: machineRows[0].repo_name || repoName,
+                repo_path: (machineRows[0] as unknown as { repo_path?: string }).repo_path || '',
+                branches: machineRows.map(r => this.rowToBranch(r)),
+                last_synced: machineRows.reduce((latest, r) => r.updated_at > latest ? r.updated_at : latest, ''),
+            });
+        }
+        return views;
+    }
+
+    /**
+     * Get registry sync status for this machine's repos.
+     */
+    async getRegistryStatus(repoName?: string): Promise<MachineRegistryView[]> {
+        let endpoint = 'branch_registry?state=neq.abandoned&machine_id=not.is.null';
+        if (repoName) endpoint += `&repo_name=eq.${encodeURIComponent(repoName)}`;
+        const response = await this.fetch(endpoint);
+        if (!response.ok) throw new Error(`Failed to get registry status: ${await response.text()}`);
+        const rows = await response.json() as (SupabaseBranchRow & { machine_id?: string; machine_name?: string; repo_name?: string })[];
+
+        const byMachine = new Map<string, typeof rows>();
+        for (const row of rows) {
+            const mid = row.machine_id || 'unknown';
+            if (!byMachine.has(mid)) byMachine.set(mid, []);
+            byMachine.get(mid)!.push(row);
+        }
+
+        return Array.from(byMachine.entries()).map(([machineId, machineRows]) => ({
+            machine_id: machineId,
+            machine_name: machineRows[0].machine_name || machineId,
+            hostname: (machineRows[0] as unknown as { hostname?: string }).hostname || 'unknown',
+            repo_name: machineRows[0].repo_name || repoName || 'unknown',
+            repo_path: (machineRows[0] as unknown as { repo_path?: string }).repo_path || '',
+            branches: machineRows.map(r => this.rowToBranch(r)),
+            last_synced: machineRows.reduce((latest, r) => r.updated_at > latest ? r.updated_at : latest, ''),
+        }));
     }
 
 }

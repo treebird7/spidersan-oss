@@ -19,3 +19,7 @@ export { welcomeCommand } from './welcome.js';
 export { rebaseHelperCommand } from './rebase-helper.js';
 
 export { loadEcosystemCommands, getEcosystemStatus } from './ecosystem-loader.js';
+
+// F1/F3: Cross-machine sync and conflict detection
+export { registrySyncCommand } from './registry-sync.js';
+export { crossConflictsCommand } from './cross-conflicts.js';
