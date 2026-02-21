@@ -64,7 +64,7 @@ const DEFAULT_CONFIG: SpidersanConfig = {
     readyCheck: {
         enableWipDetection: true,
         wipPatterns: ['TODO', 'FIXME', 'WIP', 'HACK', 'XXX'],
-        excludeFiles: ['tests/**', '*.test.js', '*.test.ts', '*.md', '**/docs/**', '**/package-lock.json', '**/yarn.lock', '**/pnpm-lock.yaml'],
+        excludeFiles: ['tests/**', '*.test.js', '*.test.ts', '**/*.md', '**/docs/**', '**/package-lock.json', '**/yarn.lock', '**/pnpm-lock.yaml'],
         enableExperimentalDetection: false,
         experimentalPatterns: ['experimental/', 'test-'],
         enableBuildCheck: true,
@@ -264,7 +264,7 @@ export function deepMerge(target: any, source: any): any {
 }
 
 export function getWipPatterns(config: SpidersanConfig): RegExp[] {
-    return config.readyCheck.wipPatterns.map(p => new RegExp(p, 'i'));
+    return config.readyCheck.wipPatterns.map(p => new RegExp(`\\b${p}\\b`, 'i'));
 }
 
 export function getExcludePatterns(config: SpidersanConfig): string[] {

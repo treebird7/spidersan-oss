@@ -9,7 +9,7 @@ import { Command } from 'commander';
 import { execSync } from 'child_process';
 import { readFile } from 'fs/promises';
 import { getStorage } from '../storage/index.js';
-import { loadConfig } from '../lib/config.js';
+import { loadConfig, getWipPatterns } from '../lib/config.js';
 import { minimatch } from 'minimatch';
 
 function getCurrentBranch(): string {
@@ -67,16 +67,16 @@ export const readyCheckCommand = new Command('ready-check')
                 try {
                     const content = await readFile(file, 'utf-8');
                     const lines = content.split('\n');
+                    const wipRegexes = getWipPatterns(config);
 
                     lines.forEach((line, i) => {
-                        for (const pattern of config.readyCheck.wipPatterns) {
-                            // Case-insensitive match
-                            if (line.toUpperCase().includes(pattern.toUpperCase())) {
+                        for (const regex of wipRegexes) {
+                            if (regex.test(line)) {
                                 issues.push({
                                     type: 'wip',
                                     file,
                                     line: i + 1,
-                                    pattern,
+                                    pattern: regex.source,
                                 });
                             }
                         }
