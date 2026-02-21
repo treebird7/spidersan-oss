@@ -1,0 +1,29 @@
+{
+  "repo": "spidersan",
+  "supabase_project": "ruvwundetxnzesrbkdzr",
+  "migration_prefix": "ss",
+  "owns": [
+    "branch_registry",
+    "spider_intents",
+    "knowledge_chunks",
+    "rls_objects",
+    "rls_nodes",
+    "rls_edges",
+    "wiki_pages"
+  ],
+  "touches": [
+    "watsan_doc_chunks",
+    "watsan_indexed_files"
+  ],
+  "pending": [
+    {
+      "table": "spider_intents",
+      "action": "CREATE TABLE base migration",
+      "note": "treebird-internal has intents_v2 (ALTER) waiting — base CREATE must come first, should live in spidersan repo",
+      "priority": "P1"
+    }
+  ],
+  "migrations_applied": 7,
+  "last_applied": "20260219_spider_registries.sql",
+  "updated": "2026-02-21"
+}
