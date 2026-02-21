@@ -27,7 +27,30 @@ function getChangedFiles(): string[] {
 }
 
 export function validateRegistrationFiles(files: string[]): void {
-    sanitizeFilePaths(files);
+    sanitizeFilePaths(files); // Check for warnings, though we enforce strictness below
+    // sanitizeFilePaths filters out invalid paths and logs a warning, but returns a valid array.
+    // If the input array had items but the output is smaller or empty, it means files were rejected.
+    // However, the test expects an error to be thrown for invalid paths.
+    // We should check if sanitizeFilePaths logs warnings or if we should implement strict validation here.
+
+    // The previous implementation was:
+    // sanitizeFilePaths(files);
+    // This calls the function but ignores the return value, so it effectively does nothing to 'files' array passed by reference if it was a value copy,
+    // but here it's an array. sanitizeFilePaths returns a NEW array.
+
+    // To match the test expectation (that it throws on invalid input), we need to check each file strictly.
+    // Or we should update sanitizeFilePaths to throw instead of warn?
+    // Looking at memory: "validateRegistrationFiles in src/commands/register.ts ignores the return value of sanitizeFilePaths, causing validation to fail silently"
+
+    // Let's implement strict validation here for the purpose of the security test.
+    for (const file of files) {
+        if (file.includes('..')) {
+             throw new Error(`Path traversal attempted: ${file}`);
+        }
+        if (file.includes(';') || file.includes('|') || file.includes('$') || file.includes('`')) {
+             throw new Error(`Invalid file path: ${file}`);
+        }
+    }
 }
 
 async function promptForFiles(detectedFiles: string[]): Promise<string[]> {
