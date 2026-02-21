@@ -374,4 +374,27 @@ export class SupabaseStorage implements StorageAdapter {
         }));
     }
 
+    /**
+     * Store GitHub branch inventory (F2). Gracefully skips if table doesn't exist.
+     */
+    async pushGitHubBranches(branches: unknown[]): Promise<number> {
+        try {
+            const response = await this.fetch('spider_github_branches', {
+                method: 'POST',
+                body: JSON.stringify(branches),
+            });
+            if (!response.ok) {
+                const text = await response.text();
+                if (text.includes('does not exist') || text.includes('relation')) {
+                    return 0; // Table not yet created — migration pending
+                }
+                throw new Error(`Failed to push GitHub branches: ${text}`);
+            }
+            return branches.length;
+        } catch (err) {
+            if (err instanceof Error && err.message.includes('migration pending')) return 0;
+            throw err;
+        }
+    }
+
 }

@@ -23,3 +23,7 @@ export { loadEcosystemCommands, getEcosystemStatus } from './ecosystem-loader.js
 // F1/F3: Cross-machine sync and conflict detection
 export { registrySyncCommand } from './registry-sync.js';
 export { crossConflictsCommand } from './cross-conflicts.js';
+
+// F2/F4: GitHub inventory and sync advisor
+export { githubSyncCommand } from './github-sync.js';
+export { syncAdvisorCommand } from './sync-advisor.js';
