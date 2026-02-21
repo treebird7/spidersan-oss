@@ -101,8 +101,17 @@ ALTER TABLE watsan_doc_chunks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE watsan_indexed_files ENABLE ROW LEVEL SECURITY;
 
 -- Allow all operations for authenticated users (anon key)
-CREATE POLICY IF NOT EXISTS "Allow all for anon" ON watsan_doc_chunks
-    FOR ALL USING (true);
-
-CREATE POLICY IF NOT EXISTS "Allow all for anon" ON watsan_indexed_files
-    FOR ALL USING (true);
+-- Note: CREATE POLICY has no IF NOT EXISTS in Postgres — use DO block
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'watsan_doc_chunks' AND policyname = 'Allow all for anon'
+  ) THEN
+    EXECUTE 'CREATE POLICY "Allow all for anon" ON watsan_doc_chunks FOR ALL USING (true)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'watsan_indexed_files' AND policyname = 'Allow all for anon'
+  ) THEN
+    EXECUTE 'CREATE POLICY "Allow all for anon" ON watsan_indexed_files FOR ALL USING (true)';
+  END IF;
+END $$;

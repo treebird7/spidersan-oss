@@ -5,7 +5,7 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 -- =============================================================================
 -- KNOWLEDGE CHUNKS: Raw text/code snippets with embeddings
 -- =============================================================================
-CREATE TABLE knowledge_chunks (
+CREATE TABLE IF NOT EXISTS knowledge_chunks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   
   -- Source info
@@ -34,16 +34,16 @@ CREATE TABLE knowledge_chunks (
 );
 
 -- Indexes
-CREATE INDEX idx_chunks_embedding ON knowledge_chunks 
+CREATE INDEX IF NOT EXISTS idx_chunks_embedding ON knowledge_chunks
   USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
-CREATE INDEX idx_chunks_repo ON knowledge_chunks(repo);
-CREATE INDEX idx_chunks_text_search ON knowledge_chunks 
+CREATE INDEX IF NOT EXISTS idx_chunks_repo ON knowledge_chunks(repo);
+CREATE INDEX IF NOT EXISTS idx_chunks_text_search ON knowledge_chunks
   USING gin (to_tsvector('english', chunk_text));
 
 -- =============================================================================
 -- RLS OBJECTS: Extracted logical structures (entities, relations, rules)
 -- =============================================================================
-CREATE TABLE rls_objects (
+CREATE TABLE IF NOT EXISTS rls_objects (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   chunk_id UUID REFERENCES knowledge_chunks(id) ON DELETE CASCADE,
   
@@ -56,12 +56,12 @@ CREATE TABLE rls_objects (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_rls_json ON rls_objects USING gin (rls_json);
+CREATE INDEX IF NOT EXISTS idx_rls_json ON rls_objects USING gin (rls_json);
 
 -- =============================================================================
 -- RLS NODES: Graph nodes for entities
 -- =============================================================================
-CREATE TABLE rls_nodes (
+CREATE TABLE IF NOT EXISTS rls_nodes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   
   name TEXT NOT NULL,              -- 'Spidersan', 'status', 'FormationWidget'
@@ -81,13 +81,13 @@ CREATE TABLE rls_nodes (
   UNIQUE(name, node_type, agent_id)
 );
 
-CREATE INDEX idx_nodes_name ON rls_nodes(name);
-CREATE INDEX idx_nodes_type ON rls_nodes(node_type);
+CREATE INDEX IF NOT EXISTS idx_nodes_name ON rls_nodes(name);
+CREATE INDEX IF NOT EXISTS idx_nodes_type ON rls_nodes(node_type);
 
 -- =============================================================================
 -- RLS EDGES: Graph edges for relations
 -- =============================================================================
-CREATE TABLE rls_edges (
+CREATE TABLE IF NOT EXISTS rls_edges (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   
   source_id UUID REFERENCES rls_nodes(id) ON DELETE CASCADE,
@@ -108,14 +108,14 @@ CREATE TABLE rls_edges (
   UNIQUE(source_id, target_id, relation_type)
 );
 
-CREATE INDEX idx_edges_source ON rls_edges(source_id);
-CREATE INDEX idx_edges_target ON rls_edges(target_id);
-CREATE INDEX idx_edges_type ON rls_edges(relation_type);
+CREATE INDEX IF NOT EXISTS idx_edges_source ON rls_edges(source_id);
+CREATE INDEX IF NOT EXISTS idx_edges_target ON rls_edges(target_id);
+CREATE INDEX IF NOT EXISTS idx_edges_type ON rls_edges(relation_type);
 
 -- =============================================================================
 -- WIKI PAGES: Auto-generated wiki articles
 -- =============================================================================
-CREATE TABLE wiki_pages (
+CREATE TABLE IF NOT EXISTS wiki_pages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   
   title TEXT NOT NULL UNIQUE,
@@ -137,8 +137,8 @@ CREATE TABLE wiki_pages (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_wiki_slug ON wiki_pages(title_slug);
-CREATE INDEX idx_wiki_search ON wiki_pages USING gin (to_tsvector('english', content_md));
+CREATE INDEX IF NOT EXISTS idx_wiki_slug ON wiki_pages(title_slug);
+CREATE INDEX IF NOT EXISTS idx_wiki_search ON wiki_pages USING gin (to_tsvector('english', content_md));
 
 -- =============================================================================
 -- RLS POLICIES (Agent Isolation)
@@ -151,38 +151,34 @@ ALTER TABLE rls_nodes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rls_edges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wiki_pages ENABLE ROW LEVEL SECURITY;
 
--- KNOWLEDGE CHUNKS: Agents see public + their own sensitive data
-CREATE POLICY "Chunks: public readable" ON knowledge_chunks
-  FOR SELECT USING (sensitivity_level = 'public');
-
-CREATE POLICY "Chunks: agent sees own" ON knowledge_chunks
-  FOR SELECT USING (
-    auth.jwt() ->> 'agent_id' = metadata ->> 'agent_id'
-  );
-
-CREATE POLICY "Chunks: agent inserts own" ON knowledge_chunks
-  FOR INSERT WITH CHECK (
-    auth.jwt() ->> 'agent_id' = metadata ->> 'agent_id'
-  );
-
--- RLS NODES: Shared nodes public, scoped nodes per agent
-CREATE POLICY "Nodes: shared readable" ON rls_nodes
-  FOR SELECT USING (agent_id IS NULL);
-
-CREATE POLICY "Nodes: agent sees own" ON rls_nodes
-  FOR SELECT USING (agent_id = auth.jwt() ->> 'agent_id');
-
-CREATE POLICY "Nodes: agent creates own" ON rls_nodes
-  FOR INSERT WITH CHECK (
-    agent_id IS NULL OR agent_id = auth.jwt() ->> 'agent_id'
-  );
-
--- WIKI PAGES: Public readable, service role writable
-CREATE POLICY "Wiki: public read" ON wiki_pages
-  FOR SELECT USING (true);
-
-CREATE POLICY "Wiki: service write" ON wiki_pages
-  FOR ALL USING (auth.role() = 'service_role');
+-- Policies (idempotent via DO blocks)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='knowledge_chunks' AND policyname='Chunks: public readable') THEN
+    EXECUTE 'CREATE POLICY "Chunks: public readable" ON knowledge_chunks FOR SELECT USING (sensitivity_level = ''public'')';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='knowledge_chunks' AND policyname='Chunks: agent sees own') THEN
+    EXECUTE 'CREATE POLICY "Chunks: agent sees own" ON knowledge_chunks FOR SELECT USING (auth.jwt() ->> ''agent_id'' = metadata ->> ''agent_id'')';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='knowledge_chunks' AND policyname='Chunks: agent inserts own') THEN
+    EXECUTE 'CREATE POLICY "Chunks: agent inserts own" ON knowledge_chunks FOR INSERT WITH CHECK (auth.jwt() ->> ''agent_id'' = metadata ->> ''agent_id'')';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='rls_nodes' AND policyname='Nodes: shared readable') THEN
+    EXECUTE 'CREATE POLICY "Nodes: shared readable" ON rls_nodes FOR SELECT USING (agent_id IS NULL)';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='rls_nodes' AND policyname='Nodes: agent sees own') THEN
+    EXECUTE 'CREATE POLICY "Nodes: agent sees own" ON rls_nodes FOR SELECT USING (agent_id = auth.jwt() ->> ''agent_id'')';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='rls_nodes' AND policyname='Nodes: agent creates own') THEN
+    EXECUTE 'CREATE POLICY "Nodes: agent creates own" ON rls_nodes FOR INSERT WITH CHECK (agent_id IS NULL OR agent_id = auth.jwt() ->> ''agent_id'')';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='wiki_pages' AND policyname='Wiki: public read') THEN
+    EXECUTE 'CREATE POLICY "Wiki: public read" ON wiki_pages FOR SELECT USING (true)';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='wiki_pages' AND policyname='Wiki: service write') THEN
+    EXECUTE 'CREATE POLICY "Wiki: service write" ON wiki_pages FOR ALL USING (auth.role() = ''service_role'')';
+  END IF;
+END $$;
 
 -- =============================================================================
 -- FUNCTIONS
