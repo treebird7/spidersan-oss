@@ -28,3 +28,41 @@
 - Check `spidersan inbox` for messages
 - Use descriptive agent IDs
 - Mark messages read after processing
+
+## Branch Triage Pipeline (Feb-26)
+When a repo accumulates stale/conflicting branches across multiple agents:
+1. `spidersan list` — see all registered branches
+2. `spidersan conflicts` — find file overlaps
+3. `spidersan merge-order` — get sequencing
+4. Cross-reference with GitHub PRs (`gh pr list`)
+5. Categorize: MERGE / SUPERSEDED / STALE / DUPLICATE
+6. Execute: abandon superseded, merge ready PRs, salvage valuable code
+7. The combination of steps 1-3 is the value — not any single command
+
+## Torrent Task Management (Feb-26)
+- Use `torrent decompose` for planning (stays on current branch, no checkout)
+- Use `torrent create` only when an agent is ready to start coding (creates git branch)
+- Use `torrent tree` for full project visibility — best feature at 10+ tasks
+- Use `torrent status --parent <id>` to scope to one workstream
+- Use `torrent merge-order` before any merges — it sorts conflict-free tasks first
+- Torrent lives in `spidersan-ecosystem` plugin, not core
+
+## Local vs Supabase Storage (Feb-26)
+- Registry is branch-local (`.spidersan/registry.json` in git tree) — stay on main for global visibility
+- Override Supabase with `SUPABASE_URL= SUPABASE_KEY=` to force local storage
+- Prefer local storage for testing and single-machine workflows
+- Supabase only needed for cross-machine multi-agent coordination
+
+## Salvaging Code from Abandoned Branches (Feb-26)
+- Before abandoning a branch, check for unique features not on main
+- Use `git checkout <branch> -- <file>` to extract specific files — faster than `spidersan rescue`
+- Compare compiled dist files (if source is missing) against source to verify parity
+- Always check if the branch's changes were superseded by already-merged PRs before salvaging
+
+## GitOps Publish Workflow (Feb-26)
+- Before `npm publish`, always: sync registry → clean merged branches → rebase on main → run tests → publish
+- Use `git branch --merged main` to find branches the registry still tracks as "active" but are already merged
+- Use `spidersan mark_merged` (MCP) or `spidersan merged` (CLI) to reconcile — the registry does not auto-detect PR merges
+- Run `spidersan conflicts` before and after cleanup to measure improvement (e.g., 43 → 13 conflicts)
+- Run `spidersan ready-check` before creating PRs or publishing — catches WIP markers and blocking issues
+- Commit `package-lock.json` changes from `npm audit fix` alongside your feature commits, not separately

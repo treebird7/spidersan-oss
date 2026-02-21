@@ -1,0 +1,435 @@
+{
+  "branches": {
+    "task/MAMMOTH-A": {
+      "name": "task/MAMMOTH-A",
+      "files": [
+        "src/security.ts"
+      ],
+      "status": "active",
+      "description": "Security workstream lead",
+      "registeredAt": "2026-02-16T22:55:29.377Z",
+      "agent": "sherlocksan"
+    },
+    "task/MAMMOTH-B": {
+      "name": "task/MAMMOTH-B",
+      "files": [
+        "src/api.ts"
+      ],
+      "status": "active",
+      "description": "Infrastructure workstream lead",
+      "registeredAt": "2026-02-16T22:55:29.379Z",
+      "agent": "birdsan"
+    },
+    "task/MAMMOTH-C": {
+      "name": "task/MAMMOTH-C",
+      "files": [
+        "src/routes.ts"
+      ],
+      "status": "active",
+      "description": "Integration workstream lead",
+      "registeredAt": "2026-02-16T22:55:29.379Z",
+      "agent": "treesan"
+    },
+    "task/MAMMOTH-D": {
+      "name": "task/MAMMOTH-D",
+      "files": [
+        "tests/"
+      ],
+      "status": "active",
+      "description": "Testing workstream lead",
+      "registeredAt": "2026-02-16T22:55:29.380Z",
+      "agent": "artisan"
+    },
+    "task/MAMMOTH-A-A": {
+      "name": "task/MAMMOTH-A-A",
+      "files": [
+        "src/auth.ts",
+        "src/security.ts",
+        "src/crypto.ts"
+      ],
+      "status": "completed",
+      "description": "Output sanitization",
+      "registeredAt": "2026-02-16T22:55:29.511Z",
+      "agent": "sherlocksan"
+    },
+    "task/MAMMOTH-A-B": {
+      "name": "task/MAMMOTH-A-B",
+      "files": [
+        "src/validators.ts",
+        "src/sanitizer.ts"
+      ],
+      "status": "completed",
+      "description": "Input validation",
+      "registeredAt": "2026-02-16T22:55:29.513Z",
+      "agent": "sherlocksan"
+    },
+    "task/MAMMOTH-A-C": {
+      "name": "task/MAMMOTH-A-C",
+      "files": [
+        "src/auth.ts",
+        "src/session.ts"
+      ],
+      "status": "active",
+      "description": "Session hardening",
+      "registeredAt": "2026-02-16T22:55:29.514Z",
+      "agent": "sherlocksan"
+    },
+    "task/MAMMOTH-A-D": {
+      "name": "task/MAMMOTH-A-D",
+      "files": [
+        "src/rbac.ts",
+        "src/permissions.ts"
+      ],
+      "status": "completed",
+      "description": "RBAC implementation",
+      "registeredAt": "2026-02-16T22:55:29.514Z",
+      "agent": "sherlocksan"
+    },
+    "task/MAMMOTH-A-E": {
+      "name": "task/MAMMOTH-A-E",
+      "files": [
+        "src/audit-log.ts",
+        "src/security.ts"
+      ],
+      "status": "active",
+      "description": "Audit logging",
+      "registeredAt": "2026-02-16T22:55:29.514Z",
+      "agent": "sherlocksan"
+    },
+    "task/MAMMOTH-A-F": {
+      "name": "task/MAMMOTH-A-F",
+      "files": [
+        "src/crypto.ts",
+        "src/keys.ts"
+      ],
+      "status": "active",
+      "description": "Key rotation",
+      "registeredAt": "2026-02-16T22:55:29.515Z",
+      "agent": "sherlocksan"
+    },
+    "task/MAMMOTH-A-G": {
+      "name": "task/MAMMOTH-A-G",
+      "files": [
+        "src/cors.ts",
+        "src/middleware.ts"
+      ],
+      "status": "active",
+      "description": "CORS config",
+      "registeredAt": "2026-02-16T22:55:29.515Z",
+      "agent": "sherlocksan"
+    },
+    "task/MAMMOTH-A-H": {
+      "name": "task/MAMMOTH-A-H",
+      "files": [
+        "src/rate-limiter.ts",
+        "src/middleware.ts"
+      ],
+      "status": "active",
+      "description": "Rate limiting",
+      "registeredAt": "2026-02-16T22:55:29.516Z",
+      "agent": "sherlocksan"
+    },
+    "task/MAMMOTH-B-A": {
+      "name": "task/MAMMOTH-B-A",
+      "files": [
+        "src/api.ts",
+        "src/auth.ts",
+        "src/middleware.ts"
+      ],
+      "status": "active",
+      "description": "API gateway",
+      "registeredAt": "2026-02-16T22:55:29.647Z",
+      "agent": "birdsan"
+    },
+    "task/MAMMOTH-B-B": {
+      "name": "task/MAMMOTH-B-B",
+      "files": [
+        "src/database.ts",
+        "src/migrations.ts",
+        "package.json"
+      ],
+      "status": "active",
+      "description": "DB setup",
+      "registeredAt": "2026-02-16T22:55:29.648Z",
+      "agent": "birdsan"
+    },
+    "task/MAMMOTH-B-C": {
+      "name": "task/MAMMOTH-B-C",
+      "files": [
+        "src/cache.ts",
+        "src/redis.ts"
+      ],
+      "status": "completed",
+      "description": "Caching layer",
+      "registeredAt": "2026-02-16T22:55:29.649Z",
+      "agent": "birdsan"
+    },
+    "task/MAMMOTH-B-D": {
+      "name": "task/MAMMOTH-B-D",
+      "files": [
+        "src/queue.ts",
+        "src/worker.ts"
+      ],
+      "status": "completed",
+      "description": "Job queue",
+      "registeredAt": "2026-02-16T22:55:29.649Z",
+      "agent": "birdsan"
+    },
+    "task/MAMMOTH-B-E": {
+      "name": "task/MAMMOTH-B-E",
+      "files": [
+        "src/monitoring.ts",
+        "src/metrics.ts"
+      ],
+      "status": "active",
+      "description": "Monitoring",
+      "registeredAt": "2026-02-16T22:55:29.650Z",
+      "agent": "birdsan"
+    },
+    "task/MAMMOTH-B-F": {
+      "name": "task/MAMMOTH-B-F",
+      "files": [
+        "src/logger.ts",
+        "src/audit-log.ts"
+      ],
+      "status": "active",
+      "description": "Structured logging",
+      "registeredAt": "2026-02-16T22:55:29.650Z",
+      "agent": "birdsan"
+    },
+    "task/MAMMOTH-B-G": {
+      "name": "task/MAMMOTH-B-G",
+      "files": [
+        "Dockerfile",
+        "docker-compose.yml",
+        "package.json"
+      ],
+      "status": "active",
+      "description": "Docker setup",
+      "registeredAt": "2026-02-16T22:55:29.650Z",
+      "agent": "birdsan"
+    },
+    "task/MAMMOTH-C-A": {
+      "name": "task/MAMMOTH-C-A",
+      "files": [
+        "src/api.ts",
+        "src/routes.ts",
+        "src/middleware.ts"
+      ],
+      "status": "active",
+      "description": "Route setup",
+      "registeredAt": "2026-02-16T22:55:29.781Z",
+      "agent": "treesan"
+    },
+    "task/MAMMOTH-C-B": {
+      "name": "task/MAMMOTH-C-B",
+      "files": [
+        "src/webhooks.ts",
+        "src/events.ts"
+      ],
+      "status": "completed",
+      "description": "Webhooks",
+      "registeredAt": "2026-02-16T22:55:29.783Z",
+      "agent": "treesan"
+    },
+    "task/MAMMOTH-C-C": {
+      "name": "task/MAMMOTH-C-C",
+      "files": [
+        "src/api.ts",
+        "src/graphql.ts"
+      ],
+      "status": "active",
+      "description": "GraphQL layer",
+      "registeredAt": "2026-02-16T22:55:29.783Z",
+      "agent": "treesan"
+    },
+    "task/MAMMOTH-C-D": {
+      "name": "task/MAMMOTH-C-D",
+      "files": [
+        "src/websocket.ts",
+        "src/realtime.ts"
+      ],
+      "status": "completed",
+      "description": "WebSocket",
+      "registeredAt": "2026-02-16T22:55:29.783Z",
+      "agent": "treesan"
+    },
+    "task/MAMMOTH-C-E": {
+      "name": "task/MAMMOTH-C-E",
+      "files": [
+        "src/oauth.ts",
+        "src/auth.ts"
+      ],
+      "status": "active",
+      "description": "OAuth integration",
+      "registeredAt": "2026-02-16T22:55:29.784Z",
+      "agent": "treesan"
+    },
+    "task/MAMMOTH-C-F": {
+      "name": "task/MAMMOTH-C-F",
+      "files": [
+        "src/email.ts",
+        "src/notifications.ts"
+      ],
+      "status": "completed",
+      "description": "Email service",
+      "registeredAt": "2026-02-16T22:55:29.784Z",
+      "agent": "treesan"
+    },
+    "task/MAMMOTH-C-G": {
+      "name": "task/MAMMOTH-C-G",
+      "files": [
+        "src/storage.ts",
+        "src/uploads.ts"
+      ],
+      "status": "completed",
+      "description": "File uploads",
+      "registeredAt": "2026-02-16T22:55:29.785Z",
+      "agent": "treesan"
+    },
+    "task/MAMMOTH-C-H": {
+      "name": "task/MAMMOTH-C-H",
+      "files": [
+        "src/search.ts",
+        "src/indexer.ts"
+      ],
+      "status": "completed",
+      "description": "Search engine",
+      "registeredAt": "2026-02-16T22:55:29.785Z",
+      "agent": "treesan"
+    },
+    "task/MAMMOTH-C-I": {
+      "name": "task/MAMMOTH-C-I",
+      "files": [
+        "src/i18n.ts",
+        "src/locales.ts"
+      ],
+      "status": "completed",
+      "description": "Internationalization",
+      "registeredAt": "2026-02-16T22:55:29.785Z",
+      "agent": "treesan"
+    },
+    "task/MAMMOTH-C-J": {
+      "name": "task/MAMMOTH-C-J",
+      "files": [
+        "src/analytics.ts",
+        "src/metrics.ts"
+      ],
+      "status": "active",
+      "description": "Analytics",
+      "registeredAt": "2026-02-16T22:55:29.786Z",
+      "agent": "treesan"
+    },
+    "task/MAMMOTH-D-A": {
+      "name": "task/MAMMOTH-D-A",
+      "files": [
+        "tests/auth.test.ts",
+        "tests/security.test.ts",
+        "src/test-utils.ts"
+      ],
+      "status": "completed",
+      "description": "Security tests",
+      "registeredAt": "2026-02-16T22:55:29.916Z",
+      "agent": "artisan"
+    },
+    "task/MAMMOTH-D-B": {
+      "name": "task/MAMMOTH-D-B",
+      "files": [
+        "tests/api.test.ts",
+        "tests/integration.test.ts"
+      ],
+      "status": "completed",
+      "description": "API tests",
+      "registeredAt": "2026-02-16T22:55:29.917Z",
+      "agent": "artisan"
+    },
+    "task/MAMMOTH-D-C": {
+      "name": "task/MAMMOTH-D-C",
+      "files": [
+        "tests/e2e.test.ts",
+        "package.json"
+      ],
+      "status": "active",
+      "description": "E2E framework",
+      "registeredAt": "2026-02-16T22:55:29.918Z",
+      "agent": "artisan"
+    },
+    "task/MAMMOTH-D-D": {
+      "name": "task/MAMMOTH-D-D",
+      "files": [
+        "tests/load.test.ts",
+        "src/metrics.ts"
+      ],
+      "status": "active",
+      "description": "Load tests",
+      "registeredAt": "2026-02-16T22:55:29.918Z",
+      "agent": "artisan"
+    },
+    "task/MAMMOTH-D-E": {
+      "name": "task/MAMMOTH-D-E",
+      "files": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/deploy.yml"
+      ],
+      "status": "completed",
+      "description": "CI/CD",
+      "registeredAt": "2026-02-16T22:55:29.919Z",
+      "agent": "artisan"
+    },
+    "task/MAMMOTH-D-F": {
+      "name": "task/MAMMOTH-D-F",
+      "files": [
+        "docs/api.md",
+        "docs/security.md",
+        "README.md"
+      ],
+      "status": "completed",
+      "description": "Documentation",
+      "registeredAt": "2026-02-16T22:55:29.919Z",
+      "agent": "artisan"
+    },
+    "task/MAMMOTH-A-B-A": {
+      "name": "task/MAMMOTH-A-B-A",
+      "files": [],
+      "status": "active",
+      "description": "Child of MAMMOTH-A-B",
+      "registeredAt": "2026-02-16T22:57:52.605Z"
+    },
+    "task/MAMMOTH-A-B-B": {
+      "name": "task/MAMMOTH-A-B-B",
+      "files": [],
+      "status": "active",
+      "description": "Child of MAMMOTH-A-B",
+      "registeredAt": "2026-02-16T22:57:52.607Z"
+    },
+    "task/MAMMOTH-A-B-C": {
+      "name": "task/MAMMOTH-A-B-C",
+      "files": [],
+      "status": "active",
+      "description": "Child of MAMMOTH-A-B",
+      "registeredAt": "2026-02-16T22:57:52.607Z"
+    },
+    "task/MAMMOTH-B-A-A": {
+      "name": "task/MAMMOTH-B-A-A",
+      "files": [],
+      "status": "active",
+      "description": "Child of MAMMOTH-B-A",
+      "registeredAt": "2026-02-16T22:57:52.738Z"
+    },
+    "task/MAMMOTH-B-A-B": {
+      "name": "task/MAMMOTH-B-A-B",
+      "files": [],
+      "status": "active",
+      "description": "Child of MAMMOTH-B-A",
+      "registeredAt": "2026-02-16T22:57:52.740Z"
+    },
+    "task/MAMMOTH-B-A-C": {
+      "name": "task/MAMMOTH-B-A-C",
+      "files": [],
+      "status": "active",
+      "description": "Child of MAMMOTH-B-A",
+      "registeredAt": "2026-02-16T22:57:52.740Z"
+    }
+  },
+  "version": "1.0"
+}

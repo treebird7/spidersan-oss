@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "spidersan": {
+      "command": "node",
+      "args": ["mcp-server/dist/server.js"],
+      "cwd": "/Users/freedbird/Dev/Spidersan",
+      "env": {}
+    }
+  }
+}
