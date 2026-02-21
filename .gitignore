@@ -149,3 +149,6 @@ repos/
 # License signing keys (NEVER COMMIT)
 license-keys.json
 scripts/license-keys.json
+prompt.md
+todo
+embeddings.json
