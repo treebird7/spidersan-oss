@@ -700,7 +700,7 @@ server.tool(
         files: z.array(z.string()).optional().describe('File paths to unlock (omit to unlock all by agent)'),
         agent: z.string().optional().describe('Agent releasing lock'),
         token: z.string().optional().describe('Lock token (alternative to agent)'),
-        force: z.boolean().optional().describe('Force unlock (admin only)'),
+        force: z.boolean().describe('Force unlock (admin only)').optional().default(false),
     },
     async ({ files, agent, token, force = false }) => {
         const registry = await loadLockRegistry();
@@ -717,9 +717,11 @@ server.tool(
         const now = Date.now();
         registry.locks = registry.locks.filter(lock => lock.expires > now);
 
+        const targetFiles = files && files.length > 0 ? files : undefined;
+
         let released = 0;
         registry.locks = registry.locks.filter(lock => {
-            const matchesFiles = !files || files.includes(lock.file);
+            const matchesFiles = !targetFiles || targetFiles.includes(lock.file);
             const matchesAgent = agent && lock.agent === agent;
             const matchesToken = token && lock.token === token;
 
