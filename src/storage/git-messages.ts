@@ -269,6 +269,7 @@ export class GitMessagesAdapter implements MessageStorageAdapter {
         } finally {
             // Return to original branch
             try {
+                // Security: Use execFileSync to prevent command injection from branch name
                 execFileSync('git', ['checkout', currentBranch], {
                     cwd: this.basePath,
                     stdio: 'ignore',
