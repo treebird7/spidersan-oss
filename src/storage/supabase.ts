@@ -270,13 +270,32 @@ export class SupabaseStorage implements StorageAdapter {
     /**
      * Push local branches to Supabase, tagged with machine identity.
      * Uses branch_registry with machine_id columns (migration 20260220).
+     *
+     * Optimization: Uses bulk upsert to reduce N+1 queries.
      */
     async pushRegistry(machine: MachineIdentity, repoName: string, repoPath: string, branches: Branch[]): Promise<{ pushed: number; updated: number; abandoned: number; errors: string[] }> {
-        let pushed = 0, updated = 0;
         const errors: string[] = [];
-        for (const branch of branches) {
-            try {
-                const payload = {
+        if (branches.length === 0) return { pushed: 0, updated: 0, abandoned: 0, errors };
+
+        let pushed = 0;
+        let updated = 0;
+
+        try {
+            // 1. Fetch existing branch names to determine counts
+            const check = await this.fetch(`branch_registry?select=branch_name&machine_id=eq.${encodeURIComponent(machine.id)}`);
+            const existingNames = new Set<string>();
+            if (check.ok) {
+                const rows = await check.json() as { branch_name: string }[];
+                rows.forEach(r => existingNames.add(r.branch_name));
+            }
+
+            // 2. Prepare payload for all branches (Upsert)
+            // We omit 'created_at' so new rows get DEFAULT NOW(), and existing rows are unchanged.
+            const payload = branches.map(branch => {
+                const exists = existingNames.has(branch.name);
+                if (exists) updated++; else pushed++;
+
+                return {
                     branch_name: branch.name,
                     state: branch.status === 'active' ? 'active' : branch.status,
                     files_changed: branch.files,
@@ -288,26 +307,33 @@ export class SupabaseStorage implements StorageAdapter {
                     repo_name: repoName,
                     repo_path: repoPath,
                     updated_at: new Date().toISOString(),
+                    // created_at is omitted to preserve original creation time on update,
+                    // and use default (NOW()) on insert.
                 };
-                const check = await this.fetch(`branch_registry?branch_name=eq.${encodeURIComponent(branch.name)}&machine_id=eq.${encodeURIComponent(machine.id)}`);
-                const existing = check.ok ? (await check.json() as unknown[]) : [];
-                if (Array.isArray(existing) && existing.length > 0) {
-                    await this.fetch(`branch_registry?branch_name=eq.${encodeURIComponent(branch.name)}&machine_id=eq.${encodeURIComponent(machine.id)}`, {
-                        method: 'PATCH',
-                        body: JSON.stringify(payload),
-                    });
-                    updated++;
-                } else {
-                    await this.fetch('branch_registry', {
-                        method: 'POST',
-                        body: JSON.stringify({ ...payload, created_at: new Date().toISOString() }),
-                    });
-                    pushed++;
-                }
-            } catch (err) {
-                errors.push(`${branch.name}: ${err instanceof Error ? err.message : String(err)}`);
+            });
+
+            // 3. Batch Upsert
+            const response = await this.fetch('branch_registry', {
+                method: 'POST',
+                headers: {
+                    'Prefer': 'resolution=merge-duplicates',
+                },
+                body: JSON.stringify(payload),
+            });
+
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
+
+        } catch (err) {
+            errors.push(`Sync failed: ${err instanceof Error ? err.message : String(err)}`);
+            // Reset counts if partial failure is unknown, but since it's one transaction (mostly),
+            // we assume all failed or all succeeded.
+            if (errors.length > 0) {
+                return { pushed: 0, updated: 0, abandoned: 0, errors };
             }
         }
+
         return { pushed, updated, abandoned: 0, errors };
     }
 
