@@ -38,7 +38,7 @@ export function shouldExcludeFile(file: string, excludePatterns: string[]): bool
 
 export const readyCheckCommand = new Command('ready-check')
     .description('Verify branch is ready to merge')
-    .option('--strict', 'Fail on any WIP markers')
+    .option('--strict', 'Warn on WIP markers (kept for compatibility, no longer blocks)')
     .option('--json', 'Output as JSON')
     .option('--skip-wip', 'Skip WIP detection')
     .action(async (options) => {
@@ -128,7 +128,7 @@ export const readyCheckCommand = new Command('ready-check')
 
         if (options.json) {
             console.log(JSON.stringify(result, null, 2));
-            process.exit(result.ready ? 0 : 1);
+            process.exit(result.ready ? 0 : 1); // only exits 1 on file conflicts
         }
 
         console.log(`🕷️ Ready Check: ${branchName}\n`);
@@ -149,7 +149,7 @@ export const readyCheckCommand = new Command('ready-check')
             }
 
             if (expIssues.length > 0) {
-                console.log(`⚠️  Found ${expIssues.length} experimental file(s):\n`);
+                console.log(`ℹ️  Found ${expIssues.length} experimental file(s) (advisory):\n`);
                 for (const issue of expIssues) {
                     console.log(`   ${issue.file}`);
                 }
@@ -164,10 +164,10 @@ export const readyCheckCommand = new Command('ready-check')
         if (result.ready) {
             console.log('✅ Branch is ready to merge!');
             if (issues.length > 0) {
-                console.log('   (WIP markers noted above are advisory — not blocking)');
+                console.log('   (WIP/XXX/experimental markers above are advisory — not blocking)');
             }
         } else {
-            console.log('❌ Branch is NOT ready to merge (file conflicts exist).');
+            console.log('❌ Branch is NOT ready to merge (file conflicts with other branches).');
             process.exit(1);
         }
     });
