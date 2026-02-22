@@ -282,7 +282,9 @@ export class SupabaseStorage implements StorageAdapter {
 
         try {
             // 1. Fetch existing branch names to determine counts
-            const check = await this.fetch(`branch_registry?select=branch_name&machine_id=eq.${encodeURIComponent(machine.id)}`);
+            // Optimization: Only fetch branches we are trying to sync to reduce payload size
+            const names = branches.map(b => encodeURIComponent(b.name)).join(',');
+            const check = await this.fetch(`branch_registry?select=branch_name&machine_id=eq.${encodeURIComponent(machine.id)}&branch_name=in.(${names})`);
             const existingNames = new Set<string>();
             if (check.ok) {
                 const rows = await check.json() as { branch_name: string }[];
