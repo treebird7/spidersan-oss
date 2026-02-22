@@ -3,7 +3,7 @@ import { execSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import * as readline from 'readline';
 import { loadConfig } from '../lib/config.js';
-import { validateAgentId, validateFilePath } from '../lib/security.js';
+import { validateAgentId, validateFilePath, sanitizeFilePaths } from '../lib/security.js';
 
 function getCurrentBranch(): string {
     try {
