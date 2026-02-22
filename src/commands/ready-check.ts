@@ -117,7 +117,7 @@ export const readyCheckCommand = new Command('ready-check')
 
         const result = {
             branch: branchName,
-            ready: issues.length === 0 && conflicts.length === 0,
+            ready: conflicts.length === 0, // WIP markers are advisory only — don't block merges
             issues,
             conflicts,
             config: {
@@ -163,9 +163,11 @@ export const readyCheckCommand = new Command('ready-check')
 
         if (result.ready) {
             console.log('✅ Branch is ready to merge!');
+            if (issues.length > 0) {
+                console.log('   (WIP markers noted above are advisory — not blocking)');
+            }
         } else {
-            console.log('❌ Branch is NOT ready to merge.');
-            console.log('   Tip: Use --skip-wip to bypass WIP detection');
+            console.log('❌ Branch is NOT ready to merge (file conflicts exist).');
             process.exit(1);
         }
     });
