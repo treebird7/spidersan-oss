@@ -83,6 +83,7 @@ excludeFiles: [
 - If `ready-check` flags many issues, prioritize addressing TIER 3/TIER 2 items first.
 - Document any `--skip-wip` decisions in the PR body and link to the lesson in `SPIDERSAN_LESSONS_LEARNED.md`.
 
+<<<<<<< HEAD
 **Why this matters:** These patterns reduce wasted time, prevent unsafe merges, and make cross-agent collaboration auditable.
 
 ## 9. npm `"files"` Field Overrides `.npmignore` (18-Feb-26)
