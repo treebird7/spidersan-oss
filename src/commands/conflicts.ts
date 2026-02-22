@@ -500,4 +500,3 @@ export const conflictsCommand = new Command('conflicts')
             process.exit(1);
         }
     });
-
