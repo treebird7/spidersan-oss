@@ -6,10 +6,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { randomBytes } from 'crypto';
 
 // Test utilities
 function createTempDir(): string {
-    const dir = join(tmpdir(), `spidersan-test-${Date.now()}`);
+    const id = randomBytes(4).toString('hex');
+    const dir = join(tmpdir(), `spidersan-test-${Date.now()}-${id}`);
     mkdirSync(dir, { recursive: true });
     return dir;
 }
