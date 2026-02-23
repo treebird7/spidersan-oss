@@ -46,8 +46,12 @@ export class ASTParser {
 
     private extractSymbols(tree: Parser.Tree): SymbolInfo[] {
         const symbols: SymbolInfo[] = [];
-        const visit = (node: Parser.SyntaxNode) => {
-            if (node.type === 'function_declaration' || node.type === 'class_declaration' || node.type === 'method_definition') {
+        const cursor = tree.walk();
+
+        let reachedRoot = false;
+        while (!reachedRoot) {
+            if (cursor.nodeType === 'function_declaration' || cursor.nodeType === 'class_declaration' || cursor.nodeType === 'method_definition') {
+                const node = cursor.currentNode;
                 const nameNode = node.childForFieldName('name');
                 if (nameNode) {
                     const content = node.text;
@@ -62,13 +66,25 @@ export class ASTParser {
                 }
             }
 
-            for (let i = 0; i < node.childCount; i++) {
-                const child = node.child(i);
-                if (child) visit(child);
+            if (cursor.gotoFirstChild()) {
+                continue;
             }
-        };
 
-        visit(tree.rootNode);
+            if (cursor.gotoNextSibling()) {
+                continue;
+            }
+
+            let retracing = true;
+            while (retracing) {
+                if (!cursor.gotoParent()) {
+                    reachedRoot = true;
+                    retracing = false;
+                } else if (cursor.gotoNextSibling()) {
+                    retracing = false;
+                }
+            }
+        }
+
         return symbols;
     }
 
