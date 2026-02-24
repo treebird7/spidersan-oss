@@ -59,6 +59,7 @@ export class ASTParser {
         let visitedChildren = false;
         let depth = 0;
 
+        // eslint-disable-next-line no-constant-condition
         while (true) {
             if (visitedChildren) {
                 // Post-visit: Check if we are leaving a symbol node
