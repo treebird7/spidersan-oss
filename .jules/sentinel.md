@@ -29,3 +29,8 @@
 **Vulnerability:** The `register` command validated files provided via `--files` flag but failed to validate files obtained via `--auto` (git diff) or `--interactive` (user input) modes.
 **Learning:** When a CLI command has multiple ways to obtain the same type of input (flags, auto-detection, prompts), validation logic must be applied to the *final* dataset, not just inside the block handling one specific input method.
 **Prevention:** Centralize validation logic immediately before the data is used or stored, ensuring it covers all possible input sources.
+
+## 2026-02-19 - Ineffective Validation via Ignored Return Value
+**Vulnerability:** `validateRegistrationFiles` called `sanitizeFilePaths` but ignored its return value, rendering the validation ineffective as the original tainted array was used.
+**Learning:** Pure functions that return sanitized data (instead of modifying in-place or throwing) must have their return values used. Always check if a validation utility validates (throws) or sanitizes (returns new value).
+**Prevention:** Prefer validation functions that throw errors for invalid input when the intent is to reject bad data entirely. If using sanitization, ensure the sanitized result is assigned.
