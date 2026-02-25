@@ -274,40 +274,102 @@ export class SupabaseStorage implements StorageAdapter {
     async pushRegistry(machine: MachineIdentity, repoName: string, repoPath: string, branches: Branch[]): Promise<{ pushed: number; updated: number; abandoned: number; errors: string[] }> {
         let pushed = 0, updated = 0;
         const errors: string[] = [];
-        for (const branch of branches) {
+
+        // Process in chunks to avoid URL length limits
+        const CHUNK_SIZE = 50;
+        for (let i = 0; i < branches.length; i += CHUNK_SIZE) {
+            const chunk = branches.slice(i, i + CHUNK_SIZE);
+            const names = chunk.map(b => b.name);
+
+            // 1. Batch Check: Fetch existing branches for this machine
+            const existingMap = new Map<string, SupabaseBranchRow>();
             try {
-                const payload = {
-                    branch_name: branch.name,
-                    state: branch.status === 'active' ? 'active' : branch.status,
-                    files_changed: branch.files,
-                    description: branch.description || null,
-                    created_by_agent: branch.agent || null,
-                    machine_id: machine.id,
-                    machine_name: machine.name,
-                    hostname: machine.hostname,
-                    repo_name: repoName,
-                    repo_path: repoPath,
-                    updated_at: new Date().toISOString(),
-                };
-                const check = await this.fetch(`branch_registry?branch_name=eq.${encodeURIComponent(branch.name)}&machine_id=eq.${encodeURIComponent(machine.id)}`);
-                const existing = check.ok ? (await check.json() as unknown[]) : [];
-                if (Array.isArray(existing) && existing.length > 0) {
-                    await this.fetch(`branch_registry?branch_name=eq.${encodeURIComponent(branch.name)}&machine_id=eq.${encodeURIComponent(machine.id)}`, {
+                const safeNames = names.map(n => encodeURIComponent(n)).join(',');
+                const response = await this.fetch(`branch_registry?machine_id=eq.${encodeURIComponent(machine.id)}&branch_name=in.(${safeNames})`);
+
+                if (response.ok) {
+                    const rows = await response.json() as SupabaseBranchRow[];
+                    rows.forEach(r => existingMap.set(r.branch_name, r));
+                } else {
+                    throw new Error(`Batch check failed: ${await response.text()}`);
+                }
+            } catch (err) {
+                chunk.forEach(b => errors.push(`${b.name}: ${err instanceof Error ? err.message : String(err)}`));
+                continue;
+            }
+
+            const toCreate: Branch[] = [];
+            const toUpdate: Branch[] = [];
+
+            for (const branch of chunk) {
+                if (existingMap.has(branch.name)) {
+                    toUpdate.push(branch);
+                } else {
+                    toCreate.push(branch);
+                }
+            }
+
+            // 2. Bulk Insert New Branches
+            if (toCreate.length > 0) {
+                try {
+                    const payloads = toCreate.map(branch => ({
+                        branch_name: branch.name,
+                        state: branch.status === 'active' ? 'active' : branch.status,
+                        files_changed: branch.files,
+                        description: branch.description || null,
+                        created_by_agent: branch.agent || null,
+                        machine_id: machine.id,
+                        machine_name: machine.name,
+                        hostname: machine.hostname,
+                        repo_name: repoName,
+                        repo_path: repoPath,
+                        updated_at: new Date().toISOString(),
+                        created_at: new Date().toISOString()
+                    }));
+
+                    const response = await this.fetch('branch_registry', {
+                        method: 'POST',
+                        body: JSON.stringify(payloads),
+                        headers: { 'Prefer': 'return=minimal' }
+                    });
+
+                    if (!response.ok) throw new Error(await response.text());
+                    pushed += toCreate.length;
+                } catch (err) {
+                    toCreate.forEach(b => errors.push(`${b.name}: Bulk insert failed - ${err instanceof Error ? err.message : String(err)}`));
+                }
+            }
+
+            // 3. Parallel Update Existing Branches
+            await Promise.all(toUpdate.map(async (branch) => {
+                try {
+                    const payload = {
+                        branch_name: branch.name,
+                        state: branch.status === 'active' ? 'active' : branch.status,
+                        files_changed: branch.files,
+                        description: branch.description || null,
+                        created_by_agent: branch.agent || null,
+                        machine_id: machine.id,
+                        machine_name: machine.name,
+                        hostname: machine.hostname,
+                        repo_name: repoName,
+                        repo_path: repoPath,
+                        updated_at: new Date().toISOString(),
+                    };
+
+                    const response = await this.fetch(`branch_registry?branch_name=eq.${encodeURIComponent(branch.name)}&machine_id=eq.${encodeURIComponent(machine.id)}`, {
                         method: 'PATCH',
                         body: JSON.stringify(payload),
                     });
+
+                    if (!response.ok) throw new Error(await response.text());
                     updated++;
-                } else {
-                    await this.fetch('branch_registry', {
-                        method: 'POST',
-                        body: JSON.stringify({ ...payload, created_at: new Date().toISOString() }),
-                    });
-                    pushed++;
+                } catch (err) {
+                    errors.push(`${branch.name}: Update failed - ${err instanceof Error ? err.message : String(err)}`);
                 }
-            } catch (err) {
-                errors.push(`${branch.name}: ${err instanceof Error ? err.message : String(err)}`);
-            }
+            }));
         }
+
         return { pushed, updated, abandoned: 0, errors };
     }
 
