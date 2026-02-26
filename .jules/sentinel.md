@@ -34,3 +34,8 @@
 **Vulnerability:** The `register` command's file validation function `validateRegistrationFiles` called `sanitizeFilePaths`, which returns a filtered array but does not mutate the input in place. The return value was ignored, meaning no validation actually occurred, allowing path traversal (e.g., `../etc/passwd`).
 **Learning:** Functions that sanitize by returning a new collection (like `Array.prototype.filter`) can be dangerous if the caller assumes in-place mutation or validation side effects.
 **Prevention:** Validation functions should return `void` and throw on error, or return the sanitized data which *must* be used. Always check return types of security helpers.
+
+## 2026-02-24 - Path Traversal via Unvalidated Storage Data
+**Vulnerability:** `stale` command used `agentId` retrieved from storage to construct file paths without re-validating it, allowing path traversal (`../../`) if storage contained malicious data (Second Order Vulnerability).
+**Learning:** Data from internal storage (e.g. JSON files) should not be inherently trusted, especially if it can be modified by other processes or versions. Validation must occur at the sink (usage point) as well as the source.
+**Prevention:** Always validate data retrieved from storage before using it in sensitive operations like file system access or shell commands. Defense in depth.
