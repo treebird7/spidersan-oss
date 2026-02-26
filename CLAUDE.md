@@ -95,13 +95,14 @@ spidersan depends                 # Show current dependencies
 ### Agent Messaging (via Toak)
 ```bash
 # Send a Toak message
-TOAK_AGENT_ID=ssan envoak vault inject --key $(cat ~/.envoak/ssan.key) -- toak say <agent> "<message>"
+envoak vault inject --key $(cat ~/.envoak/ssan.key) -- toak say <agent> "<message>"
 
 # Check inbox
-TOAK_AGENT_ID=ssan envoak vault inject --key $(cat ~/.envoak/ssan.key) -- toak inbox
+envoak vault inject --key $(cat ~/.envoak/ssan.key) -- toak inbox
 ```
 
 > **Note:** Spidersan's key is at `~/.envoak/ssan.key` (30d TTL). If missing, ping bsan to re-provision.
+> `TOAK_AGENT_ID` is injected automatically via the agent's vault key (`agent-ssan/TOAK_AGENT_ID`). No manual prefix needed.
 
 ### Encryption
 ```bash
@@ -489,7 +490,7 @@ SPIDERSAN_AGENT=claude    # Your agent identifier
 ```bash
 # Toak keys are provisioned by bsan and stored at ~/.envoak/ssan.key
 # If missing, ping bsan to re-provision:
-# TOAK_AGENT_ID=ssan envoak vault inject --key $(cat ~/.envoak/ssan.key) -- toak say bsan "ssan key missing"
+# envoak vault inject --key $(cat ~/.envoak/ssan.key) -- toak say bsan "ssan key missing"
 ```
 
 ## Toak Identity
@@ -511,7 +512,7 @@ cat .pending_task.md 2>/dev/null && rm .pending_task.md
 spidersan wake
 
 # Check inbox (optional)
-TOAK_AGENT_ID=ssan envoak vault inject --key $(cat ~/.envoak/ssan.key) -- toak inbox
+envoak vault inject --key $(cat ~/.envoak/ssan.key) -- toak inbox
 ```
 
 > **Note:** These are available commands, not automatic actions. Only run when the user explicitly asks you to start a session or run these commands.
