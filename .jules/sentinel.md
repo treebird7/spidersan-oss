@@ -39,3 +39,8 @@
 **Vulnerability:** `stale` command used `agentId` retrieved from storage to construct file paths without re-validating it, allowing path traversal (`../../`) if storage contained malicious data (Second Order Vulnerability).
 **Learning:** Data from internal storage (e.g. JSON files) should not be inherently trusted, especially if it can be modified by other processes or versions. Validation must occur at the sink (usage point) as well as the source.
 **Prevention:** Always validate data retrieved from storage before using it in sensitive operations like file system access or shell commands. Defense in depth.
+
+## 2026-02-23 - TUI Markup Injection
+**Vulnerability:** Blessed Markup Injection in `SpidersanDashboard` via `tags: true` rendering. User-controlled strings (like agent names or task titles) could inject arbitrary markup (e.g., `{red-fg}`), disrupting the UI or spoofing content.
+**Learning:** TUI libraries like `blessed` that support markup tags must be treated similarly to HTML in web apps; untrusted input must be escaped before interpolation.
+**Prevention:** Use an escape function (like `escapeBlessed`) to sanitize all dynamic content before passing it to TUI components with markup enabled.
