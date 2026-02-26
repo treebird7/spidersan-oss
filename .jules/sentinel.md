@@ -29,3 +29,8 @@
 **Vulnerability:** The `register` command validated files provided via `--files` flag but failed to validate files obtained via `--auto` (git diff) or `--interactive` (user input) modes.
 **Learning:** When a CLI command has multiple ways to obtain the same type of input (flags, auto-detection, prompts), validation logic must be applied to the *final* dataset, not just inside the block handling one specific input method.
 **Prevention:** Centralize validation logic immediately before the data is used or stored, ensuring it covers all possible input sources.
+
+## 2026-02-18 - Silent Failure in File Validation
+**Vulnerability:** The `register` command's file validation function `validateRegistrationFiles` called `sanitizeFilePaths`, which returns a filtered array but does not mutate the input in place. The return value was ignored, meaning no validation actually occurred, allowing path traversal (e.g., `../etc/passwd`).
+**Learning:** Functions that sanitize by returning a new collection (like `Array.prototype.filter`) can be dangerous if the caller assumes in-place mutation or validation side effects.
+**Prevention:** Validation functions should return `void` and throw on error, or return the sanitized data which *must* be used. Always check return types of security helpers.
