@@ -33,6 +33,7 @@ import {
     crossConflictsCommand,
     githubSyncCommand,
     syncAdvisorCommand,
+    dashboardCommand,
 } from '../commands/index.js';
 import { checkForUpdates } from '../lib/update-check.js';
 
@@ -105,6 +106,7 @@ program.addCommand(registrySyncCommand);
 program.addCommand(crossConflictsCommand);
 program.addCommand(githubSyncCommand);
 program.addCommand(syncAdvisorCommand());
+program.addCommand(dashboardCommand);
 
 async function main(): Promise<void> {
     const ecosystemCommands = await loadEcosystemCommands();

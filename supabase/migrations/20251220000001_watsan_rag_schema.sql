@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS watsan_indexed_files (
 );
 
 -- Similarity search function
+DROP FUNCTION IF EXISTS watsan_match_documents(VECTOR(1536), INT, FLOAT, TEXT, TEXT);
 CREATE OR REPLACE FUNCTION watsan_match_documents(
     query_embedding VECTOR(1536),
     match_count INT DEFAULT 5,
