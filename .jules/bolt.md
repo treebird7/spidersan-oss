@@ -5,3 +5,11 @@
 ## 2025-05-20 - Supabase Push Optimization
 **Learning:** Sequential HTTP requests in loops (N+1 problem) are a major bottleneck for branch synchronization. Using Supabase's `in` filter (`branch_name=in.(...)`) allows fetching all relevant records in a single request.
 **Action:** Always look for batching opportunities when interacting with remote storage. For Supabase, use `in` filters for reads and bulk inserts/parallel updates for writes. Verify optimizations with mocked network tests to ensure request counts are reduced.
+
+## 2024-05-22 - Tree-sitter Large File Crash
+**Learning:** `tree-sitter` bindings in this environment crash with "Invalid argument" when parsing strings larger than ~40KB. This might be due to `bun` compatibility or memory constraints.
+**Action:** When working with `tree-sitter` here, ensure inputs are chunked or limited in size for benchmarks/tests. Be aware that large source files might cause runtime crashes.
+
+## 2024-05-22 - AST Traversal Performance
+**Learning:** Replacing recursive `node.child(i)` traversal (which instantiates `SyntaxNode` objects) with iterative `TreeCursor` traversal yielded a ~6x speedup (190ms -> 32ms for 32KB).
+**Action:** Always prefer `tree.walk()` and `TreeCursor` for AST traversal over object-based navigation.

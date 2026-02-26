@@ -46,34 +46,84 @@ export class ASTParser {
 
     private extractSymbols(tree: Parser.Tree): SymbolInfo[] {
         const symbols: SymbolInfo[] = [];
+        const cursor = tree.walk();
+        // Stack of symbols we are currently inside
+        const stack: Array<{
+            type: SymbolInfo['type'];
+            startLine: number;
+            endLine: number;
+            name: string | null;
+            depth: number;
+        }> = [];
 
+        let visitedChildren = false;
+        let depth = 0;
 
-        const visit = (node: Parser.SyntaxNode) => {
-            if (node.type === 'function_declaration' || node.type === 'class_declaration' || node.type === 'method_definition') {
-                const nameNode = node.childForFieldName('name');
-                if (nameNode) {
-                    const content = node.text;
-                    const typeStr = node.type.replace('_declaration', '').replace('_definition', '');
-                    const type = (typeStr === 'function' || typeStr === 'class' || typeStr === 'method') ? typeStr : 'function'; // Fallback
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+            if (visitedChildren) {
+                // Post-visit: Check if we are leaving a symbol node
+                if (stack.length > 0) {
+                    const top = stack[stack.length - 1];
+                    // Check if the current node (which we are done with) matches the stack top
+                    if (top.depth === depth &&
+                        top.startLine === cursor.startPosition.row + 1 &&
+                        top.endLine === cursor.endPosition.row + 1) {
 
-                    symbols.push({
-                        name: nameNode.text,
-                        type,
-                        startLine: node.startPosition.row + 1, // 1-indexed for humans
-                        endLine: node.endPosition.row + 1,
-                        content: content,
-                        hash: this.computeHash(content)
+                        stack.pop();
+                        if (top.name) {
+                            const content = cursor.nodeText;
+                            symbols.push({
+                                name: top.name,
+                                type: top.type,
+                                startLine: top.startLine,
+                                endLine: top.endLine,
+                                content: content,
+                                hash: this.computeHash(content)
+                            });
+                        }
+                    }
+                }
+
+                if (cursor.gotoNextSibling()) {
+                    visitedChildren = false;
+                } else {
+                    if (!cursor.gotoParent()) break;
+                    depth--;
+                    // After returning to parent, we are done with its children
+                    visitedChildren = true;
+                }
+            } else {
+                // Pre-visit
+                const type = cursor.nodeType;
+
+                // 1. Check if it is a symbol definition
+                if (type === 'function_declaration' || type === 'class_declaration' || type === 'method_definition') {
+                    stack.push({
+                        type: type.replace('_declaration', '').replace('_definition', '') as SymbolInfo['type'],
+                        startLine: cursor.startPosition.row + 1,
+                        endLine: cursor.endPosition.row + 1,
+                        name: null,
+                        depth: depth
                     });
                 }
-            }
+                // 2. Check if it is the 'name' field of the parent symbol
+                else if (stack.length > 0 && cursor.currentFieldName === 'name') {
+                    const top = stack[stack.length - 1];
+                    // Name must be a direct child of the symbol
+                    if (top.depth === depth - 1) {
+                        top.name = cursor.nodeText;
+                    }
+                }
 
-            for (let i = 0; i < node.childCount; i++) {
-                const child = node.child(i);
-                if (child) visit(child);
+                if (cursor.gotoFirstChild()) {
+                    visitedChildren = false;
+                    depth++;
+                } else {
+                    visitedChildren = true;
+                }
             }
-        };
-
-        visit(tree.rootNode);
+        }
         return symbols;
     }
 
