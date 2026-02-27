@@ -15,15 +15,24 @@ import { validateAgentId, validateBranchName } from '../lib/security.js';
 
 /**
  * Send notification to agent via mycmail
+ * ⚡ Bolt: Batched notifications to avoid N+1 slow spawnSync calls
  */
-export function notifyAgentViaMycmail(agentId: string, branchName: string, daysOld: number): boolean {
+export function notifyAgentViaMycmail(agentId: string, branches: { name: string; daysOld: number }[]): boolean {
+    if (branches.length === 0) return true;
+
     try {
         // Security: Validate inputs
         validateAgentId(agentId);
-        validateBranchName(branchName);
+        for (const b of branches) {
+            validateBranchName(b.name);
+        }
 
-        const subject = `⚠️ Stale branch: ${branchName}`;
-        const message = `Your branch "${branchName}" has been inactive for ${daysOld} days.\n\nActions:\n- Run: spidersan cleanup\n- Or resume work and push updates`;
+        const subject = branches.length === 1
+            ? `⚠️ Stale branch: ${branches[0].name}`
+            : `⚠️ ${branches.length} Stale branches`;
+
+        const branchList = branches.map(b => `- "${b.name}" (${b.daysOld} days inactive)`).join('\n');
+        const message = `You have ${branches.length} stale branch(es):\n\n${branchList}\n\nActions:\n- Run: spidersan cleanup\n- Or resume work and push updates`;
         
         const result = spawnSync('mycmail', [
             'send',
@@ -44,12 +53,17 @@ export function notifyAgentViaMycmail(agentId: string, branchName: string, daysO
 
 /**
  * Update agent's .pending_task.md file
+ * ⚡ Bolt: Batched updates to avoid N+1 file I/O
  */
-export function updatePendingTaskFile(agentId: string, branchName: string, daysOld: number): boolean {
+export function updatePendingTaskFile(agentId: string, branches: { name: string; daysOld: number }[]): boolean {
+    if (branches.length === 0) return true;
+
     try {
         // Security: Validate inputs
         validateAgentId(agentId);
-        validateBranchName(branchName);
+        for (const b of branches) {
+            validateBranchName(b.name);
+        }
 
         // Try common locations for .pending_task.md
         const possiblePaths = [
@@ -71,16 +85,20 @@ export function updatePendingTaskFile(agentId: string, branchName: string, daysO
             return false;
         }
 
-        const entry = `- [ ] 🕷️ Stale branch: \`${branchName}\` (${daysOld}d inactive) - run \`spidersan cleanup\`\n`;
-        
-        // Read file and check if entry already exists
         const content = readFileSync(taskFilePath, 'utf-8');
-        if (content.includes(branchName)) {
-            return true; // Already notified
+        let newEntries = '';
+
+        for (const b of branches) {
+            // Check if entry already exists
+            if (!content.includes(b.name)) {
+                newEntries += `- [ ] 🕷️ Stale branch: \`${b.name}\` (${b.daysOld}d inactive) - run \`spidersan cleanup\`\n`;
+            }
         }
 
-        // Append to the file
-        appendFileSync(taskFilePath, entry, 'utf-8');
+        if (newEntries.length > 0) {
+            appendFileSync(taskFilePath, newEntries, 'utf-8');
+        }
+
         return true;
     } catch {
         return false;
@@ -147,18 +165,20 @@ export const staleCommand = new Command('stale')
             for (const [agent, branches] of byAgent) {
                 if (agent === 'unknown') continue;
 
-                for (const branch of branches) {
-                    const age = Math.floor((Date.now() - new Date(branch.registeredAt).getTime()) / 86400000);
-                    
-                    // Try mycmail notification
-                    if (notifyAgentViaMycmail(agent, branch.name, age)) {
-                        mycmailSuccess++;
-                    }
+                // ⚡ Bolt: Batch notification per agent to avoid N+1 slow calls
+                const branchData = branches.map(branch => ({
+                    name: branch.name,
+                    daysOld: Math.floor((Date.now() - new Date(branch.registeredAt).getTime()) / 86400000)
+                }));
 
-                    // Try .pending_task.md update
-                    if (updatePendingTaskFile(agent, branch.name, age)) {
-                        fileSuccess++;
-                    }
+                // Try mycmail notification
+                if (notifyAgentViaMycmail(agent, branchData)) {
+                    mycmailSuccess += branches.length;
+                }
+
+                // Try .pending_task.md update
+                if (updatePendingTaskFile(agent, branchData)) {
+                    fileSuccess += branches.length;
                 }
             }
 
