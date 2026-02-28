@@ -100,20 +100,20 @@ export class LocalStorage implements StorageAdapter {
         );
     }
 
-    async cleanup(olderThan: Date): Promise<number> {
+    async cleanup(olderThan: Date): Promise<string[]> {
         const registry = await this.load();
-        let removed = 0;
+        const removedNames: string[] = [];
 
         for (const [name, branch] of Object.entries(registry.branches)) {
             if (new Date(branch.registeredAt) < olderThan) {
                 delete registry.branches[name];
-                removed++;
+                removedNames.push(name);
             }
         }
 
-        if (removed > 0) {
+        if (removedNames.length > 0) {
             await this.save(registry);
         }
-        return removed;
+        return removedNames;
     }
 }

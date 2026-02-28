@@ -212,19 +212,21 @@ export class SupabaseStorage implements StorageAdapter {
         return rows.map(r => this.rowToBranch(r));
     }
 
-    async cleanup(_olderThan: Date): Promise<number> {
-        const response = await this.fetch('stale_branches?select=id');
+    async cleanup(_olderThan: Date): Promise<string[]> {
+        const response = await this.fetch('stale_branches?select=id,branch_name');
         if (!response.ok) throw new Error(`Failed to get stale: ${await response.text()}`);
 
-        const rows = await response.json() as { id: string }[];
-        if (rows.length === 0) return 0;
+        const rows = await response.json() as { id: string, branch_name: string }[];
+        if (rows.length === 0) return [];
 
         const ids = rows.map(r => r.id);
+        const names = rows.map(r => r.branch_name);
+
         await this.fetch(`branch_registry?id=in.(${ids.join(',')})`, {
             method: 'PATCH',
             body: JSON.stringify({ state: 'abandoned', updated_at: new Date().toISOString() }),
         });
-        return rows.length;
+        return names;
     }
 
     // Extended Supabase-specific methods

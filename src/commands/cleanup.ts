@@ -37,13 +37,11 @@ export const cleanupCommand = new Command('cleanup')
             return;
         }
 
-        let removed = 0;
-        for (const branch of stale) {
-            if (await storage.unregister(branch.name)) {
-                removed++;
-                console.log(`  🗑️  Removed: ${branch.name}`);
-            }
+        // Optimization: Use bulk cleanup instead of N+1 unregister calls
+        const removedNames = await storage.cleanup(threshold);
+        if (removedNames.length > 0) {
+            removedNames.forEach(name => console.log(`  🗑️  Removed: ${name}`));
         }
 
-        console.log(`\n🕷️ Cleaned up ${removed} branch(es).`);
+        console.log(`\n🕷️ Cleaned up ${removedNames.length} branch(es).`);
     });
