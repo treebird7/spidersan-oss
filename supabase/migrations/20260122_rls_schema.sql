@@ -155,28 +155,36 @@ ALTER TABLE wiki_pages ENABLE ROW LEVEL SECURITY;
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='knowledge_chunks' AND policyname='Chunks: public readable') THEN
-    EXECUTE 'CREATE POLICY "Chunks: public readable" ON knowledge_chunks FOR SELECT USING (sensitivity_level = ''public'')';
+    EXECUTE 'DROP POLICY IF EXISTS "Chunks: public readable" ON knowledge_chunks;
+CREATE POLICY "Chunks: public readable" ON knowledge_chunks FOR SELECT USING (sensitivity_level = ''public'')';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='knowledge_chunks' AND policyname='Chunks: agent sees own') THEN
-    EXECUTE 'CREATE POLICY "Chunks: agent sees own" ON knowledge_chunks FOR SELECT USING (auth.jwt() ->> ''agent_id'' = metadata ->> ''agent_id'')';
+    EXECUTE 'DROP POLICY IF EXISTS "Chunks: agent sees own" ON knowledge_chunks;
+CREATE POLICY "Chunks: agent sees own" ON knowledge_chunks FOR SELECT USING (auth.jwt() ->> ''agent_id'' = metadata ->> ''agent_id'')';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='knowledge_chunks' AND policyname='Chunks: agent inserts own') THEN
-    EXECUTE 'CREATE POLICY "Chunks: agent inserts own" ON knowledge_chunks FOR INSERT WITH CHECK (auth.jwt() ->> ''agent_id'' = metadata ->> ''agent_id'')';
+    EXECUTE 'DROP POLICY IF EXISTS "Chunks: agent inserts own" ON knowledge_chunks;
+CREATE POLICY "Chunks: agent inserts own" ON knowledge_chunks FOR INSERT WITH CHECK (auth.jwt() ->> ''agent_id'' = metadata ->> ''agent_id'')';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='rls_nodes' AND policyname='Nodes: shared readable') THEN
-    EXECUTE 'CREATE POLICY "Nodes: shared readable" ON rls_nodes FOR SELECT USING (agent_id IS NULL)';
+    EXECUTE 'DROP POLICY IF EXISTS "Nodes: shared readable" ON rls_nodes;
+CREATE POLICY "Nodes: shared readable" ON rls_nodes FOR SELECT USING (agent_id IS NULL)';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='rls_nodes' AND policyname='Nodes: agent sees own') THEN
-    EXECUTE 'CREATE POLICY "Nodes: agent sees own" ON rls_nodes FOR SELECT USING (agent_id = auth.jwt() ->> ''agent_id'')';
+    EXECUTE 'DROP POLICY IF EXISTS "Nodes: agent sees own" ON rls_nodes;
+CREATE POLICY "Nodes: agent sees own" ON rls_nodes FOR SELECT USING (agent_id = auth.jwt() ->> ''agent_id'')';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='rls_nodes' AND policyname='Nodes: agent creates own') THEN
-    EXECUTE 'CREATE POLICY "Nodes: agent creates own" ON rls_nodes FOR INSERT WITH CHECK (agent_id IS NULL OR agent_id = auth.jwt() ->> ''agent_id'')';
+    EXECUTE 'DROP POLICY IF EXISTS "Nodes: agent creates own" ON rls_nodes;
+CREATE POLICY "Nodes: agent creates own" ON rls_nodes FOR INSERT WITH CHECK (agent_id IS NULL OR agent_id = auth.jwt() ->> ''agent_id'')';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='wiki_pages' AND policyname='Wiki: public read') THEN
-    EXECUTE 'CREATE POLICY "Wiki: public read" ON wiki_pages FOR SELECT USING (true)';
+    EXECUTE 'DROP POLICY IF EXISTS "Wiki: public read" ON wiki_pages;
+CREATE POLICY "Wiki: public read" ON wiki_pages FOR SELECT USING (true)';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='wiki_pages' AND policyname='Wiki: service write') THEN
-    EXECUTE 'CREATE POLICY "Wiki: service write" ON wiki_pages FOR ALL USING (auth.role() = ''service_role'')';
+    EXECUTE 'DROP POLICY IF EXISTS "Wiki: service write" ON wiki_pages;
+CREATE POLICY "Wiki: service write" ON wiki_pages FOR ALL USING (auth.role() = ''service_role'')';
   END IF;
 END $$;
 

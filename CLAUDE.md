@@ -587,3 +587,8 @@ npm run build         # TypeScript compilation
 | Intent registration | ✅ | Spidersan's domain |
 | Code changes in other agents' files | ❌ | Registry only |
 | Force push / destructive git ops | ❌ | Never |
+
+## Migrations
+
+> **Do not write raw `.sql` migration files.** File a spec in `treebird-internal/migrations/pending/` using `TEMPLATE.md`. Mycsan authors and pushes the actual migration with full idempotency guards and cross-repo awareness.
+
