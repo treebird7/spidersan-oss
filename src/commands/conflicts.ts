@@ -13,6 +13,7 @@ import { execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
 import { validateAgentId, validateBranchName } from '../lib/security.js';
+import { loadConfig } from '../lib/config.js';
 
 // Config
 const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
@@ -49,9 +50,10 @@ interface ConflictTier {
     action: string;
 }
 
-function getConflictTier(file: string): ConflictTier {
+function getConflictTier(file: string, highSeverityPatterns: RegExp[] = [], mediumSeverityPatterns: RegExp[] = []): ConflictTier {
     // Check TIER 3 first (most critical)
-    for (const pattern of TIER_3_PATTERNS) {
+    const tier3 = [...TIER_3_PATTERNS, ...highSeverityPatterns];
+    for (const pattern of tier3) {
         if (pattern.test(file)) {
             return {
                 tier: 3,
@@ -63,7 +65,8 @@ function getConflictTier(file: string): ConflictTier {
     }
 
     // Check TIER 2 
-    for (const pattern of TIER_2_PATTERNS) {
+    const tier2 = [...TIER_2_PATTERNS, ...mediumSeverityPatterns];
+    for (const pattern of tier2) {
         if (pattern.test(file)) {
             return {
                 tier: 2,
@@ -266,6 +269,7 @@ export const conflictsCommand = new Command('conflicts')
     .option('--semantic', 'Use semantic (AST) analysis for symbol-level conflict detection')
     .action(async (options) => {
         const storage = await getStorage();
+        const config = await loadConfig();
 
         if (!await storage.isInitialized()) {
             console.error('❌ Spidersan not initialized. Run: spidersan init');
@@ -275,6 +279,10 @@ export const conflictsCommand = new Command('conflicts')
         const targetBranch = options.branch || getCurrentBranch();
         const target = await storage.get(targetBranch);
         const minTier = parseInt(options.tier, 10) as 1 | 2 | 3;
+
+        // Load custom patterns from config
+        const highSeverity = (config.conflicts?.highSeverityPatterns || []).map(p => new RegExp(p));
+        const mediumSeverity = (config.conflicts?.mediumSeverityPatterns || []).map(p => new RegExp(p));
 
         if (!target) {
             console.error(`❌ Branch "${targetBranch}" is not registered.`);
@@ -297,7 +305,7 @@ export const conflictsCommand = new Command('conflicts')
                 // Get highest tier for this conflict
                 let maxTier: ConflictTier = { tier: 1, label: 'WARN', icon: '🟡', action: '' };
                 for (const file of overlappingFiles) {
-                    const fileTier = getConflictTier(file);
+                    const fileTier = getConflictTier(file, highSeverity, mediumSeverity);
                     if (fileTier.tier > maxTier.tier) {
                         maxTier = fileTier;
                     }
@@ -387,7 +395,7 @@ export const conflictsCommand = new Command('conflicts')
         for (const conflict of conflicts) {
             console.log(`${conflict.tierInfo.icon} TIER ${conflict.tier} (${conflict.tierInfo.label}): ${conflict.branch}`);
             for (const file of conflict.files) {
-                const fileTier = getConflictTier(file);
+                const fileTier = getConflictTier(file, highSeverity, mediumSeverity);
                 console.log(`   ${fileTier.icon} ${file}`);
             }
             console.log(`   → ${conflict.tierInfo.action}`);
