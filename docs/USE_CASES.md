@@ -1509,6 +1509,140 @@ git push origin spidersan-check-these
 
 ---
 
+## Use Case: Ghost Branch Causing Watcher Feedback Loop
+
+**Scenario:** `spidersan watch` is stuck in an infinite loop — the log shows the same file being registered and a conflict detected repeatedly, hundreds of times per minute.
+
+**Symptoms:**
+- Log file growing unboundedly (`tail -f /tmp/spidersan-*.log` shows constant churn)
+- CPU usage on the watcher process at 90–100%
+- Conflict always references a branch that no longer exists in git
+
+**Root Cause:** A ghost branch in the registry (deleted from git but never cleaned up) claims files that the watcher keeps re-registering. Each registration triggers a conflict detection, which logs the conflict, then the watcher re-registers on the next file-change event — infinite loop.
+
+**Fix:**
+```bash
+# 1. Confirm the ghost — list registry vs actual git branches
+spidersan list                    # shows registered branches
+git branch -a                     # shows real branches
+
+# 2. Sync registry to remove orphans
+spidersan sync
+# Output: "Removed: envision" (or whichever ghost branch)
+
+# 3. Verify loop has stopped
+wc -l /tmp/spidersan-watch.log    # run twice — count should stop growing
+
+# 4. Verify conflicts are clean
+spidersan conflicts --strict      # should exit 0
+```
+
+**Prevention:** Run `spidersan sync` after any branch deletion or merge. The `sync` command is safe to run at any time — it only removes registry entries for branches that no longer exist in git.
+
+**Hashtags:** `#watcher` `#ghost-branch` `#feedback-loop` `#registry-sync` `#troubleshooting`
+
+---
+
+## Use Case: Killing a LaunchAgent-Managed Watcher
+
+**Scenario:** You kill a `spidersan watch` process but it immediately respawns. `kill <pid>` has no lasting effect.
+
+**Explanation:** If the watcher was started via a LaunchAgent plist with `KeepAlive: true`, macOS launchd will restart it automatically after any kill. You must unload the LaunchAgent to stop it.
+
+**Diagnosis:**
+```bash
+# Check if parent is launchd (PID 1)
+ps -eo pid,ppid,command | grep "spidersan watch"
+# If PPID = 1, it's launchd-managed
+
+# Find the plist
+grep -rl "spidersan watch" ~/Library/LaunchAgents/
+```
+
+**Stop the watcher:**
+```bash
+# Unload (stops immediately, won't restart on reboot)
+launchctl unload ~/Library/LaunchAgents/<plist-name>.plist
+
+# Or to stop just for this session but keep it for next login:
+launchctl stop uk.treebird.spidersan-collab-watch
+```
+
+**Restart the watcher:**
+```bash
+launchctl load ~/Library/LaunchAgents/<plist-name>.plist
+```
+
+**Note:** For orphaned watchers not managed by a LaunchAgent (PPID ≠ 1), `kill -9 <pid>` is sufficient.
+
+**Hashtags:** `#launchagent` `#keepalive` `#watcher` `#macos` `#troubleshooting`
+
+---
+
+## Use Case: Phantom MCP Processes
+
+**Scenario:** Multiple instances of `spidersan mcp-server` or `envoak mcp` are running simultaneously, accumulating across sessions. Each Claude Code or IDE session may spawn its own MCP instance without cleaning up previous ones.
+
+**Diagnosis:**
+```bash
+ps aux | grep -E "mcp-server|envoak mcp" | grep -v grep
+# Look for: multiple PIDs, old start times (days/weeks ago), low CPU
+```
+
+**Cleanup — keep only the newest of each:**
+```bash
+# Find all PIDs, sort by start time, keep newest
+ps -eo pid,lstart,command | grep "mcp-server" | grep -v grep
+
+# Kill all but the newest
+kill <old-pid-1> <old-pid-2> ...
+
+# Verify
+ps aux | grep mcp | grep -v grep
+```
+
+**Or use the built-in command:**
+```bash
+spidersan mcp-health --kill-zombies
+```
+
+**Prevention:** MCP processes tied to terminal sessions (PPID = terminal) die when the terminal closes. Processes tied to launchd (PPID = 1) persist — these are the phantom accumulation source. Check your Claude Code MCP config to avoid launching persistent background MCPs unintentionally.
+
+**Hashtags:** `#mcp` `#phantom-process` `#zombie` `#process-hygiene` `#troubleshooting`
+
+---
+
+## Use Case: Treesync + Spidersan Conflict Gating
+
+**Scenario:** You're running treesync (auto-commit daemon for multi-machine sync) and want to ensure it doesn't auto-commit when there are active file conflicts with other agents.
+
+**How it works:** Treesync runs `spidersan conflicts --strict` before each auto-commit. If TIER 2+ conflicts are detected, the commit is skipped and the reason is logged. If spidersan is unavailable or times out, treesync fails safe and proceeds (non-blocking).
+
+**Expected treesync behaviour:**
+```
+✅ No conflicts → auto-commit proceeds
+🟠 TIER 2+ conflict → commit skipped, logged: "Spidersan: TIER 2+ conflict detected — skipping auto-commit"
+⏱️ Spidersan timeout → proceeds with warning: "Spidersan conflict check timed out — proceeding"
+❌ Spidersan not installed → proceeds silently (non-blocking)
+```
+
+**If treesync is skipping commits unexpectedly:**
+```bash
+# Check what conflict is blocking it
+spidersan conflicts
+
+# Most common cause: ghost branch in registry
+spidersan list        # look for branches that don't exist in git
+spidersan sync        # remove orphans
+
+# Re-check
+spidersan conflicts --strict   # should exit 0
+```
+
+**Hashtags:** `#treesync` `#auto-commit` `#conflict-gating` `#multi-machine` `#daemon` `#ecosystem`
+
+---
+
 # Quick Reference: All Hashtags
 
 ## By Category

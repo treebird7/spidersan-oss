@@ -112,11 +112,20 @@ spidersan cleanup --days 7
 
 ---
 
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `watch` process in infinite conflict loop | Ghost branch in registry claiming files that watcher re-registers | `spidersan sync` removes orphaned branches |
+| `kill <pid>` doesn't stop watcher | LaunchAgent with `KeepAlive: true` restarts it | `launchctl unload ~/Library/LaunchAgents/<plist>.plist` |
+| Multiple MCP server instances accumulating | Each IDE/Claude session spawns one, none clean up | `spidersan mcp-health --kill-zombies` |
+| Treesync skipping auto-commits unexpectedly | `conflicts --strict` returning TIER 2+ | `spidersan sync` to clear ghost branches, then `spidersan conflicts` to confirm clean |
+| Conflict references a branch that doesn't exist in git | Stale registry entry (ghost branch) | `spidersan sync` |
+
 ## Documentation
 
 - [Core Guide](CORE.md)
-- Ecosystem Overview (internal; see spidersan-ecosystem repo)
-- Usage (internal; see spidersan-ecosystem repo)
+- [Use Cases](USE_CASES.md)
 - [Limitations](LIMITATIONS.md)
 
 ---
