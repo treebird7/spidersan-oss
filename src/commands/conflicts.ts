@@ -285,10 +285,14 @@ export const conflictsCommand = new Command('conflicts')
         const allBranches = await storage.list();
         const conflicts: Array<{ branch: string; files: string[]; tier: number; tierInfo: ConflictTier }> = [];
 
+        // Performance Optimization: Convert target files to Set for O(1) lookup
+        // Reduces complexity from O(N*M*K) to O(N*M) where N=branches, M=files/branch, K=target_files
+        const targetFilesSet = new Set(target.files);
+
         for (const branch of allBranches) {
             if (branch.name === targetBranch || branch.status !== 'active') continue;
 
-            const overlappingFiles = branch.files.filter(f => target.files.includes(f));
+            const overlappingFiles = branch.files.filter(f => targetFilesSet.has(f));
             if (overlappingFiles.length > 0) {
                 // Get highest tier for this conflict
                 let maxTier: ConflictTier = { tier: 1, label: 'WARN', icon: '🟡', action: '' };
