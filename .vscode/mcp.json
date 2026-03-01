@@ -8,14 +8,14 @@
     },
     "toak": {
       "enabled": true,
-      "command": "node",
-      "args": ["/Users/freedbird/Dev/toak/dist/server.js"],
+      "command": "bash",
+      "args": ["/Users/freedbird/Dev/spidersan/scripts/toak-mcp-wrapper.sh"],
       "env": {}
     },
     "envoak": {
       "enabled": true,
       "command": "node",
-      "args": ["/Users/freedbird/Dev/envoak/dist/mcp/server.js"],
+      "args": ["/Users/freedbird/Dev/envoak/dist/bin/envoak.js", "mcp"],
       "env": {}
     }
   }
