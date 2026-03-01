@@ -140,12 +140,12 @@ export const registrySyncCommand = new Command('registry-sync')
 
             for (const view of views) {
                 console.log(`  📡 ${view.machine_name} (${view.hostname}) — ${view.branches.length} branch(es)`);
-                console.log(`     Last sync: ${new Date(view.last_sync).toLocaleString()}\n`);
+                console.log(`     Last sync: ${new Date(view.last_synced).toLocaleString()}\n`);
 
                 for (const branch of view.branches) {
                     const files = branch.files.length > 0 ? ` [${branch.files.length} files]` : '';
                     const agent = branch.agent ? ` (${branch.agent})` : '';
-                    console.log(`     • ${branch.branch_name}${agent}${files}`);
+                    console.log(`     • ${branch.name}${agent}${files}`);
                     if (branch.description) {
                         console.log(`       ${branch.description}`);
                     }
