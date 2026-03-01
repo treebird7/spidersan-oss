@@ -13,3 +13,7 @@
 ## 2024-05-22 - AST Traversal Performance
 **Learning:** Replacing recursive `node.child(i)` traversal (which instantiates `SyntaxNode` objects) with iterative `TreeCursor` traversal yielded a ~6x speedup (190ms -> 32ms for 32KB).
 **Action:** Always prefer `tree.walk()` and `TreeCursor` for AST traversal over object-based navigation.
+
+## 2026-03-01 - Optimize Array.includes to Set.has
+**Learning:** In Spidersan's `conflicts.ts`, `torrent.ts` and `watch.ts`, checking file overlap using `Array.filter(f => otherArray.includes(f))` creates an O(N*M*K) bottleneck. Converting the target array to a `Set` and using `Set.has(f)` reduces this to O(N*M), yielding significant speedups.
+**Action:** Always prefer `Set.has()` over `Array.includes()` when performing multiple membership checks in nested loops.

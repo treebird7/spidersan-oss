@@ -71,11 +71,15 @@ async function checkForConflicts(branchName: string): Promise<{ branch: string; 
 
     const conflicts: { branch: string; files: string[] }[] = [];
 
+    // ⚡ Bolt: Performance Optimization - Convert target files to Set for O(1) lookup
+    // Reduces complexity from O(N*M*K) to O(N*M) where N=branches, M=files/branch, K=target_files
+    const targetFilesSet = new Set(currentBranch.files);
+
     for (const other of branches) {
         if (other.name === branchName || other.status !== 'active') continue;
         if (!other.name.startsWith('task/')) continue; // Only check other task branches
 
-        const overlap = currentBranch.files.filter(f => other.files.includes(f));
+        const overlap = other.files.filter(f => targetFilesSet.has(f));
         if (overlap.length > 0) {
             conflicts.push({ branch: other.name, files: overlap });
         }
