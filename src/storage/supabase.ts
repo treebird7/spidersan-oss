@@ -383,7 +383,15 @@ export class SupabaseStorage implements StorageAdapter {
                 });
             }
             const view = byMachine.get(row.machine_id)!;
-            view.branches.push(this.rowToBranch(row));
+            view.branches.push({
+                name: row.branch_name,
+                files: row.files,
+                registeredAt: new Date(row.created_at),
+                agent: row.agent || undefined,
+                status: row.status === 'active' ? 'active' :
+                    row.status === 'merged' ? 'completed' : 'abandoned',
+                description: row.description || undefined,
+            });
             if (row.synced_at > view.last_synced) {
                 view.last_synced = row.synced_at;
             }
