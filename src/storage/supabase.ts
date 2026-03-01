@@ -218,19 +218,24 @@ export class SupabaseStorage implements StorageAdapter {
         return rows.map(r => this.rowToBranch(r));
     }
 
-    async cleanup(_olderThan: Date): Promise<number> {
-        const response = await this.fetch('stale_branches?select=id');
-        if (!response.ok) throw new Error(`Failed to get stale: ${await response.text()}`);
+    async cleanup(olderThan: Date): Promise<string[]> {
+        const isoDate = olderThan.toISOString();
+        const response = await this.fetch(`branch_registry?select=id,branch_name&state=eq.active&created_at=lt.${encodeURIComponent(isoDate)}`);
+        if (!response.ok) throw new Error(`Failed to get stale branches: ${await response.text()}`);
 
-        const rows = await response.json() as { id: string }[];
-        if (rows.length === 0) return 0;
+        const rows = await response.json() as { id: string; branch_name: string }[];
+        if (rows.length === 0) return [];
 
         const ids = rows.map(r => r.id);
-        await this.fetch(`branch_registry?id=in.(${ids.join(',')})`, {
+        const names = rows.map(r => r.branch_name);
+
+        const patchResponse = await this.fetch(`branch_registry?id=in.(${ids.join(',')})`, {
             method: 'PATCH',
             body: JSON.stringify({ state: 'abandoned', updated_at: new Date().toISOString() }),
         });
-        return rows.length;
+        if (!patchResponse.ok) throw new Error(`Failed to cleanup branches: ${await patchResponse.text()}`);
+
+        return names;
     }
 
     // Extended Supabase-specific methods
