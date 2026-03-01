@@ -44,3 +44,8 @@
 **Vulnerability:** Blessed Markup Injection in `SpidersanDashboard` via `tags: true` rendering. User-controlled strings (like agent names or task titles) could inject arbitrary markup (e.g., `{red-fg}`), disrupting the UI or spoofing content.
 **Learning:** TUI libraries like `blessed` that support markup tags must be treated similarly to HTML in web apps; untrusted input must be escaped before interpolation.
 **Prevention:** Use an escape function (like `escapeBlessed`) to sanitize all dynamic content before passing it to TUI components with markup enabled.
+
+## 2026-02-18 - [Security Enhancement] Eliminate `execSync` Shell Injection Risks
+**Vulnerability:** Several commands execute shell pipelines and parameters via `execSync` without `execFileSync` arguments, risking shell injection vulnerabilities (e.g., in `register.ts` using bash operator chains `||` and redirectors).
+**Learning:** Hardcoding shell structures relies heavily on inputs avoiding shell characters. Though inputs here are generally constrained, adopting a try/catch structure around `execFileSync` completely mitigates this attack surface area.
+**Prevention:** Eliminate `execSync` where possible in favor of `execFileSync` to avoid implicit shell execution. Chain fallbacks via code (try/catch blocks) rather than bash pipeline logic `||`.
