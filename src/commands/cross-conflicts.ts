@@ -102,11 +102,11 @@ export function detectCrossMachineConflicts(
             for (const file of branch.files) {
                 if (!fileMap.has(file)) fileMap.set(file, []);
                 fileMap.get(file)!.push({
-                    branch_name: branch.name,
+                    branch_name: branch.branch_name,
                     machine_id: machine.machine_id,
                     machine_name: machine.machine_name,
-                    agent: branch.agent ?? null,
-                    repo_name: machine.repo_name,
+                    agent: branch.agent,
+                    repo_name: branch.repo_name,
                 });
             }
         }

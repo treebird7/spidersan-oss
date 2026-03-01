@@ -6,7 +6,13 @@
  */
 
 import type { StorageAdapter, Branch } from './adapter.js';
-import type { MachineIdentity, MachineRegistryView } from '../types/cloud.js';
+import type {
+    SpiderRegistry,
+    MachineIdentity,
+    MachineRegistryView,
+    RegistryStatus,
+    RegistrySyncResult,
+} from '../types/cloud.js';
 
 interface SupabaseConfig {
     url: string;
@@ -265,198 +271,156 @@ export class SupabaseStorage implements StorageAdapter {
         return rows[0] || null;
     }
 
-    // ─── F1: Cross-Machine Registry Sync ───────────────────────────────────────
+    // ─── F1: Registry Sync (cross-machine awareness) ───
 
     /**
-     * Push local branches to Supabase, tagged with machine identity.
-     * Uses branch_registry with machine_id columns (migration 20260220).
+     * Push local branches to spider_registries table, tagged with machine identity.
+     * Uses upsert (ON CONFLICT UPDATE) to handle repeated pushes.
      */
-    async pushRegistry(machine: MachineIdentity, repoName: string, repoPath: string, branches: Branch[]): Promise<{ pushed: number; updated: number; abandoned: number; errors: string[] }> {
-        let pushed = 0, updated = 0;
-        const errors: string[] = [];
+    async pushRegistry(
+        machine: MachineIdentity,
+        repoName: string,
+        repoPath: string,
+        branches: Branch[],
+    ): Promise<RegistrySyncResult> {
+        const result: RegistrySyncResult = { pushed: 0, updated: 0, abandoned: 0, errors: [] };
 
-        // Process in chunks to avoid URL length limits
-        const CHUNK_SIZE = 50;
-        for (let i = 0; i < branches.length; i += CHUNK_SIZE) {
-            const chunk = branches.slice(i, i + CHUNK_SIZE);
-            const names = chunk.map(b => b.name);
-
-            // 1. Batch Check: Fetch existing branches for this machine
-            const existingMap = new Map<string, SupabaseBranchRow>();
-            try {
-                const safeNames = names.map(n => encodeURIComponent(n)).join(',');
-                const response = await this.fetch(`branch_registry?machine_id=eq.${encodeURIComponent(machine.id)}&branch_name=in.(${safeNames})`);
-
-                if (response.ok) {
-                    const rows = await response.json() as SupabaseBranchRow[];
-                    rows.forEach(r => existingMap.set(r.branch_name, r));
-                } else {
-                    throw new Error(`Batch check failed: ${await response.text()}`);
-                }
-            } catch (err) {
-                chunk.forEach(b => errors.push(`${b.name}: ${err instanceof Error ? err.message : String(err)}`));
-                continue;
-            }
-
-            const toCreate: Branch[] = [];
-            const toUpdate: Branch[] = [];
-
-            for (const branch of chunk) {
-                if (existingMap.has(branch.name)) {
-                    toUpdate.push(branch);
-                } else {
-                    toCreate.push(branch);
-                }
-            }
-
-            // 2. Bulk Insert New Branches
-            if (toCreate.length > 0) {
-                try {
-                    const payloads = toCreate.map(branch => ({
-                        branch_name: branch.name,
-                        state: branch.status === 'active' ? 'active' : branch.status,
-                        files_changed: branch.files,
-                        description: branch.description || null,
-                        created_by_agent: branch.agent || null,
-                        machine_id: machine.id,
-                        machine_name: machine.name,
-                        hostname: machine.hostname,
-                        repo_name: repoName,
-                        repo_path: repoPath,
-                        updated_at: new Date().toISOString(),
-                        created_at: new Date().toISOString()
-                    }));
-
-                    const response = await this.fetch('branch_registry', {
-                        method: 'POST',
-                        body: JSON.stringify(payloads),
-                        headers: { 'Prefer': 'return=minimal' }
-                    });
-
-                    if (!response.ok) throw new Error(await response.text());
-                    pushed += toCreate.length;
-                } catch (err) {
-                    toCreate.forEach(b => errors.push(`${b.name}: Bulk insert failed - ${err instanceof Error ? err.message : String(err)}`));
-                }
-            }
-
-            // 3. Parallel Update Existing Branches
-            await Promise.all(toUpdate.map(async (branch) => {
-                try {
-                    const payload = {
-                        branch_name: branch.name,
-                        state: branch.status === 'active' ? 'active' : branch.status,
-                        files_changed: branch.files,
-                        description: branch.description || null,
-                        created_by_agent: branch.agent || null,
-                        machine_id: machine.id,
-                        machine_name: machine.name,
-                        hostname: machine.hostname,
-                        repo_name: repoName,
-                        repo_path: repoPath,
-                        updated_at: new Date().toISOString(),
-                    };
-
-                    const response = await this.fetch(`branch_registry?branch_name=eq.${encodeURIComponent(branch.name)}&machine_id=eq.${encodeURIComponent(machine.id)}`, {
-                        method: 'PATCH',
-                        body: JSON.stringify(payload),
-                    });
-
-                    if (!response.ok) throw new Error(await response.text());
-                    updated++;
-                } catch (err) {
-                    errors.push(`${branch.name}: Update failed - ${err instanceof Error ? err.message : String(err)}`);
-                }
-            }));
-        }
-
-        return { pushed, updated, abandoned: 0, errors };
-    }
-
-    /**
-     * Pull registries from all OTHER machines (for cross-machine conflict detection).
-     */
-    async pullRegistries(repoName: string, excludeMachineId?: string): Promise<MachineRegistryView[]> {
-        let endpoint = `branch_registry?repo_name=eq.${encodeURIComponent(repoName)}&state=neq.abandoned&state=neq.merged`;
-        if (excludeMachineId) {
-            endpoint += `&machine_id=neq.${encodeURIComponent(excludeMachineId)}`;
-        }
-        const response = await this.fetch(endpoint);
-        if (!response.ok) throw new Error(`Failed to pull registries: ${await response.text()}`);
-        const rows = await response.json() as (SupabaseBranchRow & { machine_id?: string; machine_name?: string; repo_name?: string })[];
-
-        // Group by machine_id
-        const byMachine = new Map<string, typeof rows>();
-        for (const row of rows) {
-            const mid = row.machine_id || 'unknown';
-            if (!byMachine.has(mid)) byMachine.set(mid, []);
-            byMachine.get(mid)!.push(row);
-        }
-
-        const views: MachineRegistryView[] = [];
-        for (const [machineId, machineRows] of byMachine) {
-            views.push({
-                machine_id: machineId,
-                machine_name: machineRows[0].machine_name || machineId,
-                hostname: (machineRows[0] as unknown as { hostname?: string }).hostname || 'unknown',
-                repo_name: machineRows[0].repo_name || repoName,
-                repo_path: (machineRows[0] as unknown as { repo_path?: string }).repo_path || '',
-                branches: machineRows.map(r => this.rowToBranch(r)),
-                last_synced: machineRows.reduce((latest, r) => r.updated_at > latest ? r.updated_at : latest, ''),
-            });
-        }
-        return views;
-    }
-
-    /**
-     * Get registry sync status for this machine's repos.
-     */
-    async getRegistryStatus(repoName?: string): Promise<MachineRegistryView[]> {
-        let endpoint = 'branch_registry?state=neq.abandoned&machine_id=not.is.null';
-        if (repoName) endpoint += `&repo_name=eq.${encodeURIComponent(repoName)}`;
-        const response = await this.fetch(endpoint);
-        if (!response.ok) throw new Error(`Failed to get registry status: ${await response.text()}`);
-        const rows = await response.json() as (SupabaseBranchRow & { machine_id?: string; machine_name?: string; repo_name?: string })[];
-
-        const byMachine = new Map<string, typeof rows>();
-        for (const row of rows) {
-            const mid = row.machine_id || 'unknown';
-            if (!byMachine.has(mid)) byMachine.set(mid, []);
-            byMachine.get(mid)!.push(row);
-        }
-
-        return Array.from(byMachine.entries()).map(([machineId, machineRows]) => ({
-            machine_id: machineId,
-            machine_name: machineRows[0].machine_name || machineId,
-            hostname: (machineRows[0] as unknown as { hostname?: string }).hostname || 'unknown',
-            repo_name: machineRows[0].repo_name || repoName || 'unknown',
-            repo_path: (machineRows[0] as unknown as { repo_path?: string }).repo_path || '',
-            branches: machineRows.map(r => this.rowToBranch(r)),
-            last_synced: machineRows.reduce((latest, r) => r.updated_at > latest ? r.updated_at : latest, ''),
+        // Upsert each branch
+        const rows = branches.map(b => ({
+            machine_id: machine.id,
+            machine_name: machine.name,
+            hostname: machine.hostname,
+            repo_path: repoPath,
+            repo_name: repoName,
+            branch_name: b.name,
+            files: b.files,
+            agent: b.agent || null,
+            description: b.description || null,
+            status: b.status,
+            synced_at: new Date().toISOString(),
         }));
-    }
 
-    /**
-     * Store GitHub branch inventory (F2). Gracefully skips if table doesn't exist.
-     */
-    async pushGitHubBranches(branches: unknown[]): Promise<number> {
-        try {
-            const response = await this.fetch('spider_github_branches', {
-                method: 'POST',
-                body: JSON.stringify(branches),
-            });
+        if (rows.length > 0) {
+            const response = await this.fetch(
+                'spider_registries?on_conflict=machine_id,repo_name,branch_name',
+                {
+                    method: 'POST',
+                    headers: { 'Prefer': 'resolution=merge-duplicates,return=representation' },
+                    body: JSON.stringify(rows),
+                },
+            );
+
             if (!response.ok) {
                 const text = await response.text();
-                if (text.includes('does not exist') || text.includes('relation')) {
-                    return 0; // Table not yet created — migration pending
-                }
-                throw new Error(`Failed to push GitHub branches: ${text}`);
+                result.errors.push(`Push failed: ${text}`);
+                return result;
             }
-            return branches.length;
-        } catch (err) {
-            if (err instanceof Error && err.message.includes('migration pending')) return 0;
-            throw err;
+
+            result.pushed = rows.filter(r => r.status === 'active').length;
+            result.updated = rows.length - result.pushed;
         }
+
+        // Mark branches that exist in Supabase for this machine+repo but not locally
+        const localNames = new Set(branches.map(b => b.name));
+        const existingResp = await this.fetch(
+            `spider_registries?machine_id=eq.${encodeURIComponent(machine.id)}` +
+            `&repo_name=eq.${encodeURIComponent(repoName)}` +
+            `&status=eq.active&select=branch_name`,
+        );
+
+        if (existingResp.ok) {
+            const existing = await existingResp.json() as Array<{ branch_name: string }>;
+            const toAbandon = existing.filter(e => !localNames.has(e.branch_name));
+
+            for (const row of toAbandon) {
+                await this.fetch(
+                    `spider_registries?machine_id=eq.${encodeURIComponent(machine.id)}` +
+                    `&repo_name=eq.${encodeURIComponent(repoName)}` +
+                    `&branch_name=eq.${encodeURIComponent(row.branch_name)}`,
+                    {
+                        method: 'PATCH',
+                        body: JSON.stringify({ status: 'abandoned', synced_at: new Date().toISOString() }),
+                    },
+                );
+                result.abandoned++;
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Pull other machines' registries for a repo (read-only view).
+     */
+    async pullRegistries(repoName: string, excludeMachine?: string): Promise<MachineRegistryView[]> {
+        let query = `spider_registries?repo_name=eq.${encodeURIComponent(repoName)}&status=eq.active&order=synced_at.desc`;
+        if (excludeMachine) {
+            query += `&machine_id=neq.${encodeURIComponent(excludeMachine)}`;
+        }
+
+        const response = await this.fetch(query);
+        if (!response.ok) throw new Error(`Pull failed: ${await response.text()}`);
+
+        const rows = await response.json() as SpiderRegistry[];
+
+        // Group by machine
+        const byMachine = new Map<string, MachineRegistryView>();
+        for (const row of rows) {
+            if (!byMachine.has(row.machine_id)) {
+                byMachine.set(row.machine_id, {
+                    machine_id: row.machine_id,
+                    machine_name: row.machine_name,
+                    hostname: row.hostname,
+                    branches: [],
+                    last_sync: row.synced_at,
+                });
+            }
+            const view = byMachine.get(row.machine_id)!;
+            view.branches.push(row);
+            if (row.synced_at > view.last_sync) {
+                view.last_sync = row.synced_at;
+            }
+        }
+
+        return Array.from(byMachine.values());
+    }
+
+    /**
+     * Get sync status across all machines for a repo (or all repos).
+     */
+    async getRegistryStatus(repoName?: string): Promise<RegistryStatus[]> {
+        let query = 'spider_registries?select=machine_id,machine_name,hostname,repo_name,status,synced_at';
+        if (repoName) {
+            query += `&repo_name=eq.${encodeURIComponent(repoName)}`;
+        }
+
+        const response = await this.fetch(query);
+        if (!response.ok) throw new Error(`Status failed: ${await response.text()}`);
+
+        const rows = await response.json() as SpiderRegistry[];
+
+        // Aggregate by machine
+        const byMachine = new Map<string, RegistryStatus>();
+        for (const row of rows) {
+            if (!byMachine.has(row.machine_id)) {
+                byMachine.set(row.machine_id, {
+                    machine_id: row.machine_id,
+                    machine_name: row.machine_name,
+                    hostname: row.hostname,
+                    branch_count: 0,
+                    active_count: 0,
+                    last_sync: row.synced_at,
+                    repos: [],
+                });
+            }
+            const status = byMachine.get(row.machine_id)!;
+            status.branch_count++;
+            if (row.status === 'active') status.active_count++;
+            if (row.synced_at > status.last_sync) status.last_sync = row.synced_at;
+            if (!status.repos.includes(row.repo_name)) status.repos.push(row.repo_name);
+        }
+
+        return Array.from(byMachine.values());
     }
 
 }

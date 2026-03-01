@@ -17,6 +17,8 @@ export { configCommand } from './config.js';
 export { autoCommand } from './auto.js';
 export { welcomeCommand } from './welcome.js';
 export { rebaseHelperCommand } from './rebase-helper.js';
+export { registrySyncCommand } from './registry-sync.js';
+export { crossConflictsCommand } from './cross-conflicts.js';
 
 export { loadEcosystemCommands, getEcosystemStatus } from './ecosystem-loader.js';
 

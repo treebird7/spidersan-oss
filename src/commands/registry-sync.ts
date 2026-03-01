@@ -140,12 +140,12 @@ export const registrySyncCommand = new Command('registry-sync')
 
             for (const view of views) {
                 console.log(`  📡 ${view.machine_name} (${view.hostname}) — ${view.branches.length} branch(es)`);
-                console.log(`     Last sync: ${new Date(view.last_synced).toLocaleString()}\n`);
+                console.log(`     Last sync: ${new Date(view.last_sync).toLocaleString()}\n`);
 
                 for (const branch of view.branches) {
                     const files = branch.files.length > 0 ? ` [${branch.files.length} files]` : '';
                     const agent = branch.agent ? ` (${branch.agent})` : '';
-                    console.log(`     • ${branch.name}${agent}${files}`);
+                    console.log(`     • ${branch.branch_name}${agent}${files}`);
                     if (branch.description) {
                         console.log(`       ${branch.description}`);
                     }
@@ -171,15 +171,13 @@ export const registrySyncCommand = new Command('registry-sync')
 
             for (const s of statuses) {
                 const isSelf = s.machine_id === machine.id ? ' ⭐' : '';
-                const repos = s.repo_name;
-                const lastSync = new Date(s.last_synced).toLocaleString();
-                const branchCount = s.branches.length;
-                const activeCount = s.branches.filter(b => b.status === 'active').length;
+                const repos = s.repos.join(', ');
+                const lastSync = new Date(s.last_sync).toLocaleString();
                 console.log(
                     `  ${(s.machine_name + isSelf).padEnd(14)}` +
                     `${s.hostname.padEnd(15)}` +
-                    `${String(branchCount).padEnd(10)}` +
-                    `${String(activeCount).padEnd(8)}` +
+                    `${String(s.branch_count).padEnd(10)}` +
+                    `${String(s.active_count).padEnd(8)}` +
                     `${repos.padEnd(17)}` +
                     `${lastSync}`,
                 );

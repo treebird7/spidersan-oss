@@ -27,13 +27,10 @@ import {
     configCommand,
     autoCommand,
     welcomeCommand,
-    loadEcosystemCommands,
-    getEcosystemStatus,
     registrySyncCommand,
     crossConflictsCommand,
-    githubSyncCommand,
-    syncAdvisorCommand,
-    dashboardCommand,
+    loadEcosystemCommands,
+    getEcosystemStatus,
 } from '../commands/index.js';
 import { checkForUpdates } from '../lib/update-check.js';
 
@@ -104,9 +101,6 @@ program.addCommand(autoCommand);
 program.addCommand(welcomeCommand);
 program.addCommand(registrySyncCommand);
 program.addCommand(crossConflictsCommand);
-program.addCommand(githubSyncCommand);
-program.addCommand(syncAdvisorCommand());
-program.addCommand(dashboardCommand);
 
 async function main(): Promise<void> {
     const ecosystemCommands = await loadEcosystemCommands();
