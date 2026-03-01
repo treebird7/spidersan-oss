@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import * as readline from 'readline';
 import { loadConfig } from '../lib/config.js';
@@ -7,7 +7,8 @@ import { validateAgentId, sanitizeFilePaths, validateFilePath } from '../lib/sec
 
 function getCurrentBranch(): string {
     try {
-        return execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim();
+        // Security: Avoid execSync to prevent shell injection via arbitrary shell characters.
+        return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' }).trim();
     } catch {
         throw new Error('Not in a git repository');
     }
@@ -15,12 +16,19 @@ function getCurrentBranch(): string {
 
 function getChangedFiles(): string[] {
     try {
-        // Get files changed from main or last commit
-        const output = execSync(
-            'git diff --name-only main...HEAD 2>/dev/null || git diff --name-only HEAD~1 2>/dev/null || git diff --name-only HEAD',
-            { encoding: 'utf-8' }
-        );
-        return output.trim().split('\n').filter(Boolean);
+        // Security: Avoid execSync to prevent shell injection. Use cascading try/catch instead of shell `||`.
+        try {
+            const output = execFileSync('git', ['diff', '--name-only', 'main...HEAD'], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+            return output.trim().split('\n').filter(Boolean);
+        } catch {
+            try {
+                const output = execFileSync('git', ['diff', '--name-only', 'HEAD~1'], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+                return output.trim().split('\n').filter(Boolean);
+            } catch {
+                const output = execFileSync('git', ['diff', '--name-only', 'HEAD'], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+                return output.trim().split('\n').filter(Boolean);
+            }
+        }
     } catch {
         return [];
     }
