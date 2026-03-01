@@ -376,14 +376,16 @@ export class SupabaseStorage implements StorageAdapter {
                     machine_id: row.machine_id,
                     machine_name: row.machine_name,
                     hostname: row.hostname,
+                    repo_name: row.repo_name,
+                    repo_path: row.repo_path,
                     branches: [],
-                    last_sync: row.synced_at,
+                    last_synced: row.synced_at,
                 });
             }
             const view = byMachine.get(row.machine_id)!;
-            view.branches.push(row);
-            if (row.synced_at > view.last_sync) {
-                view.last_sync = row.synced_at;
+            view.branches.push(this.rowToBranch(row));
+            if (row.synced_at > view.last_synced) {
+                view.last_synced = row.synced_at;
             }
         }
 
