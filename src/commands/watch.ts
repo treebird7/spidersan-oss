@@ -180,10 +180,14 @@ Press Ctrl+C to stop.
             const allBranches = await storage.list();
             const conflicts: { branch: string; files: string[] }[] = [];
 
+            // ⚡ Bolt: Performance Optimization - Convert registered files to Set for O(1) lookup
+            // Reduces complexity from O(N*M*K) to O(N*M) where N=branches, M=files/branch, K=pending_files
+            const pendingFilesSet = new Set(files);
+
             for (const otherBranch of allBranches) {
                 if (otherBranch.name === branch || otherBranch.status !== 'active') continue;
 
-                const overlapping = files.filter(f => otherBranch.files.includes(f));
+                const overlapping = otherBranch.files.filter(f => pendingFilesSet.has(f));
                 if (overlapping.length > 0) {
                     conflicts.push({ branch: otherBranch.name, files: overlapping });
                 }

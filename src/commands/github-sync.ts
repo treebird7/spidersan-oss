@@ -126,7 +126,7 @@ async function scanRepository(
     return results;
 }
 
-async function storeResults(results: GitHubBranchRow[], supabase: SupabaseStorage): Promise<number> {
+async function storeResults(results: GitHubBranchRow[], supabase: any): Promise<number> {
     try {
         return await supabase.pushGitHubBranches(results);
     } catch (error) {
