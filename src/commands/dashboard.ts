@@ -13,6 +13,7 @@
 import { Command } from 'commander';
 import blessed from 'blessed';
 import { getStorage } from '../storage/index.js';
+import { escapeBlessed } from '../lib/security.js';
 import { loadConfig } from '../lib/config.js';
 import { SupabaseStorage } from '../storage/supabase.js';
 import type { StorageAdapter, Branch } from '../storage/adapter.js';
@@ -64,7 +65,7 @@ async function loadMachineIdentity() {
 function formatBranch(b: Branch): string {
   const icon = b.status === 'active' ? '🟢' : b.status === 'completed' ? '🔵' : '⚪';
   const files = b.files.length > 0 ? ` [${b.files.length}f]` : '';
-  return `${icon} ${b.name.padEnd(30)}${files}`;
+  return `${icon} ${escapeBlessed(b.name).padEnd(30)}${files}`;
 }
 
 function formatConflict(c: Record<string, unknown>): string {
@@ -72,7 +73,7 @@ function formatConflict(c: Record<string, unknown>): string {
   const icon = tier === 3 ? '🔴' : tier === 2 ? '🟠' : '🟡';
   const file = (c.file as string | undefined)?.slice(-40) || 'unknown';
   const count = (c.branches as unknown[])?.length ?? 0;
-  return `${icon} ${file.padEnd(40)} (${count} branches)`;
+  return `${icon} ${escapeBlessed(file).padEnd(40)} (${count} branches)`;
 }
 
 function formatRec(r: Record<string, unknown>): string {
@@ -80,7 +81,7 @@ function formatRec(r: Record<string, unknown>): string {
   const icon = action === 'push' ? '🔴' : action === 'pull' ? '🟠' : action === 'rebase' ? '🟡' : '✅';
   const repo = (r.repo_name as string | undefined)?.padEnd(25) || 'unknown';
   const reason = (r.reason as string | undefined)?.slice(0, 35) || '';
-  return `${icon} ${repo} ${reason}`;
+  return `${icon} ${escapeBlessed(repo)} ${escapeBlessed(reason)}`;
 }
 
 async function refreshState(
@@ -159,7 +160,7 @@ export const dashboardCommand = new Command('dashboard')
       left: 0,
       right: 0,
       height: 3,
-      content: `🕷️  Spidersan Dashboard  |  Machine: ${state.machineName}  |  Refresh: ${options.refresh}s`,
+      content: `🕷️  Spidersan Dashboard  |  Machine: ${escapeBlessed(state.machineName)}  |  Refresh: ${options.refresh}s`,
       style: { bg: 'blue', fg: 'white' },
       padding: 1,
     });
@@ -189,6 +190,7 @@ export const dashboardCommand = new Command('dashboard')
       height: '50%-2',
       border: 'line',
       label: ' Remote Machines ',
+      tags: true,
       scrollable: true,
       keys: true,
       vi: true,
@@ -253,7 +255,7 @@ export const dashboardCommand = new Command('dashboard')
       // Remote machines
       let remoteText = '';
       for (const machine of state.remoteMachines) {
-        remoteText += `{cyan-fg}${machine.machine_name}{/} (${machine.branches.length} branches)\n`;
+        remoteText += `{cyan-fg}${escapeBlessed(machine.machine_name)}{/} (${machine.branches.length} branches)\n`;
         for (const b of machine.branches.slice(0, 5)) {
           remoteText += `  ${formatBranch(b)}\n`;
         }
