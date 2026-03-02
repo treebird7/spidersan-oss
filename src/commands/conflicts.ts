@@ -277,12 +277,20 @@ export const conflictsCommand = new Command('conflicts')
         }
 
         const targetBranch = options.branch || getCurrentBranch();
-        const target = await storage.get(targetBranch);
         const minTier = parseInt(options.tier, 10) as 1 | 2 | 3;
 
         // Load custom patterns from config
         const highSeverity = (config.conflicts?.highSeverityPatterns || []).map(p => new RegExp(p));
         const mediumSeverity = (config.conflicts?.mediumSeverityPatterns || []).map(p => new RegExp(p));
+
+        const allBranches = await storage.list();
+
+        // ⚡ Bolt: Optimize branch metadata retrieval by fetching all branches once via storage.list()
+        // and creating a local Map for O(1) synchronous lookups, avoiding redundant O(N) asynchronous
+        // storage.get() calls within loops and saving an initial network request.
+        const branchesMap = new Map(allBranches.map(b => [b.name, b]));
+
+        const target = branchesMap.get(targetBranch);
 
         if (!target) {
             console.error(`❌ Branch "${targetBranch}" is not registered.`);
@@ -290,7 +298,6 @@ export const conflictsCommand = new Command('conflicts')
             process.exit(1);
         }
 
-        const allBranches = await storage.list();
         const conflicts: Array<{ branch: string; files: string[]; tier: number; tierInfo: ConflictTier }> = [];
 
         // Performance Optimization: Convert target files to Set for O(1) lookup
@@ -444,7 +451,8 @@ export const conflictsCommand = new Command('conflicts')
             // Collect agents to wake
             const agentsToWake = new Map<string, { branch: string; files: string[] }>();
             for (const conflict of conflicts) {
-                const conflictBranch = await storage.get(conflict.branch);
+                // ⚡ Bolt: Use Map for O(1) lookup instead of N+1 storage.get calls
+                const conflictBranch = branchesMap.get(conflict.branch);
                 const agentId = conflictBranch?.agent;
                 if (agentId && !agentsToWake.has(agentId)) {
                     agentsToWake.set(agentId, { branch: conflict.branch, files: conflict.files });

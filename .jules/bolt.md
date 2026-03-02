@@ -13,3 +13,7 @@
 ## 2024-05-22 - AST Traversal Performance
 **Learning:** Replacing recursive `node.child(i)` traversal (which instantiates `SyntaxNode` objects) with iterative `TreeCursor` traversal yielded a ~6x speedup (190ms -> 32ms for 32KB).
 **Action:** Always prefer `tree.walk()` and `TreeCursor` for AST traversal over object-based navigation.
+
+## 2025-05-23 - N+1 storage.get() loops
+**Learning:** Running `storage.get()` inside a loop causes a significant N+1 performance bottleneck by initiating multiple asynchronous network requests.
+**Action:** Optimize branch metadata retrieval by fetching all branches once via `storage.list()` and creating a local Map for O(1) synchronous lookups, avoiding redundant O(N) asynchronous `storage.get()` calls.
