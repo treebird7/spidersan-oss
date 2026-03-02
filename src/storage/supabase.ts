@@ -376,14 +376,24 @@ export class SupabaseStorage implements StorageAdapter {
                     machine_id: row.machine_id,
                     machine_name: row.machine_name,
                     hostname: row.hostname,
+                    repo_name: row.repo_name,
+                    repo_path: row.repo_path,
                     branches: [],
-                    last_sync: row.synced_at,
+                    last_synced: row.synced_at,
                 });
             }
             const view = byMachine.get(row.machine_id)!;
-            view.branches.push(row);
-            if (row.synced_at > view.last_sync) {
-                view.last_sync = row.synced_at;
+            // Map SpiderRegistry row → Branch shape
+            view.branches.push({
+                name: row.branch_name,
+                files: row.files ?? [],
+                agent: row.agent ?? undefined,
+                description: row.description ?? undefined,
+                status: row.status === 'merged' ? 'completed' : row.status,
+                registeredAt: new Date(row.created_at),
+            });
+            if (row.synced_at > view.last_synced) {
+                view.last_synced = row.synced_at;
             }
         }
 
@@ -426,6 +436,27 @@ export class SupabaseStorage implements StorageAdapter {
         }
 
         return Array.from(byMachine.values());
+    }
+
+    /**
+     * Upsert GitHub branch inventory rows (F2).
+     * Gracefully skips if the spider_github_branches table doesn't exist.
+     */
+    async pushGitHubBranches(rows: unknown[]): Promise<number> {
+        const response = await this.fetch('spider_github_branches', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' },
+            body: JSON.stringify(rows),
+        });
+        if (!response.ok) {
+            const msg = await response.text();
+            if (msg.includes('does not exist') || msg.includes('42P01')) {
+                // Table not yet created — skip gracefully
+                return 0;
+            }
+            throw new Error(`pushGitHubBranches failed: ${msg}`);
+        }
+        return rows.length;
     }
 
 }

@@ -29,6 +29,9 @@ import {
     welcomeCommand,
     registrySyncCommand,
     crossConflictsCommand,
+    githubSyncCommand,
+    syncAdvisorCommand,
+    dashboardCommand,
     loadEcosystemCommands,
     getEcosystemStatus,
 } from '../commands/index.js';
@@ -101,6 +104,9 @@ program.addCommand(autoCommand);
 program.addCommand(welcomeCommand);
 program.addCommand(registrySyncCommand);
 program.addCommand(crossConflictsCommand);
+program.addCommand(githubSyncCommand);
+program.addCommand(syncAdvisorCommand());
+program.addCommand(dashboardCommand);
 
 async function main(): Promise<void> {
     const ecosystemCommands = await loadEcosystemCommands();
