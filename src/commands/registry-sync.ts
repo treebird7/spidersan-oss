@@ -12,6 +12,7 @@ import { join, basename } from 'path';
 import { homedir } from 'os';
 import { execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
+import { LocalStorage } from '../storage/local.js';
 import { SupabaseStorage } from '../storage/supabase.js';
 import { loadConfig } from '../lib/config.js';
 import type { MachineIdentity } from '../types/cloud.js';
@@ -102,7 +103,7 @@ export const registrySyncCommand = new Command('registry-sync')
         if (options.push) {
             console.log(`🕷️ Pushing registry from ${machine.name} (${repoName})...\n`);
 
-            const localStorage = await getStorage();
+            const localStorage = new LocalStorage();
             if (!await localStorage.isInitialized()) {
                 console.error('❌ Spidersan not initialized. Run: spidersan init');
                 process.exit(1);
