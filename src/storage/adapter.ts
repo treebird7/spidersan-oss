@@ -64,5 +64,5 @@ export interface StorageAdapter {
     /**
      * Clean up old branches
      */
-    cleanup(olderThan: Date): Promise<number>;
+    cleanup(olderThan: Date): Promise<string[]>;
 }

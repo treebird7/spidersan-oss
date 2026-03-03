@@ -5,16 +5,195 @@
  */
 
 import { Command } from 'commander';
-import { existsSync, statSync, readFileSync, readdirSync } from 'fs';
-import { execSync } from 'child_process';
+import { existsSync, statSync, readFileSync, readdirSync, type Dirent } from 'fs';
+import { execSync, execFileSync } from 'child_process';
 import { homedir } from 'os';
-import { join } from 'path';
+import { basename, join } from 'path';
 import { getStorage } from '../storage/index.js';
 
 interface Check {
     name: string;
     status: 'ok' | 'warn' | 'error';
     message: string;
+}
+
+type RemoteStatus = 'up-to-date' | 'ahead' | 'behind' | 'diverged' | 'unrelated' | 'no remote tracking';
+type RemoteRecommendation = 'push' | 'pull' | 'merge needed' | 'ok';
+
+interface RemoteHealthRow {
+    repo: string;
+    status: RemoteStatus;
+    ahead: number | null;
+    behind: number | null;
+    recommendation: RemoteRecommendation;
+}
+
+const REMOTE_SCAN_SKIP_DIRS = new Set([
+    'node_modules',
+    'dist',
+    'build',
+    '.cache',
+    '.next',
+]);
+
+function parseCount(value: string): number {
+    const parsed = Number.parseInt(value.trim(), 10);
+    return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function formatCount(value: number | null): string {
+    return value === null ? '-' : String(value);
+}
+
+function isGitRepository(repoPath: string): boolean {
+    try {
+        const result = execFileSync('git', ['rev-parse', '--is-inside-work-tree'], {
+            cwd: repoPath,
+            encoding: 'utf-8',
+            stdio: 'pipe',
+        }).trim();
+        return result === 'true';
+    } catch {
+        return false;
+    }
+}
+
+function findInitializedRepos(basePath: string, maxDepth = 3): string[] {
+    const repos = new Set<string>();
+
+    function walk(currentPath: string, depth: number): void {
+        if (depth > maxDepth) return;
+
+        let entries: Dirent<string>[];
+        try {
+            entries = readdirSync(currentPath, { withFileTypes: true });
+        } catch {
+            return;
+        }
+
+        for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+            if (entry.name.startsWith('.')) continue;
+            if (REMOTE_SCAN_SKIP_DIRS.has(entry.name)) continue;
+
+            const fullPath = join(currentPath, entry.name);
+            const registryPath = join(fullPath, '.spidersan', 'registry.json');
+
+            if (existsSync(registryPath)) {
+                if (isGitRepository(fullPath)) {
+                    repos.add(fullPath);
+                }
+                continue;
+            }
+
+            walk(fullPath, depth + 1);
+        }
+    }
+
+    walk(basePath, 0);
+    return Array.from(repos).sort((a, b) => basename(a).localeCompare(basename(b)));
+}
+
+function getRemoteHealthForRepo(repoPath: string): RemoteHealthRow {
+    const repo = basename(repoPath);
+
+    try {
+        const upstream = execFileSync('git', ['rev-parse', '--abbrev-ref', '@{u}'], {
+            cwd: repoPath,
+            encoding: 'utf-8',
+            stdio: 'pipe',
+        }).trim();
+        const remote = upstream.split('/')[0] || 'origin';
+
+        try {
+            execFileSync('git', ['fetch', '--quiet', remote], {
+                cwd: repoPath,
+                encoding: 'utf-8',
+                stdio: 'pipe',
+            });
+        } catch {
+            // Continue with locally known remote refs if fetch fails.
+        }
+
+        let mergeBase = '';
+        try {
+            mergeBase = execFileSync('git', ['merge-base', 'HEAD', '@{u}'], {
+                cwd: repoPath,
+                encoding: 'utf-8',
+                stdio: 'pipe',
+            }).trim();
+        } catch {
+            mergeBase = '';
+        }
+
+        if (!mergeBase) {
+            return {
+                repo,
+                status: 'unrelated',
+                ahead: null,
+                behind: null,
+                recommendation: 'merge needed',
+            };
+        }
+
+        const behind = parseCount(execFileSync('git', ['rev-list', '--count', 'HEAD..@{u}'], {
+            cwd: repoPath,
+            encoding: 'utf-8',
+            stdio: 'pipe',
+        }));
+        const ahead = parseCount(execFileSync('git', ['rev-list', '--count', '@{u}..HEAD'], {
+            cwd: repoPath,
+            encoding: 'utf-8',
+            stdio: 'pipe',
+        }));
+
+        if (ahead === 0 && behind === 0) {
+            return { repo, status: 'up-to-date', ahead, behind, recommendation: 'ok' };
+        }
+        if (ahead > 0 && behind > 0) {
+            return { repo, status: 'diverged', ahead, behind, recommendation: 'merge needed' };
+        }
+        if (ahead > 0) {
+            return { repo, status: 'ahead', ahead, behind, recommendation: 'push' };
+        }
+        return { repo, status: 'behind', ahead, behind, recommendation: 'pull' };
+    } catch {
+        return {
+            repo,
+            status: 'no remote tracking',
+            ahead: null,
+            behind: null,
+            recommendation: 'ok',
+        };
+    }
+}
+
+function getRemoteHealthRows(basePath: string): RemoteHealthRow[] {
+    return findInitializedRepos(basePath).map(getRemoteHealthForRepo);
+}
+
+function hasStrictRemoteFailure(rows: RemoteHealthRow[]): boolean {
+    return rows.some(row => row.status === 'diverged' || row.status === 'unrelated');
+}
+
+function formatRemoteTable(rows: RemoteHealthRow[]): string[] {
+    const repoWidth = Math.max('repo'.length, ...rows.map(row => row.repo.length));
+    const statusWidth = Math.max('status'.length, ...rows.map(row => row.status.length));
+    const aheadWidth = Math.max('ahead'.length, ...rows.map(row => formatCount(row.ahead).length));
+    const behindWidth = Math.max('behind'.length, ...rows.map(row => formatCount(row.behind).length));
+    const recWidth = Math.max('recommendation'.length, ...rows.map(row => row.recommendation.length));
+
+    const header = `  ${'repo'.padEnd(repoWidth)} | ${'status'.padEnd(statusWidth)} | ` +
+        `${'ahead'.padEnd(aheadWidth)} | ${'behind'.padEnd(behindWidth)} | ${'recommendation'.padEnd(recWidth)}`;
+    const divider = `  ${'-'.repeat(repoWidth)}-+-${'-'.repeat(statusWidth)}-+-${'-'.repeat(aheadWidth)}-+-` +
+        `${'-'.repeat(behindWidth)}-+-${'-'.repeat(recWidth)}`;
+    const body = rows.map((row) =>
+        `  ${row.repo.padEnd(repoWidth)} | ${row.status.padEnd(statusWidth)} | ` +
+        `${formatCount(row.ahead).padEnd(aheadWidth)} | ${formatCount(row.behind).padEnd(behindWidth)} | ` +
+        `${row.recommendation.padEnd(recWidth)}`
+    );
+
+    return [header, divider, ...body];
 }
 
 function checkGitContext(): Check {
@@ -241,9 +420,9 @@ function checkEmfileLimit(): Check {
 
 function checkWatcherStatus(): Check {
     try {
-        // macOS ps command to find running node process with 'spidersan watch'
-        const output = execSync('ps aux | grep "spidersan watch" | grep -v grep', { encoding: 'utf-8' });
-        if (output.trim()) {
+        const output = execFileSync('ps', ['aux'], { encoding: 'utf-8', stdio: 'pipe' });
+        const hasWatcher = output.split('\n').some((line) => line.includes('spidersan watch'));
+        if (hasWatcher) {
             return { name: 'Watcher Daemon', status: 'ok', message: 'Running' };
         }
         return { name: 'Watcher Daemon', status: 'warn', message: 'Not running (run: spidersan watch)' };
@@ -265,7 +444,55 @@ function checkNodeVersion(): Check {
 export const doctorCommand = new Command('doctor')
     .description('Diagnose common Spidersan issues')
     .option('--json', 'Output as JSON')
+    .option('--remote', 'Check remote sync health across initialized repositories')
+    .option('--strict', 'With --remote, exit 1 if any repository is diverged')
     .action(async (options) => {
+        if (options.remote) {
+            const basePath = join(homedir(), 'Dev');
+            const remoteRows = getRemoteHealthRows(basePath);
+            const strictFailure = options.strict && hasStrictRemoteFailure(remoteRows);
+
+            if (options.json) {
+                console.log(JSON.stringify(remoteRows, null, 2));
+                if (strictFailure) {
+                    process.exit(1);
+                }
+                return;
+            }
+
+            console.log(`\n🕷️ Remote Sync Health — ${remoteRows.length} repos checked\n`);
+
+            if (remoteRows.length === 0) {
+                console.log('  ⚠️  No initialized repositories found under ~/Dev');
+                console.log('');
+                return;
+            }
+
+            for (const line of formatRemoteTable(remoteRows)) {
+                console.log(line);
+            }
+
+            const pushNeeded = remoteRows.filter(row => row.recommendation === 'push').length;
+            const pullNeeded = remoteRows.filter(row => row.recommendation === 'pull').length;
+            const mergeNeeded = remoteRows.filter(row => row.recommendation === 'merge needed').length;
+            const upToDate = remoteRows.filter(row => row.status === 'up-to-date').length;
+            const noTracking = remoteRows.filter(row => row.status === 'no remote tracking').length;
+
+            console.log('');
+            console.log(
+                `Summary: ${pushNeeded} push needed, ${pullNeeded} pull needed, ` +
+                `${mergeNeeded} merge needed, ${upToDate} up-to-date, ${noTracking} no remote tracking`
+            );
+
+            if (strictFailure) {
+                console.log('❌ Strict mode: diverged/unrelated repositories found');
+                process.exit(1);
+            }
+
+            console.log('');
+            return;
+        }
+
         const checks: Check[] = [
             checkGitContext(),
             checkLocalStorage(),
@@ -307,3 +534,11 @@ export const doctorCommand = new Command('doctor')
         }
         console.log('');
     });
+
+export const _doctorTestable = {
+    findInitializedRepos,
+    getRemoteHealthForRepo,
+    getRemoteHealthRows,
+    hasStrictRemoteFailure,
+    formatRemoteTable,
+};

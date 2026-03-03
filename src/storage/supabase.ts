@@ -218,19 +218,24 @@ export class SupabaseStorage implements StorageAdapter {
         return rows.map(r => this.rowToBranch(r));
     }
 
-    async cleanup(_olderThan: Date): Promise<number> {
-        const response = await this.fetch('stale_branches?select=id');
-        if (!response.ok) throw new Error(`Failed to get stale: ${await response.text()}`);
+    async cleanup(olderThan: Date): Promise<string[]> {
+        const isoDate = olderThan.toISOString();
+        const response = await this.fetch(`branch_registry?select=id,branch_name&state=eq.active&created_at=lt.${encodeURIComponent(isoDate)}`);
+        if (!response.ok) throw new Error(`Failed to get stale branches: ${await response.text()}`);
 
-        const rows = await response.json() as { id: string }[];
-        if (rows.length === 0) return 0;
+        const rows = await response.json() as { id: string; branch_name: string }[];
+        if (rows.length === 0) return [];
 
         const ids = rows.map(r => r.id);
-        await this.fetch(`branch_registry?id=in.(${ids.join(',')})`, {
+        const names = rows.map(r => r.branch_name);
+
+        const patchResponse = await this.fetch(`branch_registry?id=in.(${ids.join(',')})`, {
             method: 'PATCH',
             body: JSON.stringify({ state: 'abandoned', updated_at: new Date().toISOString() }),
         });
-        return rows.length;
+        if (!patchResponse.ok) throw new Error(`Failed to cleanup branches: ${await patchResponse.text()}`);
+
+        return names;
     }
 
     // Extended Supabase-specific methods
@@ -274,8 +279,9 @@ export class SupabaseStorage implements StorageAdapter {
     // ─── F1: Registry Sync (cross-machine awareness) ───
 
     /**
-     * Push local branches to spider_registries table, tagged with machine identity.
-     * Uses upsert (ON CONFLICT UPDATE) to handle repeated pushes.
+     * Push local branches to branch_registry table, stamping machine identity columns.
+     * For branches NOT already in Supabase, skip (they're local-only).
+     * For rows in Supabase with this machine_id that are no longer local, PATCH state to 'abandoned'.
      */
     async pushRegistry(
         machine: MachineIdentity,
@@ -284,63 +290,58 @@ export class SupabaseStorage implements StorageAdapter {
         branches: Branch[],
     ): Promise<RegistrySyncResult> {
         const result: RegistrySyncResult = { pushed: 0, updated: 0, abandoned: 0, errors: [] };
+        const now = new Date().toISOString();
 
-        // Upsert each branch
-        const rows = branches.map(b => ({
-            machine_id: machine.id,
-            machine_name: machine.name,
-            hostname: machine.hostname,
-            repo_path: repoPath,
-            repo_name: repoName,
-            branch_name: b.name,
-            files: b.files,
-            agent: b.agent || null,
-            description: b.description || null,
-            status: b.status,
-            synced_at: new Date().toISOString(),
-        }));
-
-        if (rows.length > 0) {
-            const response = await this.fetch(
-                'spider_registries?on_conflict=machine_id,repo_name,branch_name',
+        // Upsert each local branch into branch_registry with machine identity stamped
+        for (const b of branches) {
+            const row = {
+                branch_name: b.name,
+                machine_id: machine.id,
+                machine_name: machine.name,
+                hostname: machine.hostname,
+                repo_name: repoName,
+                repo_path: repoPath,
+                state: b.status === 'completed' ? 'merged' : b.status,
+                files_changed: b.files,
+                created_by_session: `${machine.name}-sync`,
+                created_by_agent: b.agent || machine.name,
+                description: b.description || null,
+                parent_branch: 'main',
+                updated_at: now,
+            };
+            const upsertResp = await this.fetch(
+                `branch_registry?on_conflict=branch_name`,
                 {
                     method: 'POST',
-                    headers: { 'Prefer': 'resolution=merge-duplicates,return=representation' },
-                    body: JSON.stringify(rows),
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Prefer': 'resolution=merge-duplicates',
+                    },
+                    body: JSON.stringify(row),
                 },
             );
-
-            if (!response.ok) {
-                const text = await response.text();
-                result.errors.push(`Push failed: ${text}`);
-                return result;
+            if (upsertResp.ok) {
+                if (b.status === 'active') result.pushed++;
+                else result.updated++;
+            } else {
+                result.errors.push(`Failed to upsert ${b.name}: ${await upsertResp.text()}`);
             }
-
-            result.pushed = rows.filter(r => r.status === 'active').length;
-            result.updated = rows.length - result.pushed;
         }
 
-        // Mark branches that exist in Supabase for this machine+repo but not locally
+        // Mark branches tagged with this machine_id that are no longer local as abandoned
         const localNames = new Set(branches.map(b => b.name));
         const existingResp = await this.fetch(
-            `spider_registries?machine_id=eq.${encodeURIComponent(machine.id)}` +
+            `branch_registry?machine_id=eq.${encodeURIComponent(machine.id)}` +
             `&repo_name=eq.${encodeURIComponent(repoName)}` +
-            `&status=eq.active&select=branch_name`,
+            `&state=eq.active&select=branch_name`,
         );
-
         if (existingResp.ok) {
             const existing = await existingResp.json() as Array<{ branch_name: string }>;
-            const toAbandon = existing.filter(e => !localNames.has(e.branch_name));
-
-            for (const row of toAbandon) {
+            for (const row of existing.filter(e => !localNames.has(e.branch_name))) {
                 await this.fetch(
-                    `spider_registries?machine_id=eq.${encodeURIComponent(machine.id)}` +
-                    `&repo_name=eq.${encodeURIComponent(repoName)}` +
+                    `branch_registry?machine_id=eq.${encodeURIComponent(machine.id)}` +
                     `&branch_name=eq.${encodeURIComponent(row.branch_name)}`,
-                    {
-                        method: 'PATCH',
-                        body: JSON.stringify({ status: 'abandoned', synced_at: new Date().toISOString() }),
-                    },
+                    { method: 'PATCH', body: JSON.stringify({ state: 'abandoned', updated_at: now }) },
                 );
                 result.abandoned++;
             }
@@ -353,7 +354,7 @@ export class SupabaseStorage implements StorageAdapter {
      * Pull other machines' registries for a repo (read-only view).
      */
     async pullRegistries(repoName: string, excludeMachine?: string): Promise<MachineRegistryView[]> {
-        let query = `spider_registries?repo_name=eq.${encodeURIComponent(repoName)}&status=eq.active&order=synced_at.desc`;
+        let query = `branch_registry?machine_id=not.is.null&repo_name=eq.${encodeURIComponent(repoName)}&state=eq.active&order=updated_at.desc`;
         if (excludeMachine) {
             query += `&machine_id=neq.${encodeURIComponent(excludeMachine)}`;
         }
@@ -361,9 +362,14 @@ export class SupabaseStorage implements StorageAdapter {
         const response = await this.fetch(query);
         if (!response.ok) throw new Error(`Pull failed: ${await response.text()}`);
 
-        const rows = await response.json() as SpiderRegistry[];
+        const rows = await response.json() as Array<{
+            branch_name: string; state: string; files_changed: string[] | null;
+            created_by_agent: string | null; description: string | null;
+            created_at: string; updated_at: string;
+            machine_id: string; machine_name: string; hostname: string;
+            repo_name: string; repo_path: string;
+        }>;
 
-        // Group by machine
         const byMachine = new Map<string, MachineRegistryView>();
         for (const row of rows) {
             if (!byMachine.has(row.machine_id)) {
@@ -371,17 +377,22 @@ export class SupabaseStorage implements StorageAdapter {
                     machine_id: row.machine_id,
                     machine_name: row.machine_name,
                     hostname: row.hostname,
-                    repo_name: row.repo_name ?? '',
-                    repo_path: row.repo_path ?? '',
+                    repo_name: row.repo_name,
+                    repo_path: row.repo_path,
                     branches: [],
-                    last_synced: row.synced_at,
+                    last_synced: row.updated_at,
                 });
             }
             const view = byMachine.get(row.machine_id)!;
-            view.branches.push(row as any);
-            if (row.synced_at > view.last_synced) {
-                view.last_synced = row.synced_at;
-            }
+            view.branches.push({
+                name: row.branch_name,
+                files: row.files_changed ?? [],
+                agent: row.created_by_agent ?? undefined,
+                description: row.description ?? undefined,
+                status: row.state === 'merged' ? 'completed' : (row.state as Branch['status']),
+                registeredAt: new Date(row.created_at),
+            });
+            if (row.updated_at > view.last_synced) view.last_synced = row.updated_at;
         }
 
         return Array.from(byMachine.values());
@@ -391,17 +402,17 @@ export class SupabaseStorage implements StorageAdapter {
      * Get sync status across all machines for a repo (or all repos).
      */
     async getRegistryStatus(repoName?: string): Promise<RegistryStatus[]> {
-        let query = 'spider_registries?select=machine_id,machine_name,hostname,repo_name,status,synced_at';
-        if (repoName) {
-            query += `&repo_name=eq.${encodeURIComponent(repoName)}`;
-        }
+        let query = 'branch_registry?machine_id=not.is.null&select=machine_id,machine_name,hostname,repo_name,state,updated_at';
+        if (repoName) query += `&repo_name=eq.${encodeURIComponent(repoName)}`;
 
         const response = await this.fetch(query);
         if (!response.ok) throw new Error(`Status failed: ${await response.text()}`);
 
-        const rows = await response.json() as SpiderRegistry[];
+        const rows = await response.json() as Array<{
+            machine_id: string; machine_name: string; hostname: string;
+            repo_name: string; state: string; updated_at: string;
+        }>;
 
-        // Aggregate by machine
         const byMachine = new Map<string, RegistryStatus>();
         for (const row of rows) {
             if (!byMachine.has(row.machine_id)) {
@@ -411,18 +422,39 @@ export class SupabaseStorage implements StorageAdapter {
                     hostname: row.hostname,
                     branch_count: 0,
                     active_count: 0,
-                    last_sync: row.synced_at,
+                    last_sync: row.updated_at,
                     repos: [],
                 });
             }
             const status = byMachine.get(row.machine_id)!;
             status.branch_count++;
-            if (row.status === 'active') status.active_count++;
-            if (row.synced_at > status.last_sync) status.last_sync = row.synced_at;
+            if (row.state === 'active') status.active_count++;
+            if (row.updated_at > status.last_sync) status.last_sync = row.updated_at;
             if (!status.repos.includes(row.repo_name)) status.repos.push(row.repo_name);
         }
 
         return Array.from(byMachine.values());
+    }
+
+    /**
+     * Upsert GitHub branch inventory rows (F2).
+     * Gracefully skips if the spider_github_branches table doesn't exist.
+     */
+    async pushGitHubBranches(rows: unknown[]): Promise<number> {
+        const response = await this.fetch('spider_github_branches', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' },
+            body: JSON.stringify(rows),
+        });
+        if (!response.ok) {
+            const msg = await response.text();
+            if (msg.includes('does not exist') || msg.includes('42P01')) {
+                // Table not yet created — skip gracefully
+                return 0;
+            }
+            throw new Error(`pushGitHubBranches failed: ${msg}`);
+        }
+        return rows.length;
     }
 
 }
