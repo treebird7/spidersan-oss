@@ -28,3 +28,6 @@ export { syncAdvisorCommand } from './sync-advisor.js';
 
 // F5: TUI Dashboard
 export { dashboardCommand } from './dashboard.js';
+
+// L1: Activity Log
+export { logCommand } from './log.js';

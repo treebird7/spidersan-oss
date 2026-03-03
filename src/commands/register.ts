@@ -4,6 +4,7 @@ import { getStorage } from '../storage/index.js';
 import * as readline from 'readline';
 import { loadConfig } from '../lib/config.js';
 import { validateAgentId, sanitizeFilePaths, validateFilePath } from '../lib/security.js';
+import { logActivity } from '../lib/activity.js';
 
 function getCurrentBranch(): string {
     try {
@@ -153,6 +154,7 @@ export const registerCommand = new Command('register')
                 agent: resolvedAgent ?? existing.agent,
             });
             console.log(`🕷️ Updated branch: ${branchName}`);
+            logActivity({ event: 'register', branch: branchName, agent: resolvedAgent ?? undefined, details: { files, description: options.description, updated: true } });
         } else {
             // New registration
             await storage.register({
@@ -163,6 +165,7 @@ export const registerCommand = new Command('register')
                 agent: resolvedAgent,
             });
             console.log(`🕷️ Registered branch: ${branchName}`);
+            logActivity({ event: 'register', branch: branchName, agent: resolvedAgent ?? undefined, details: { files, description: options.description } });
         }
 
         if (files.length > 0) {

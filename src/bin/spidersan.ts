@@ -32,6 +32,7 @@ import {
     githubSyncCommand,
     syncAdvisorCommand,
     dashboardCommand,
+    logCommand,
     loadEcosystemCommands,
     getEcosystemStatus,
 } from '../commands/index.js';
@@ -107,6 +108,7 @@ program.addCommand(crossConflictsCommand);
 program.addCommand(githubSyncCommand);
 program.addCommand(syncAdvisorCommand());
 program.addCommand(dashboardCommand);
+logCommand(program);
 
 async function main(): Promise<void> {
     const ecosystemCommands = await loadEcosystemCommands();

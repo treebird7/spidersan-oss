@@ -7,6 +7,7 @@
 import { Command } from 'commander';
 import { execSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
+import { logActivity } from '../lib/activity.js';
 
 function getCurrentBranch(): string {
     try {
@@ -37,6 +38,7 @@ export const mergedCommand = new Command('merged')
         }
 
         await storage.update(branchName, { status: 'completed' });
+        logActivity({ event: 'merge', branch: branchName, agent: branch.agent ?? undefined, details: { pr_number: options.pr } });
 
         console.log(`🕷️ Marked as merged: ${branchName}`);
         if (options.pr) {

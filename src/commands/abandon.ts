@@ -7,6 +7,7 @@
 import { Command } from 'commander';
 import { execSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
+import { logActivity } from '../lib/activity.js';
 
 function getCurrentBranch(): string {
     try {
@@ -47,6 +48,7 @@ export const abandonCommand = new Command('abandon')
         const success = await storage.unregister(branchName);
 
         if (success) {
+            logActivity({ event: 'abandon', branch: branchName, details: {} });
             console.log(`🕷️ Abandoned: ${branchName}`);
         } else {
             console.error(`❌ Failed to abandon "${branchName}".`);
