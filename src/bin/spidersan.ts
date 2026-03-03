@@ -33,6 +33,7 @@ import {
     syncAdvisorCommand,
     dashboardCommand,
     logCommand,
+    dailyCommand,
     loadEcosystemCommands,
     getEcosystemStatus,
 } from '../commands/index.js';
@@ -109,6 +110,7 @@ program.addCommand(githubSyncCommand);
 program.addCommand(syncAdvisorCommand());
 program.addCommand(dashboardCommand);
 logCommand(program);
+dailyCommand(program);
 
 async function main(): Promise<void> {
     const ecosystemCommands = await loadEcosystemCommands();

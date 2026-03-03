@@ -31,3 +31,6 @@ export { dashboardCommand } from './dashboard.js';
 
 // L1: Activity Log
 export { logCommand } from './log.js';
+
+// L2: Daily Bridge
+export { dailyCommand } from './daily.js';
