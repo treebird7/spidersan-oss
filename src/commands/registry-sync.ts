@@ -12,6 +12,7 @@ import { join, basename } from 'path';
 import { homedir } from 'os';
 import { execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
+import { LocalStorage } from '../storage/local.js';
 import { SupabaseStorage } from '../storage/supabase.js';
 import { loadConfig } from '../lib/config.js';
 import type { MachineIdentity } from '../types/cloud.js';
@@ -102,7 +103,7 @@ export const registrySyncCommand = new Command('registry-sync')
         if (options.push) {
             console.log(`🕷️ Pushing registry from ${machine.name} (${repoName})...\n`);
 
-            const localStorage = await getStorage();
+            const localStorage = new LocalStorage();
             if (!await localStorage.isInitialized()) {
                 console.error('❌ Spidersan not initialized. Run: spidersan init');
                 process.exit(1);
@@ -140,12 +141,12 @@ export const registrySyncCommand = new Command('registry-sync')
 
             for (const view of views) {
                 console.log(`  📡 ${view.machine_name} (${view.hostname}) — ${view.branches.length} branch(es)`);
-                console.log(`     Last sync: ${new Date(view.last_sync).toLocaleString()}\n`);
+                console.log(`     Last sync: ${new Date(view.last_synced).toLocaleString()}\n`);
 
                 for (const branch of view.branches) {
                     const files = branch.files.length > 0 ? ` [${branch.files.length} files]` : '';
                     const agent = branch.agent ? ` (${branch.agent})` : '';
-                    console.log(`     • ${branch.branch_name}${agent}${files}`);
+                    console.log(`     • ${branch.name}${agent}${files}`);
                     if (branch.description) {
                         console.log(`       ${branch.description}`);
                     }

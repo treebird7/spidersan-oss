@@ -128,7 +128,8 @@ async function scanRepository(
 
 async function storeResults(results: GitHubBranchRow[], supabase: SupabaseStorage): Promise<number> {
     try {
-        return await supabase.pushGitHubBranches(results);
+        console.warn(`  ⚠️  Supabase storage does not support GitHub branch sync yet`);
+        return 0;
     } catch (error) {
         console.warn(`  ⚠️  Could not write to Supabase: ${error instanceof Error ? error.message : String(error)}`);
         return 0;

@@ -13,6 +13,8 @@
 
 import { Command } from 'commander';
 import { getStorage } from '../storage/index.js';
+import { LocalStorage } from '../storage/local.js';
+import { SupabaseStorage } from '../storage/supabase.js';
 import type {
     CrossMachineConflict,
     GlobalConflictReport,
@@ -102,11 +104,11 @@ export function detectCrossMachineConflicts(
             for (const file of branch.files) {
                 if (!fileMap.has(file)) fileMap.set(file, []);
                 fileMap.get(file)!.push({
-                    branch_name: branch.branch_name,
+                    branch_name: branch.name,
                     machine_id: machine.machine_id,
                     machine_name: machine.machine_name,
-                    agent: branch.agent,
-                    repo_name: branch.repo_name,
+                    agent: branch.agent ?? null,
+                    repo_name: machine.repo_name,
                 });
             }
         }
@@ -258,14 +260,19 @@ export const crossConflictsCommand = new Command('cross-conflicts')
 
         // Cross-machine mode via Supabase
         try {
-            const storage = await getStorage();
-            if (!('pushRegistry' in storage)) {
+            const config = await import('../lib/config.js');
+            const cfg = await config.loadConfig();
+            const url = process.env.SUPABASE_URL || cfg.storage.supabaseUrl;
+            const key = process.env.SUPABASE_KEY || cfg.storage.supabaseKey;
+
+            if (!url || !key) {
                 console.log('⚠️  Supabase not configured. Use --local for local-only conflicts.');
                 console.log('   Set SUPABASE_URL and SUPABASE_KEY, or run: spidersan cross-conflicts --local');
                 return;
             }
 
-            const supabase = storage as any;
+            const supabase = new SupabaseStorage({ url, key });
+            const localStorage = new LocalStorage();
 
             // Load machine identity
             let machineId = 'unknown';
@@ -286,7 +293,7 @@ export const crossConflictsCommand = new Command('cross-conflicts')
             console.log('');
 
             // Step 1: Push local registry to ensure freshness
-            const branches = await storage.list();
+            const branches = await localStorage.list();
             const activeBranches = branches.filter((b: any) => b.status === 'active');
 
             // Build local SpiderRegistry objects for comparison
