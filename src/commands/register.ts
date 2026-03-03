@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import * as readline from 'readline';
 import { loadConfig } from '../lib/config.js';
@@ -7,7 +7,7 @@ import { validateAgentId, sanitizeFilePaths, validateFilePath } from '../lib/sec
 
 function getCurrentBranch(): string {
     try {
-        return execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim();
+        return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' }).trim();
     } catch {
         throw new Error('Not in a git repository');
     }
@@ -15,15 +15,25 @@ function getCurrentBranch(): string {
 
 function getChangedFiles(): string[] {
     try {
-        // Get files changed from main or last commit
-        const output = execSync(
-            'git diff --name-only main...HEAD 2>/dev/null || git diff --name-only HEAD~1 2>/dev/null || git diff --name-only HEAD',
-            { encoding: 'utf-8' }
-        );
-        return output.trim().split('\n').filter(Boolean);
+        // Try against main branch first
+        const output = execFileSync('git', ['diff', '--name-only', 'main...HEAD'], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+        if (output) return output.trim().split('\n').filter(Boolean);
     } catch {
-        return [];
+        // Fallback to previous commit
+        try {
+            const output = execFileSync('git', ['diff', '--name-only', 'HEAD~1'], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+            if (output) return output.trim().split('\n').filter(Boolean);
+        } catch {
+            // Fallback to current unstaged/staged changes
+            try {
+                const output = execFileSync('git', ['diff', '--name-only', 'HEAD'], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+                if (output) return output.trim().split('\n').filter(Boolean);
+            } catch {
+                return [];
+            }
+        }
     }
+    return [];
 }
 
 export function validateRegistrationFiles(files: string[]): void {
