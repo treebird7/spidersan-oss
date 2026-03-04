@@ -21,6 +21,7 @@ export const rescueCommand = new Command('rescue')
     .option('--salvage <file>', 'Salvage a specific file to ./salvage/')
     .option('--abandon <file>', 'Delete a rogue file')
     .option('--symbols <branch>', 'Analyse abandoned branch for salvageable symbols (Phase C3)')
+    .option('--json', 'Output as JSON (use with --symbols for Rust bridge parsing)')
     .action(async (options) => {
         const storage = await getStorage();
         console.log('\n🚑 SPIDERSAN RESCUE MISSION\n━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -129,12 +130,22 @@ export const rescueCommand = new Command('rescue')
                 console.error(`❌ ${(err as Error).message}`);
                 process.exit(1);
             }
-            console.log(`\n🔬 Analysing salvageable symbols in "${branch!}"...\n`);
+            if (!options.json) {
+                console.log(`\n🔬 Analysing salvageable symbols in "${branch!}"...\n`);
+            }
             try {
                 const report = await analyzeSalvage(branch!);
-                console.log(formatSalvageReport(report));
+                if (options.json) {
+                    console.log(JSON.stringify(report, null, 2));
+                } else {
+                    console.log(formatSalvageReport(report));
+                }
             } catch (err) {
-                console.error(`❌ ${(err as Error).message}`);
+                if (options.json) {
+                    console.log(JSON.stringify({ error: (err as Error).message }));
+                } else {
+                    console.error(`❌ ${(err as Error).message}`);
+                }
                 process.exit(1);
             }
             return;
