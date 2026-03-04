@@ -6,10 +6,11 @@
  */
 
 import { execFileSync } from 'child_process';
-import { mkdirSync, writeFileSync, rmSync, existsSync } from 'fs';
+import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { extractSymbols } from './symbol-extractor.js';
+import { validateBranchName } from './security.js';
 
 export interface SalvageableSymbol {
   name: string;
@@ -34,6 +35,10 @@ export async function analyzeSalvage(
   branch: string,
   mainRef = 'main',
 ): Promise<SalvageReport> {
+  // Validate inputs before passing to git to prevent injection
+  validateBranchName(branch);
+  validateBranchName(mainRef);
+
   const report: SalvageReport = {
     branch,
     analysedFiles: 0,

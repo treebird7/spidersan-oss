@@ -12,7 +12,7 @@ import { execSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import { existsSync, mkdirSync, copyFileSync } from 'fs';
 import { join, basename } from 'path';
-import { validateRepoPath } from '../lib/security.js';
+import { validateRepoPath, validateBranchName } from '../lib/security.js';
 import { analyzeSalvage, formatSalvageReport } from '../lib/salvage-analyzer.js';
 
 export const rescueCommand = new Command('rescue')
@@ -122,10 +122,16 @@ export const rescueCommand = new Command('rescue')
 
         // Symbol salvage analysis (Phase C3)
         if (options.symbols) {
-            const branch = options.symbols as string;
-            console.log(`\n🔬 Analysing salvageable symbols in "${branch}"...\n`);
+            let branch: string;
             try {
-                const report = await analyzeSalvage(branch);
+                branch = validateBranchName(options.symbols as string);
+            } catch (err) {
+                console.error(`❌ ${(err as Error).message}`);
+                process.exit(1);
+            }
+            console.log(`\n🔬 Analysing salvageable symbols in "${branch!}"...\n`);
+            try {
+                const report = await analyzeSalvage(branch!);
                 console.log(formatSalvageReport(report));
             } catch (err) {
                 console.error(`❌ ${(err as Error).message}`);
