@@ -37,7 +37,8 @@ export class MycmailAdapter implements MessageStorageAdapter {
     private supabaseAvailable: boolean | null = null;
 
     constructor(agentId?: string) {
-        this.agentId = agentId || process.env.SPIDERSAN_AGENT || 'cli-agent';
+        const rawAgentId = agentId || process.env.SPIDERSAN_AGENT || 'cli-agent';
+        this.agentId = validateAgentId(rawAgentId);
     }
 
     getTier(): number {
@@ -206,6 +207,7 @@ export class MycmailAdapter implements MessageStorageAdapter {
     }
 
     async send(input: SendMessageInput): Promise<Message> {
+        const safeFrom = validateAgentId(input.from);
         const safeTo = validateAgentId(input.to);
         const safeSubject = sanitizeText(input.subject);
         const fullMessage = this.formatMessageBody(input);
@@ -218,7 +220,7 @@ export class MycmailAdapter implements MessageStorageAdapter {
 
         const result = spawnSync('mycmail', args, {
             encoding: 'utf-8',
-            env: { ...process.env, MYCELIUMAIL_AGENT_ID: input.from },
+            env: { ...process.env, MYCELIUMAIL_AGENT_ID: safeFrom },
         });
 
         if (result.error) {
