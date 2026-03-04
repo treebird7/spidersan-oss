@@ -13,12 +13,14 @@ import { getStorage } from '../storage/index.js';
 import { existsSync, mkdirSync, copyFileSync } from 'fs';
 import { join, basename } from 'path';
 import { validateRepoPath } from '../lib/security.js';
+import { analyzeSalvage, formatSalvageReport } from '../lib/salvage-analyzer.js';
 
 export const rescueCommand = new Command('rescue')
     .description('🚑 Rescue Mode - Scan for and salvage rogue work')
     .option('--scan', 'Scan for problems')
     .option('--salvage <file>', 'Salvage a specific file to ./salvage/')
     .option('--abandon <file>', 'Delete a rogue file')
+    .option('--symbols <branch>', 'Analyse abandoned branch for salvageable symbols (Phase C3)')
     .action(async (options) => {
         const storage = await getStorage();
         console.log('\n🚑 SPIDERSAN RESCUE MISSION\n━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -115,6 +117,20 @@ export const rescueCommand = new Command('rescue')
             console.log(`⚠️  Deleting '${basename(target)}'... (Simulated)`);
             // rmSync(target); // Safety first for this demo
             console.log(`🗑️  Abandoned '${basename(target)}'`);
+            return;
+        }
+
+        // Symbol salvage analysis (Phase C3)
+        if (options.symbols) {
+            const branch = options.symbols as string;
+            console.log(`\n🔬 Analysing salvageable symbols in "${branch}"...\n`);
+            try {
+                const report = await analyzeSalvage(branch);
+                console.log(formatSalvageReport(report));
+            } catch (err) {
+                console.error(`❌ ${(err as Error).message}`);
+                process.exit(1);
+            }
             return;
         }
 
