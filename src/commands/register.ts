@@ -14,23 +14,18 @@ function getCurrentBranch(): string {
 }
 
 function getChangedFiles(): string[] {
-    try {
-        // Try against main branch first
-        const output = execFileSync('git', ['diff', '--name-only', 'main...HEAD'], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
-        if (output) return output.trim().split('\n').filter(Boolean);
-    } catch {
-        // Fallback to previous commit
+    const diffStrategies: string[][] = [
+        ['diff', '--name-only', 'main...HEAD'],
+        ['diff', '--name-only', 'HEAD~1'],
+        ['diff', '--name-only', 'HEAD'],
+    ];
+
+    for (const args of diffStrategies) {
         try {
-            const output = execFileSync('git', ['diff', '--name-only', 'HEAD~1'], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+            const output = execFileSync('git', args, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
             if (output) return output.trim().split('\n').filter(Boolean);
         } catch {
-            // Fallback to current unstaged/staged changes
-            try {
-                const output = execFileSync('git', ['diff', '--name-only', 'HEAD'], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
-                if (output) return output.trim().split('\n').filter(Boolean);
-            } catch {
-                return [];
-            }
+            continue;
         }
     }
     return [];
@@ -136,18 +131,6 @@ export const registerCommand = new Command('register')
                 resolvedAgent = validateAgentId(resolvedAgent);
             } catch {
                 console.error(`❌ Invalid agent ID: "${resolvedAgent}". Must be alphanumeric with - or _.`);
-                process.exit(1);
-            }
-        }
-
-        // Security: Validate agent ID if present
-        if (resolvedAgent) {
-            try {
-                validateAgentId(resolvedAgent);
-            } catch (err) {
-                if (err instanceof Error) {
-                    console.error(`❌ Security Error: ${err.message}`);
-                }
                 process.exit(1);
             }
         }
