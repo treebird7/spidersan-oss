@@ -102,13 +102,21 @@ export const mergeOrderCommand = new Command('merge-order')
 function buildConflictGraph(branches: Branch[]): Map<string, string[]> {
     const graph = new Map<string, string[]>();
 
+    // Performance Optimization: Pre-compute sets of files for O(1) lookups
+    // Reduces nested loop complexity from O(N^2 * M * K) to O(N^2 * M)
+    const fileSets = new Map<string, Set<string>>();
+    for (const branch of branches) {
+        fileSets.set(branch.name, new Set(branch.files));
+    }
+
     for (const branch of branches) {
         const conflicts: string[] = [];
 
         for (const other of branches) {
             if (branch.name === other.name) continue;
 
-            const overlap = branch.files.some(f => other.files.includes(f));
+            const otherFilesSet = fileSets.get(other.name)!;
+            const overlap = branch.files.some(f => otherFilesSet.has(f));
             if (overlap) {
                 conflicts.push(other.name);
             }
