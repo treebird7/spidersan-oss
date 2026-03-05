@@ -44,3 +44,7 @@
 **Vulnerability:** Blessed Markup Injection in `SpidersanDashboard` via `tags: true` rendering. User-controlled strings (like agent names or task titles) could inject arbitrary markup (e.g., `{red-fg}`), disrupting the UI or spoofing content.
 **Learning:** TUI libraries like `blessed` that support markup tags must be treated similarly to HTML in web apps; untrusted input must be escaped before interpolation.
 **Prevention:** Use an escape function (like `escapeBlessed`) to sanitize all dynamic content before passing it to TUI components with markup enabled.
+## 2026-03-04 - Prevent Command Injection in MycmailAdapter
+**Vulnerability:** Unvalidated `agentId` and `input.from` passed to `spawnSync` environment variable `MYCELIUMAIL_AGENT_ID`.
+**Learning:** Passing user-controlled variables to `spawnSync` `env` options can lead to command injection if the underlying tool (`mycmail`) improperly evaluates the environment variables, or if a shell is accidentally invoked. Even though `validateAgentId` was available, it was not applied to the instantiation of `MycmailAdapter` or `input.from`.
+**Prevention:** Always sanitize inputs directly *before* placing them into environment variables or subprocess calls, regardless of whether a shell is directly involved, to maintain defense-in-depth.
