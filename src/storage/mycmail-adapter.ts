@@ -83,9 +83,10 @@ export class MycmailAdapter implements MessageStorageAdapter {
 
         // Try a simple mycmail command to verify connectivity
         try {
+            const safeAgentId = validateAgentId(this.agentId);
             const result = spawnSync('mycmail', ['inbox'], {
                 encoding: 'utf-8',
-                env: { ...process.env, MYCELIUMAIL_AGENT_ID: this.agentId },
+                env: { ...process.env, MYCELIUMAIL_AGENT_ID: safeAgentId },
                 timeout: 5000, // 5 second timeout
             });
 
@@ -310,9 +311,10 @@ export class MycmailAdapter implements MessageStorageAdapter {
             throw new Error(`Invalid message ID: "${messageId.slice(0, 20)}..."`);
         }
 
+        const safeAgentId = validateAgentId(this.agentId);
         const result = spawnSync('mycmail', ['read', messageId, '--json'], {
             encoding: 'utf-8',
-            env: { ...process.env, MYCELIUMAIL_AGENT_ID: this.agentId },
+            env: { ...process.env, MYCELIUMAIL_AGENT_ID: safeAgentId },
         });
 
         if (result.error) {
