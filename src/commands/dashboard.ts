@@ -78,17 +78,17 @@ function statusColor(status: Branch['status']): string {
 function formatBranch(b: Branch): string {
   const icon = b.status === 'active' ? '🟢' : b.status === 'completed' ? '🔵' : '⚪';
   const files = b.files.length > 0 ? ` [${b.files.length}f]` : '';
-  return `${icon} ${escapeBlessed(b.name).padEnd(30)}${files}`;
+  return `${icon} ${escapeBlessed(b.name.padEnd(30))}${files}`;
 }
 
 function formatConflict(c: Record<string, unknown>): string {
   const tier = (c.tier ?? 1) as 1 | 2 | 3;
   const icon = TIER_ICONS[tier] ?? '[! ]';
   const color = tier === 3 ? TIER3_COLOR : tier === 2 ? TIER2_COLOR : TIER1_COLOR;
-  const file = escapeBlessed((c.file as string | undefined)?.slice(-38) || 'unknown');
+  const file = (c.file as string | undefined)?.slice(-38) || 'unknown';
   const count = (c.branches as unknown[])?.length ?? 0;
   const label = tier === 3 ? 'BLOCK' : tier === 2 ? 'PAUSE' : 'WARN';
-  return `{${color}-fg}${icon} ${file.padEnd(38)} ${count}br {gray-fg}(${label}){/}`;
+  return `{${color}-fg}${icon} ${escapeBlessed(file.padEnd(38))} ${count}br {gray-fg}(${label}){/}`;
 }
 
 function formatRec(r: Record<string, unknown>): string {
