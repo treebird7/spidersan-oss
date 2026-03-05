@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import * as readline from 'readline';
 import { loadConfig } from '../lib/config.js';
@@ -8,23 +8,28 @@ import { logActivity } from '../lib/activity.js';
 
 function getCurrentBranch(): string {
     try {
-        return execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim();
+        return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' }).trim();
     } catch {
         throw new Error('Not in a git repository');
     }
 }
 
 function getChangedFiles(): string[] {
-    try {
-        // Get files changed from main or last commit
-        const output = execSync(
-            'git diff --name-only main...HEAD 2>/dev/null || git diff --name-only HEAD~1 2>/dev/null || git diff --name-only HEAD',
-            { encoding: 'utf-8' }
-        );
-        return output.trim().split('\n').filter(Boolean);
-    } catch {
-        return [];
+    const diffStrategies: string[][] = [
+        ['diff', '--name-only', 'main...HEAD'],
+        ['diff', '--name-only', 'HEAD~1'],
+        ['diff', '--name-only', 'HEAD'],
+    ];
+
+    for (const args of diffStrategies) {
+        try {
+            const output = execFileSync('git', args, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+            if (output) return output.trim().split('\n').filter(Boolean);
+        } catch {
+            continue;
+        }
     }
+    return [];
 }
 
 export function validateRegistrationFiles(files: string[]): void {
@@ -127,18 +132,6 @@ export const registerCommand = new Command('register')
                 resolvedAgent = validateAgentId(resolvedAgent);
             } catch {
                 console.error(`❌ Invalid agent ID: "${resolvedAgent}". Must be alphanumeric with - or _.`);
-                process.exit(1);
-            }
-        }
-
-        // Security: Validate agent ID if present
-        if (resolvedAgent) {
-            try {
-                validateAgentId(resolvedAgent);
-            } catch (err) {
-                if (err instanceof Error) {
-                    console.error(`❌ Security Error: ${err.message}`);
-                }
                 process.exit(1);
             }
         }
