@@ -443,8 +443,13 @@ export const conflictsCommand = new Command('conflicts')
         if (options.wake && conflicts.length > 0) {
             // Collect agents to wake
             const agentsToWake = new Map<string, { branch: string; files: string[] }>();
+
+            // Performance Optimization: Use the already fetched allBranches
+            // to avoid N+1 slow network requests to storage.get()
+            const branchMap = new Map(allBranches.map(b => [b.name, b]));
+
             for (const conflict of conflicts) {
-                const conflictBranch = await storage.get(conflict.branch);
+                const conflictBranch = branchMap.get(conflict.branch);
                 const agentId = conflictBranch?.agent;
                 if (agentId && !agentsToWake.has(agentId)) {
                     agentsToWake.set(agentId, { branch: conflict.branch, files: conflict.files });
