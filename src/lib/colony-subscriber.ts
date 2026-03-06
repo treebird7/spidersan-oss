@@ -43,6 +43,7 @@ interface ColonySignalRow {
     created_at: string;
     updated_at: string;
     stale_after_ms: number | null;
+    agent_label?: string | null;
 }
 
 // ─── Agent name resolution ────────────────────────────────────────────────────
@@ -161,9 +162,9 @@ export async function syncFromColony(): Promise<SyncResult> {
 
             if (!payload.branch) continue;
 
-            // Resolve label: prefer payload.agent (self-reported, always available),
+            // Resolve label: prefer authoritative row.agent_label, then payload.agent (self-reported),
             // then fall back to UUID prefix.
-            const agentName = resolveAgentName(row.agent_key_id, payload.agent ?? undefined);
+            const agentName = resolveAgentName(row.agent_key_id, row.agent_label ?? payload.agent ?? undefined);
             const files: string[] = Array.isArray(payload.files) ? payload.files : [];
 
             const existing = await storage.get(payload.branch);

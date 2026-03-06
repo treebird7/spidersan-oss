@@ -48,3 +48,8 @@
 **Vulnerability:** Unvalidated `agentId` and `input.from` passed to `spawnSync` environment variable `MYCELIUMAIL_AGENT_ID`.
 **Learning:** Passing user-controlled variables to `spawnSync` `env` options can lead to command injection if the underlying tool (`mycmail`) improperly evaluates the environment variables, or if a shell is accidentally invoked. Even though `validateAgentId` was available, it was not applied to the instantiation of `MycmailAdapter` or `input.from`.
 **Prevention:** Always sanitize inputs directly *before* placing them into environment variables or subprocess calls, regardless of whether a shell is directly involved, to maintain defense-in-depth.
+
+## 2024-05-18 - [Incorrect Agent Attribution in Colony Integration]
+**Vulnerability:** Worker attribution bypassed exact agent identification and fell back to potentially spoofable self-reported `payload.agent` due to a missing mapping of the `agent_label` field in the database response parsing logic (`ColonySignalRow`).
+**Learning:** External or remote signal integration must strictly parse and map authoritative identifiers to prevent loss of auditability and non-repudiation. Relying on self-reported inner-payload data without verifying top-level validated identity leads to attribution flaws.
+**Prevention:** Ensure interfaces mirroring external tables or views completely specify authoritative fields such as `agent_label`. Tests should explicitly assert that the correct identity property is mapped.
