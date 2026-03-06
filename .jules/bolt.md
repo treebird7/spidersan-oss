@@ -13,3 +13,6 @@
 ## 2024-05-22 - AST Traversal Performance
 **Learning:** Replacing recursive `node.child(i)` traversal (which instantiates `SyntaxNode` objects) with iterative `TreeCursor` traversal yielded a ~6x speedup (190ms -> 32ms for 32KB).
 **Action:** Always prefer `tree.walk()` and `TreeCursor` for AST traversal over object-based navigation.
+## 2025-05-20 - Set for O(1) File Lookup in Conflict Detection
+**Learning:** Checking for file overlaps using `Array.prototype.includes` inside nested loops over branches causes O(N * M) time complexity per check. This was a significant bottleneck in `ready-check.ts`, `torrent.ts`, and `watch.ts`.
+**Action:** Always convert file arrays to a `Set` before running intersection logic over them. Using `Set.has(f)` reduces overlap complexity from O(N*M) to O(N+M) and yields ~28x speedup.

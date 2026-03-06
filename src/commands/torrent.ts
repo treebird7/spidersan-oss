@@ -71,11 +71,14 @@ async function checkForConflicts(branchName: string): Promise<{ branch: string; 
 
     const conflicts: { branch: string; files: string[] }[] = [];
 
+    // Performance Optimization: Convert current branch files to Set for O(1) lookup
+    const currentFilesSet = new Set(currentBranch.files);
+
     for (const other of branches) {
         if (other.name === branchName || other.status !== 'active') continue;
         if (!other.name.startsWith('task/')) continue; // Only check other task branches
 
-        const overlap = currentBranch.files.filter(f => other.files.includes(f));
+        const overlap = other.files.filter(f => currentFilesSet.has(f));
         if (overlap.length > 0) {
             conflicts.push({ branch: other.name, files: overlap });
         }
@@ -331,11 +334,19 @@ torrentCommand
 
         // Build conflict graph
         const conflictGraph = new Map<string, string[]>();
+
+        // Performance Optimization: Convert branch files to Sets once
+        const branchFilesSets = new Map<string, Set<string>>();
+        for (const branch of taskBranches) {
+            branchFilesSets.set(branch.name, new Set(branch.files));
+        }
+
         for (const branch of taskBranches) {
             const conflicts: string[] = [];
+            const filesSet = branchFilesSets.get(branch.name)!;
             for (const other of taskBranches) {
                 if (branch.name === other.name) continue;
-                const overlap = branch.files.some(f => other.files.includes(f));
+                const overlap = other.files.some(f => filesSet.has(f));
                 if (overlap) conflicts.push(other.name);
             }
             conflictGraph.set(branch.name, conflicts);

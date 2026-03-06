@@ -107,9 +107,11 @@ export const readyCheckCommand = new Command('ready-check')
         const conflicts: string[] = [];
 
         if (branch) {
+            // Performance Optimization: Convert branch files to Set for O(1) lookup
+            const branchFilesSet = new Set(branch.files);
             for (const other of allBranches) {
                 if (other.name === branchName) continue;
-                if (other.files.some(f => branch.files.includes(f))) {
+                if (other.files.some(f => branchFilesSet.has(f))) {
                     conflicts.push(other.name);
                 }
             }

@@ -180,10 +180,13 @@ Press Ctrl+C to stop.
             const allBranches = await storage.list();
             const conflicts: { branch: string; files: string[] }[] = [];
 
+            // Performance Optimization: Convert changed files to Set for O(1) lookup
+            const filesSet = new Set(files);
+
             for (const otherBranch of allBranches) {
                 if (otherBranch.name === branch || otherBranch.status !== 'active') continue;
 
-                const overlapping = files.filter(f => otherBranch.files.includes(f));
+                const overlapping = otherBranch.files.filter(f => filesSet.has(f));
                 if (overlapping.length > 0) {
                     conflicts.push({ branch: otherBranch.name, files: overlapping });
                 }
