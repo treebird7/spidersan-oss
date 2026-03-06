@@ -29,6 +29,7 @@ import {
     welcomeCommand,
     registrySyncCommand,
     crossConflictsCommand,
+    pulseCommand,
     githubSyncCommand,
     syncAdvisorCommand,
     dashboardCommand,
@@ -106,6 +107,7 @@ program.addCommand(autoCommand);
 program.addCommand(welcomeCommand);
 program.addCommand(registrySyncCommand);
 program.addCommand(crossConflictsCommand);
+program.addCommand(pulseCommand);
 program.addCommand(githubSyncCommand);
 program.addCommand(syncAdvisorCommand());
 program.addCommand(dashboardCommand);

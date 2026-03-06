@@ -19,6 +19,7 @@ export { welcomeCommand } from './welcome.js';
 export { rebaseHelperCommand } from './rebase-helper.js';
 export { registrySyncCommand } from './registry-sync.js';
 export { crossConflictsCommand } from './cross-conflicts.js';
+export { pulseCommand } from './pulse.js';
 
 export { loadEcosystemCommands, getEcosystemStatus } from './ecosystem-loader.js';
 

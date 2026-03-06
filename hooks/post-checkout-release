@@ -1,0 +1,15 @@
+#!/bin/bash
+# Emit work_release when leaving a branch (hook for manual use or spidersan abandon/merged)
+[ -z "$COLONY_SESSION_ID" ] && exit 0
+[ -z "$COLONY_AGENT_KEY_ID" ] && exit 0
+
+BRANCH="${1:-$(git rev-parse --abbrev-ref HEAD)}"
+REPO=$(basename "$(git rev-parse --show-toplevel)")
+
+envoak colony signal \
+  --type work_release \
+  --key-id "$COLONY_AGENT_KEY_ID" \
+  --task "Released $BRANCH" \
+  --status "idle" \
+  --payload "{\"branch\":\"$BRANCH\",\"repo\":\"$REPO\"}" \
+  2>/dev/null || true

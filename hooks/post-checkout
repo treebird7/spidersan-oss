@@ -1,0 +1,22 @@
+#!/bin/bash
+# Spidersan post-checkout hook — auto-emit Colony work_claim on branch creation
+# Install: cp hooks/post-checkout .git/hooks/post-checkout && chmod +x .git/hooks/post-checkout
+
+# Only fire on branch switch (not file checkout)
+[ "$3" = "0" ] && exit 0
+
+# Only fire if Colony session is active
+[ -z "$COLONY_SESSION_ID" ] && exit 0
+[ -z "$COLONY_AGENT_KEY_ID" ] && exit 0
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+REPO=$(basename "$(git rev-parse --show-toplevel)")
+AGENT="${SPIDERSAN_AGENT:-${TOAK_AGENT_ID:-}}"
+
+envoak colony signal \
+  --type work_claim \
+  --key-id "$COLONY_AGENT_KEY_ID" \
+  --task "Working on $BRANCH" \
+  --status "in-progress" \
+  --payload "{\"branch\":\"$BRANCH\",\"files\":[],\"repo\":\"$REPO\",\"agent\":\"$AGENT\"}" \
+  2>/dev/null || true
