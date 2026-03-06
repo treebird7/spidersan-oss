@@ -292,9 +292,10 @@ export class SupabaseStorage implements StorageAdapter {
         const result: RegistrySyncResult = { pushed: 0, updated: 0, abandoned: 0, errors: [] };
         const now = new Date().toISOString();
 
-        // Upsert each local branch into spider_registries with machine identity stamped
-        for (const b of branches) {
-            const row = {
+        // ⚡ Bolt Optimization: Batch upsert using PostgREST's array support
+        // Reduces N network requests to 1, completely avoiding the N+1 problem.
+        if (branches.length > 0) {
+            const rows = branches.map(b => ({
                 branch_name: b.name,
                 machine_id: machine.id,
                 machine_name: machine.name,
@@ -306,7 +307,8 @@ export class SupabaseStorage implements StorageAdapter {
                 agent: b.agent || machine.name,
                 description: b.description || null,
                 synced_at: now,
-            };
+            }));
+
             const upsertResp = await this.fetch(
                 `spider_registries?on_conflict=machine_id,repo_name,branch_name`,
                 {
@@ -315,14 +317,17 @@ export class SupabaseStorage implements StorageAdapter {
                         'Content-Type': 'application/json',
                         'Prefer': 'resolution=merge-duplicates',
                     },
-                    body: JSON.stringify(row),
+                    body: JSON.stringify(rows),
                 },
             );
+
             if (upsertResp.ok) {
-                if (b.status === 'active') result.pushed++;
-                else result.updated++;
+                for (const b of branches) {
+                    if (b.status === 'active') result.pushed++;
+                    else result.updated++;
+                }
             } else {
-                result.errors.push(`Failed to upsert ${b.name}: ${await upsertResp.text()}`);
+                result.errors.push(`Failed bulk upsert: ${await upsertResp.text()}`);
             }
         }
 
@@ -333,15 +338,40 @@ export class SupabaseStorage implements StorageAdapter {
             `&repo_name=eq.${encodeURIComponent(repoName)}` +
             `&status=eq.active&select=branch_name`,
         );
+
         if (existingResp.ok) {
             const existing = await existingResp.json() as Array<{ branch_name: string }>;
-            for (const row of existing.filter(e => !localNames.has(e.branch_name))) {
-                await this.fetch(
-                    `spider_registries?machine_id=eq.${encodeURIComponent(machine.id)}` +
-                    `&branch_name=eq.${encodeURIComponent(row.branch_name)}`,
-                    { method: 'PATCH', body: JSON.stringify({ status: 'abandoned', synced_at: now }) },
+            const toAbandon = existing.filter(e => !localNames.has(e.branch_name));
+
+            if (toAbandon.length > 0) {
+                // ⚡ Bolt Optimization: Batch patch by passing an array back to the upsert endpoint
+                // Since `on_conflict` handles updating existing rows without duplicating, we can safely
+                // use POST to perform a bulk PATCH-like operation!
+                const abandonRows = toAbandon.map(row => ({
+                    machine_id: machine.id,
+                    repo_name: repoName,
+                    branch_name: row.branch_name,
+                    status: 'abandoned',
+                    synced_at: now
+                }));
+
+                const abandonResp = await this.fetch(
+                    `spider_registries?on_conflict=machine_id,repo_name,branch_name`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Prefer': 'resolution=merge-duplicates',
+                        },
+                        body: JSON.stringify(abandonRows)
+                    },
                 );
-                result.abandoned++;
+
+                if (abandonResp.ok) {
+                    result.abandoned += toAbandon.length;
+                } else {
+                    result.errors.push(`Failed bulk abandon: ${await abandonResp.text()}`);
+                }
             }
         }
 

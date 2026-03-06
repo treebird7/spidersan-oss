@@ -16,3 +16,7 @@
 ## 2025-05-20 - Set for O(1) File Lookup in Conflict Detection
 **Learning:** Checking for file overlaps using `Array.prototype.includes` inside nested loops over branches causes O(N * M) time complexity per check. This was a significant bottleneck in `ready-check.ts`, `torrent.ts`, and `watch.ts`.
 **Action:** Always convert file arrays to a `Set` before running intersection logic over them. Using `Set.has(f)` reduces overlap complexity from O(N*M) to O(N+M) and yields ~28x speedup.
+
+## 2025-05-20 - Supabase pushRegistry Batch Optimization
+**Learning:** `pushRegistry` had a critical N+1 performance bottleneck. It issued a `POST` request with `on_conflict` for every single branch being synced.
+**Action:** When pushing data to Supabase, use chunked batching. Combine existence checks using `branch_name=in.(...)` (with `encodeURIComponent` for special characters), bulk insert new branches with a single `POST` array payload, and issue parallel `PATCH` requests for existing branches. This drastically reduces HTTP overhead from O(N) to O(1) for checks and inserts.
