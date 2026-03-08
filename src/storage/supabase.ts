@@ -292,9 +292,9 @@ export class SupabaseStorage implements StorageAdapter {
         const result: RegistrySyncResult = { pushed: 0, updated: 0, abandoned: 0, errors: [] };
         const now = new Date().toISOString();
 
-        // Upsert each local branch into spider_registries with machine identity stamped
-        for (const b of branches) {
-            const row = {
+        // Upsert local branches into spider_registries with machine identity stamped in bulk
+        if (branches.length > 0) {
+            const rows = branches.map(b => ({
                 branch_name: b.name,
                 machine_id: machine.id,
                 machine_name: machine.name,
@@ -306,7 +306,8 @@ export class SupabaseStorage implements StorageAdapter {
                 agent: b.agent || machine.name,
                 description: b.description || null,
                 synced_at: now,
-            };
+            }));
+
             const upsertResp = await this.fetch(
                 `spider_registries?on_conflict=machine_id,repo_name,branch_name`,
                 {
@@ -315,14 +316,17 @@ export class SupabaseStorage implements StorageAdapter {
                         'Content-Type': 'application/json',
                         'Prefer': 'resolution=merge-duplicates',
                     },
-                    body: JSON.stringify(row),
+                    body: JSON.stringify(rows),
                 },
             );
+
             if (upsertResp.ok) {
-                if (b.status === 'active') result.pushed++;
-                else result.updated++;
+                for (const b of branches) {
+                    if (b.status === 'active') result.pushed++;
+                    else result.updated++;
+                }
             } else {
-                result.errors.push(`Failed to upsert ${b.name}: ${await upsertResp.text()}`);
+                result.errors.push(`Failed to bulk upsert branches: ${await upsertResp.text()}`);
             }
         }
 
@@ -335,13 +339,21 @@ export class SupabaseStorage implements StorageAdapter {
         );
         if (existingResp.ok) {
             const existing = await existingResp.json() as Array<{ branch_name: string }>;
-            for (const row of existing.filter(e => !localNames.has(e.branch_name))) {
-                await this.fetch(
+            const abandonedNames = existing.filter(e => !localNames.has(e.branch_name)).map(e => e.branch_name);
+
+            if (abandonedNames.length > 0) {
+                const encodedNames = abandonedNames.map(name => encodeURIComponent(name));
+                const patchResp = await this.fetch(
                     `spider_registries?machine_id=eq.${encodeURIComponent(machine.id)}` +
-                    `&branch_name=eq.${encodeURIComponent(row.branch_name)}`,
+                    `&branch_name=in.(${encodedNames.join(',')})`,
                     { method: 'PATCH', body: JSON.stringify({ status: 'abandoned', synced_at: now }) },
                 );
-                result.abandoned++;
+
+                if (patchResp.ok) {
+                    result.abandoned += abandonedNames.length;
+                } else {
+                    result.errors.push(`Failed to bulk abandon branches: ${await patchResp.text()}`);
+                }
             }
         }
 
