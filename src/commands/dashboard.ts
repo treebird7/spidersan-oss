@@ -165,6 +165,13 @@ export const dashboardCommand = new Command('dashboard')
     const supabase = url && key ? new SupabaseStorage({ url, key }) : null;
     const supabaseAvailable = !!supabase;
 
+    // Suppress console output while TUI is active — any console.warn/log/error
+    // that bleeds through (e.g. sanitizeFilePaths warnings) would write raw text
+    // to the terminal and accumulate over the blessed screen on every refresh.
+    const noop = () => {};
+    const _log = console.log; const _warn = console.warn; const _error = console.error;
+    console.log = noop; console.warn = noop; console.error = noop;
+
     const state: TUIState = {
       localBranches: [],
       remoteMachines: [],
@@ -367,6 +374,7 @@ export const dashboardCommand = new Command('dashboard')
     // ── Keyboard bindings ──
     screen.key(['q', 'C-c'], () => {
       clearInterval(refreshInterval);
+      console.log = _log; console.warn = _warn; console.error = _error;
       screen.destroy();
     });
 
