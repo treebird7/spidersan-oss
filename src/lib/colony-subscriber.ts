@@ -161,9 +161,9 @@ export async function syncFromColony(): Promise<SyncResult> {
 
             if (!payload.branch) continue;
 
-            // Resolve label: prefer payload.agent (self-reported, always available),
-            // then fall back to UUID prefix.
-            const agentName = resolveAgentName(row.agent_key_id, payload.agent ?? undefined);
+            // Resolve label: prefer row.agent_label (authoritative),
+            // then fall back to payload.agent, then UUID prefix.
+            const agentName = resolveAgentName(row.agent_key_id, row.agent_label || payload.agent || undefined);
             const files: string[] = Array.isArray(payload.files) ? payload.files : [];
 
             const existing = await storage.get(payload.branch);

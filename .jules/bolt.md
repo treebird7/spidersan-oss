@@ -16,3 +16,4 @@
 ## 2025-05-20 - Set for O(1) File Lookup in Conflict Detection
 **Learning:** Checking for file overlaps using `Array.prototype.includes` inside nested loops over branches causes O(N * M) time complexity per check. This was a significant bottleneck in `ready-check.ts`, `torrent.ts`, and `watch.ts`.
 **Action:** Always convert file arrays to a `Set` before running intersection logic over them. Using `Set.has(f)` reduces overlap complexity from O(N*M) to O(N+M) and yields ~28x speedup.
+## 2024-05-22 - Resolve Agent Name Refactor\n**Learning:** The agent name resolution in `src/lib/colony-subscriber.ts` prefers the authoritative `row.agent_label` over `payload.agent` to fix the failing CI test Scenario D in `test/colony-integration.spec.ts`.\n**Action:** Apply this authoritative check over self-reported payloads where applicable for security and test coverage.
