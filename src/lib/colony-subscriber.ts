@@ -39,6 +39,7 @@ interface ColonySignalRow {
     id: string;
     type: string;
     agent_key_id: string;
+    agent_label?: string;
     payload: Record<string, unknown> | string | null;
     created_at: string;
     updated_at: string;
