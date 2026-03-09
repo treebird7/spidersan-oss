@@ -48,3 +48,7 @@
 **Vulnerability:** Unvalidated `agentId` and `input.from` passed to `spawnSync` environment variable `MYCELIUMAIL_AGENT_ID`.
 **Learning:** Passing user-controlled variables to `spawnSync` `env` options can lead to command injection if the underlying tool (`mycmail`) improperly evaluates the environment variables, or if a shell is accidentally invoked. Even though `validateAgentId` was available, it was not applied to the instantiation of `MycmailAdapter` or `input.from`.
 **Prevention:** Always sanitize inputs directly *before* placing them into environment variables or subprocess calls, regardless of whether a shell is directly involved, to maintain defense-in-depth.
+## 2026-03-09 - Insecure Randomness in Message IDs
+**Vulnerability:** The `generateMessageId` function in `src/storage/message-adapter.ts` used `Math.random()` to generate unique message identifiers. `Math.random()` is not cryptographically secure, making message IDs predictable.
+**Learning:** Security-sensitive identifiers, tokens, or hashes should never rely on predictable PRNGs like `Math.random()`, as they can be predicted by attackers to spoof or hijack resources.
+**Prevention:** Use cryptographically secure pseudo-random number generators (CSPRNG) such as Node.js's `crypto.randomBytes()` for all security-sensitive random value generation.
