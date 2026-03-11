@@ -14,20 +14,22 @@ function getCurrentBranch(): string {
     }
 }
 
-// Path prefixes that are never meaningful for conflict tracking
-const EXCLUDED_PATH_PREFIXES = [
-    'node_modules/',
-    '.git/',
-    'dist/',
-    'build/',
-    '.next/',
-    'target/',       // Rust/Cargo build output
-    '.turbo/',
-    '.cache/',
+// Path segments that are never meaningful for conflict tracking (matched anywhere in the path)
+const EXCLUDED_PATH_SEGMENTS = [
+    '/node_modules/',
+    '/.git/',
+    '/dist/',
+    '/build/',
+    '/.next/',
+    '/target/',      // Rust/Cargo build output
+    '/.turbo/',
+    '/.cache/',
 ];
 
 export function isExcludedPath(file: string): boolean {
-    return EXCLUDED_PATH_PREFIXES.some(prefix => file.startsWith(prefix));
+    // Normalise: wrap in slashes so segment patterns match at the start too
+    const normalised = `/${file}/`;
+    return EXCLUDED_PATH_SEGMENTS.some(seg => normalised.includes(seg));
 }
 
 function getChangedFiles(): string[] {
