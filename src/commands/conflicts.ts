@@ -13,7 +13,9 @@ import { execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
 import { validateAgentId, validateBranchName } from '../lib/security.js';
+import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
+import { logActivity } from '../lib/activity.js';
 
 // Config
 const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
@@ -354,6 +356,20 @@ export const conflictsCommand = new Command('conflicts')
 
         // Sort by tier (highest first)
         conflicts.sort((a, b) => b.tier - a.tier);
+
+        // Log conflict detection to activity log
+        if (conflicts.length > 0) {
+            logActivity({
+                event: 'conflict_detected',
+                branch: targetBranch,
+                details: {
+                    tier3: conflicts.filter(c => c.tier === 3).length,
+                    tier2: conflicts.filter(c => c.tier === 2).length,
+                    tier1: conflicts.filter(c => c.tier === 1).length,
+                    conflicting_branches: conflicts.map(c => c.branch),
+                }
+            });
+        }
 
         // Check for blocking conditions
         const tier3Count = conflicts.filter(c => c.tier === 3).length;
