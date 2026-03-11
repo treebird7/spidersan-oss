@@ -8,6 +8,8 @@
  *   Tier 3: LocalMessagesAdapter (single-machine fallback)
  */
 
+import { randomBytes } from 'crypto';
+
 export type MessageType = 'info' | 'question' | 'alert' | 'handoff' | 'file_share';
 
 export interface Message {
@@ -94,7 +96,7 @@ export interface MessageStorageAdapter {
  */
 export function generateMessageId(): string {
     const timestamp = Date.now().toString(36);
-    const random = Math.random().toString(36).substring(2, 8);
+    const random = randomBytes(3).toString('hex');
     return `msg_${timestamp}_${random}`;
 }
 
