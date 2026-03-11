@@ -292,21 +292,22 @@ export class SupabaseStorage implements StorageAdapter {
         const result: RegistrySyncResult = { pushed: 0, updated: 0, abandoned: 0, errors: [] };
         const now = new Date().toISOString();
 
-        // Upsert each local branch into spider_registries with machine identity stamped
-        for (const b of branches) {
-            const row = {
-                branch_name: b.name,
-                machine_id: machine.id,
-                machine_name: machine.name,
-                hostname: machine.hostname,
-                repo_name: repoName,
-                repo_path: repoPath,
-                status: b.status === 'completed' ? 'merged' : b.status,
-                files: b.files,
-                agent: b.agent || machine.name,
-                description: b.description || null,
-                synced_at: now,
-            };
+        // Upsert local branches into spider_registries using a bulk POST request
+        const rows = branches.map(b => ({
+            branch_name: b.name,
+            machine_id: machine.id,
+            machine_name: machine.name,
+            hostname: machine.hostname,
+            repo_name: repoName,
+            repo_path: repoPath,
+            status: b.status === 'completed' ? 'merged' : b.status,
+            files: b.files,
+            agent: b.agent || machine.name,
+            description: b.description || null,
+            synced_at: now,
+        }));
+
+        if (rows.length > 0) {
             const upsertResp = await this.fetch(
                 `spider_registries?on_conflict=machine_id,repo_name,branch_name`,
                 {
@@ -315,14 +316,16 @@ export class SupabaseStorage implements StorageAdapter {
                         'Content-Type': 'application/json',
                         'Prefer': 'resolution=merge-duplicates',
                     },
-                    body: JSON.stringify(row),
+                    body: JSON.stringify(rows),
                 },
             );
             if (upsertResp.ok) {
-                if (b.status === 'active') result.pushed++;
-                else result.updated++;
+                for (const b of branches) {
+                    if (b.status === 'active') result.pushed++;
+                    else result.updated++;
+                }
             } else {
-                result.errors.push(`Failed to upsert ${b.name}: ${await upsertResp.text()}`);
+                result.errors.push(`Failed to bulk upsert: ${await upsertResp.text()}`);
             }
         }
 
@@ -335,13 +338,22 @@ export class SupabaseStorage implements StorageAdapter {
         );
         if (existingResp.ok) {
             const existing = await existingResp.json() as Array<{ branch_name: string }>;
-            for (const row of existing.filter(e => !localNames.has(e.branch_name))) {
-                await this.fetch(
+            const toAbandon = existing.filter(e => !localNames.has(e.branch_name));
+
+            if (toAbandon.length > 0) {
+                // Batch PATCH requests using the 'in' filter to prevent N+1 queries
+                const encodedNames = toAbandon.map(b => encodeURIComponent(b.branch_name));
+                const patchResp = await this.fetch(
                     `spider_registries?machine_id=eq.${encodeURIComponent(machine.id)}` +
-                    `&branch_name=eq.${encodeURIComponent(row.branch_name)}`,
+                    `&branch_name=in.(${encodedNames.join(',')})`,
                     { method: 'PATCH', body: JSON.stringify({ status: 'abandoned', synced_at: now }) },
                 );
-                result.abandoned++;
+
+                if (patchResp.ok) {
+                    result.abandoned += toAbandon.length;
+                } else {
+                    result.errors.push(`Failed to batch abandon: ${await patchResp.text()}`);
+                }
             }
         }
 
