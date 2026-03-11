@@ -258,8 +258,9 @@ function checkEnvConflict(): Check {
                 }
             }
 
-            // Check Supabase conflict
-            if (content.includes('SUPABASE_URL') || content.includes('SUPABASE_KEY')) {
+            // Check Supabase conflict (skip comment lines)
+            const nonCommentLines = content.split('\n').filter(l => !l.trim().startsWith('#')).join('\n');
+            if (nonCommentLines.includes('SUPABASE_URL') || nonCommentLines.includes('SUPABASE_KEY')) {
                 return {
                     name: '.env Lint',
                     status: 'warn',
