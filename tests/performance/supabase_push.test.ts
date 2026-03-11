@@ -64,8 +64,8 @@ describe('SupabaseStorage Performance', () => {
         const callCount = fetchMock.mock.calls.length;
         console.log(`Fetch called ${callCount} times for ${branches.length} branches`);
 
-        // Expect optimization to reduce calls significantly below 2 * N
-        // Ideal: 1 check + 1 insert + 5 updates = 7 calls
-        expect(callCount).toBeLessThan(15);
+        // Expect optimization to reduce calls significantly
+        // Ideal: 1 bulk insert + 1 select active + 1 bulk patch (if abandoning) = max 3 calls
+        expect(callCount).toBeLessThan(5);
     });
 });
