@@ -11,7 +11,6 @@ import { existsSync } from 'fs';
 import { join, basename } from 'path';
 import { homedir } from 'os';
 import { execFileSync } from 'child_process';
-import { getStorage } from '../storage/index.js';
 import { LocalStorage } from '../storage/local.js';
 import { SupabaseStorage } from '../storage/supabase.js';
 import { loadConfig } from '../lib/config.js';

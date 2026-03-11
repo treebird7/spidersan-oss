@@ -70,7 +70,7 @@ async function postConflictToChat(branch: string, agent: string, conflicts: Conf
         if (!response.ok) {
             console.log(`⚠️ Failed to post to Hub chat: ${response.status}`);
         }
-    } catch (err) {
+    } catch {
         // Silently fail - Hub might not be running
     }
 }
@@ -140,7 +140,7 @@ Press Ctrl+C to stop.
                         console.log(`⚠️ Hub connection failed: ${err.message}`);
                     }
                 });
-            } catch (e) {
+            } catch {
                 console.log('⚠️ Could not connect to Hub');
             }
         }

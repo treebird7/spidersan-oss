@@ -33,7 +33,7 @@ export const rescueCommand = new Command('rescue')
             untracked = output.split('\n')
                 .filter(line => line.startsWith('?? '))
                 .map(line => line.substring(3));
-        } catch (e) {
+        } catch {
             console.error('❌ Failed to scan git status');
         }
 
@@ -47,7 +47,7 @@ export const rescueCommand = new Command('rescue')
             const registeredNames = new Set(registered.map(b => b.name));
 
             ghosts = localBranches.filter(b => !registeredNames.has(b) && b !== 'main' && b !== 'master');
-        } catch (e) {
+        } catch {
             console.error('❌ Failed to scan branches');
         }
 

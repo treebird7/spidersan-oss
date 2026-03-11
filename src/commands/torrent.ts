@@ -28,14 +28,6 @@ interface TorrentClaimOptions {
     agent?: string;
 }
 
-function getCurrentBranch(): string {
-    try {
-        return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' }).trim();
-    } catch {
-        throw new Error('Not in a git repository');
-    }
-}
-
 function createBranchForTask(taskId: string): void {
     const safeTaskId = validateTaskId(taskId);
     const branchName = validateBranchName(`task/${safeTaskId}`);
@@ -108,8 +100,9 @@ torrentCommand
         let safeTaskId: string;
         try {
             safeTaskId = validateTaskId(taskId);
-        } catch (error: any) {
-            console.error(`❌ ${error.message}`);
+        } catch (error: unknown) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            console.error(`❌ ${errorMsg}`);
             process.exit(1);
         }
 
@@ -256,8 +249,9 @@ torrentCommand
         let safeTaskId: string;
         try {
             safeTaskId = validateTaskId(taskId);
-        } catch (error: any) {
-            console.error(`❌ ${error.message}`);
+        } catch (error: unknown) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            console.error(`❌ ${errorMsg}`);
             process.exit(1);
         }
 
@@ -503,14 +497,14 @@ torrentCommand
     .action(async (parentId: string, options: { count?: string; agent?: string }) => {
         const storage = await getStorage();
         const count = parseInt(options.count || '3', 10);
-        const agent = options.agent || process.env.SPIDERSAN_AGENT || 'unknown';
         const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
         let safeParentId: string;
         try {
             safeParentId = validateTaskId(parentId);
-        } catch (error: any) {
-            console.error(`❌ ${error.message}`);
+        } catch (error: unknown) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            console.error(`❌ ${errorMsg}`);
             process.exit(1);
         }
 

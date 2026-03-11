@@ -7,7 +7,6 @@
 
 import type { StorageAdapter, Branch } from './adapter.js';
 import type {
-    SpiderRegistry,
     MachineIdentity,
     MachineRegistryView,
     RegistryStatus,
