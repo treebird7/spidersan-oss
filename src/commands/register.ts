@@ -14,6 +14,22 @@ function getCurrentBranch(): string {
     }
 }
 
+// Path prefixes that are never meaningful for conflict tracking
+const EXCLUDED_PATH_PREFIXES = [
+    'node_modules/',
+    '.git/',
+    'dist/',
+    'build/',
+    '.next/',
+    'target/',       // Rust/Cargo build output
+    '.turbo/',
+    '.cache/',
+];
+
+export function isExcludedPath(file: string): boolean {
+    return EXCLUDED_PATH_PREFIXES.some(prefix => file.startsWith(prefix));
+}
+
 function getChangedFiles(): string[] {
     const diffStrategies: string[][] = [
         ['diff', '--name-only', 'main...HEAD'],
@@ -24,7 +40,7 @@ function getChangedFiles(): string[] {
     for (const args of diffStrategies) {
         try {
             const output = execFileSync('git', args, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
-            if (output) return output.trim().split('\n').filter(Boolean);
+            if (output) return output.trim().split('\n').filter(f => f && !isExcludedPath(f));
         } catch {
             continue;
         }
@@ -100,7 +116,7 @@ export const registerCommand = new Command('register')
 
         if (options.files) {
             files = sanitizeFilePaths(
-                options.files.split(',').map((f: string) => f.trim()).filter(Boolean)
+                options.files.split(',').map((f: string) => f.trim()).filter((f: string) => f && !isExcludedPath(f))
             );
         } else if (options.auto) {
             files = getChangedFiles();

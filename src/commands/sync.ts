@@ -7,6 +7,7 @@
 import { Command } from 'commander';
 import { execSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
+import { logActivity } from '../lib/activity.js';
 
 function getGitBranches(): string[] {
     try {
@@ -36,6 +37,7 @@ export const syncCommand = new Command('sync')
 
         if (orphaned.length === 0) {
             console.log('🕷️ Registry is in sync with git.');
+            logActivity({ event: 'sync', details: { orphaned: 0, action: 'clean' } });
             return;
         }
 
@@ -47,6 +49,7 @@ export const syncCommand = new Command('sync')
             } else {
                 await storage.unregister(branch.name);
                 console.log(`  🗑️  Removed: ${branch.name}`);
+                logActivity({ event: 'sync', branch: branch.name, details: { action: 'removed_orphan' } });
             }
         }
 
