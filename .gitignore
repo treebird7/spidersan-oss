@@ -148,6 +148,7 @@ repos/
 
 # License signing keys (NEVER COMMIT)
 license-keys.json
+*.key
 scripts/license-keys.json
 prompt.md
 todo
