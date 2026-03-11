@@ -297,12 +297,13 @@ export const conflictsCommand = new Command('conflicts')
 
         // Performance Optimization: Convert target files to Set for O(1) lookup
         // Reduces complexity from O(N*M*K) to O(N*M) where N=branches, M=files/branch, K=target_files
-        const targetFilesSet = new Set(target.files);
+        // Filter excluded paths (node_modules/, dist/, etc.) at query time to handle stale registrations
+        const targetFilesSet = new Set(target.files.filter(f => !isExcludedPath(f)));
 
         for (const branch of allBranches) {
             if (branch.name === targetBranch || branch.status !== 'active') continue;
 
-            const overlappingFiles = branch.files.filter(f => targetFilesSet.has(f));
+            const overlappingFiles = branch.files.filter(f => !isExcludedPath(f) && targetFilesSet.has(f));
             if (overlappingFiles.length > 0) {
                 // Get highest tier for this conflict
                 let maxTier: ConflictTier = { tier: 1, label: 'WARN', icon: '🟡', action: '' };
