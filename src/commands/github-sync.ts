@@ -126,7 +126,7 @@ async function scanRepository(
     return results;
 }
 
-async function storeResults(results: GitHubBranchRow[], supabase: SupabaseStorage): Promise<number> {
+async function storeResults(_results: GitHubBranchRow[], _supabase: SupabaseStorage): Promise<number> {
     try {
         console.warn(`  ⚠️  Supabase storage does not support GitHub branch sync yet`);
         return 0;

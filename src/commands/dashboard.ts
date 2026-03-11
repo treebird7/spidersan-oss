@@ -235,7 +235,7 @@ export const dashboardCommand = new Command('dashboard')
     ];
 
     // ── Footer ──
-    const footer = blessed.box({
+    blessed.box({
       parent: screen,
       bottom: 0, left: 0, right: 0, height: 1,
       content: ' Tab: next panel | Enter: detail | ?: help | r: refresh | q: quit',

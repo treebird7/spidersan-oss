@@ -125,7 +125,7 @@ function parseTableEntries(content: string, date: string): DailyEntry[] {
     return entries;
 }
 
-function scoreEntry(entry: DailyEntry, terms: string[], agents: string[]): string[] {
+function scoreEntry(entry: DailyEntry, terms: string[], _agents: string[]): string[] {
     const text = entry.content.toLowerCase();
     const matched: string[] = [];
 

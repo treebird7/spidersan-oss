@@ -140,10 +140,10 @@ export function detectCrossMachineConflicts(
 
 // ─── Local-Only Mode (no Supabase) ───
 
-async function detectLocalConflicts(repoName: string): Promise<GlobalConflictReport> {
+async function detectLocalConflicts(): Promise<GlobalConflictReport> {
     const storage = await getStorage();
     const branches = await storage.list();
-    const activeBranches = branches.filter((b: any) => b.status === 'active');
+    const activeBranches = branches.filter((b) => b.status === 'active');
 
     // In local mode, detect conflicts within the same machine
     const fileMap = new Map<string, Array<{ branch: string; agent: string | null }>>();
@@ -250,7 +250,7 @@ export const crossConflictsCommand = new Command('cross-conflicts')
 
         // Local-only mode
         if (opts.local) {
-            const report = await detectLocalConflicts(repoName);
+            const report = await detectLocalConflicts();
             console.log(opts.json ? formatJson(report, minTier) : formatReport(report, minTier));
             if (opts.strict && report.conflicts.some(c => c.tier >= 2)) {
                 process.exit(1);
@@ -294,10 +294,10 @@ export const crossConflictsCommand = new Command('cross-conflicts')
 
             // Step 1: Push local registry to ensure freshness
             const branches = await localStorage.list();
-            const activeBranches = branches.filter((b: any) => b.status === 'active');
+            const activeBranches = branches.filter((b) => b.status === 'active');
 
             // Build local SpiderRegistry objects for comparison
-            const localRegistries: SpiderRegistry[] = activeBranches.map((b: any) => ({
+            const localRegistries: SpiderRegistry[] = activeBranches.map((b) => ({
                 id: '',
                 machine_id: machineId,
                 machine_name: machineName,
@@ -319,11 +319,12 @@ export const crossConflictsCommand = new Command('cross-conflicts')
             let remoteMachines: MachineRegistryView[] = [];
             try {
                 remoteMachines = await supabase.pullRegistries(repoName, machineId);
-            } catch (err: any) {
-                console.log(`⚠️  Could not pull remote registries: ${err.message}`);
+            } catch (err: unknown) {
+                const errorMsg = err instanceof Error ? err.message : String(err);
+                console.log(`⚠️  Could not pull remote registries: ${errorMsg}`);
                 console.log('   Falling back to local-only mode...');
                 console.log('');
-                const report = await detectLocalConflicts(repoName);
+                const report = await detectLocalConflicts();
                 console.log(opts.json ? formatJson(report, minTier) : formatReport(report, minTier));
                 return;
             }
@@ -352,8 +353,9 @@ export const crossConflictsCommand = new Command('cross-conflicts')
             if (opts.strict && conflicts.some(c => c.tier >= 2)) {
                 process.exit(1);
             }
-        } catch (err: any) {
-            console.error(`Error: ${err.message}`);
+        } catch (err: unknown) {
+            const errorMsg = err instanceof Error ? err.message : String(err);
+            console.error(`Error: ${errorMsg}`);
             process.exit(1);
         }
     });
