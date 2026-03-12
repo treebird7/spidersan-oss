@@ -109,6 +109,7 @@ export const staleCommand = new Command('stale')
     .description('Show stale branches (not updated recently)')
     .option('--days <n>', 'Days threshold for staleness', '7')
     .option('--notify', 'Send notifications to branch owners')
+    .option('--auto-cleanup', 'Automatically remove stale branches after listing')
     .option('--json', 'Output as JSON')
     .action(async (options) => {
         const storage = await getStorage();
@@ -187,5 +188,12 @@ export const staleCommand = new Command('stale')
             console.log(`   - File updates: ${fileSuccess}/${stale.length}`);
         }
 
-        console.log(`\nRun 'spidersan cleanup' to remove these.`);
+        if (options.autoCleanup) {
+            console.log(`\n🗑️  Auto-cleaning ${stale.length} stale branch(es)...`);
+            const removedNames = await storage.cleanup(threshold);
+            removedNames.forEach(name => console.log(`   Removed: ${name}`));
+            console.log(`✅ Cleaned up ${removedNames.length} branch(es).`);
+        } else {
+            console.log(`\nRun 'spidersan cleanup' to remove these.`);
+        }
     });
