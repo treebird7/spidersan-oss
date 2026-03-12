@@ -30,6 +30,7 @@ import {
     registrySyncCommand,
     crossConflictsCommand,
     pulseCommand,
+    torrentCommand,
     githubSyncCommand,
     syncAdvisorCommand,
     dashboardCommand,
@@ -108,6 +109,7 @@ program.addCommand(welcomeCommand);
 program.addCommand(registrySyncCommand);
 program.addCommand(crossConflictsCommand);
 program.addCommand(pulseCommand);
+program.addCommand(torrentCommand);
 program.addCommand(githubSyncCommand);
 program.addCommand(syncAdvisorCommand());
 program.addCommand(dashboardCommand);
