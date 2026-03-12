@@ -38,3 +38,6 @@ export { dailyCommand } from './daily.js';
 
 // Task Torrenting
 export { torrentCommand } from './torrent.js';
+
+// Mode 3: Queen Spider
+export { queenCommand } from './queen.js';
