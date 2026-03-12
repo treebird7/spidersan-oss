@@ -16,3 +16,7 @@
 ## 2025-05-20 - Set for O(1) File Lookup in Conflict Detection
 **Learning:** Checking for file overlaps using `Array.prototype.includes` inside nested loops over branches causes O(N * M) time complexity per check. This was a significant bottleneck in `ready-check.ts`, `torrent.ts`, and `watch.ts`.
 **Action:** Always convert file arrays to a `Set` before running intersection logic over them. Using `Set.has(f)` reduces overlap complexity from O(N*M) to O(N+M) and yields ~28x speedup.
+
+## 2025-05-20 - RegExp Hoisting in Loops
+**Learning:** Instantiating `RegExp` objects inside loops that iterate over many lines (like in `ready-check.ts` WIP detection) creates significant memory overhead and performance degradation, turning an O(L * P) operation with constant allocation overhead into an O(L * P) operation with per-iteration allocation overhead.
+**Action:** Always hoist `RegExp` creation outside of file and line iteration loops. Further improve I/O bound operations by processing files concurrently with `Promise.all`.

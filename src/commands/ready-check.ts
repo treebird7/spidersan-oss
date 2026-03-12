@@ -58,6 +58,11 @@ export const readyCheckCommand = new Command('ready-check')
 
         // Check for WIP markers (if enabled and not skipped)
         if (config.readyCheck.enableWipDetection && !options.skipWip) {
+            // Performance Optimization: Hoist RegExp creation outside the loop
+            // Note: RegExp instances here do not use the global 'g' flag, so they are stateless
+            // and safe to reuse across files and lines.
+            const wipRegexes = getWipPatterns(config);
+
             for (const file of changedFiles) {
                 // Skip excluded files
                 if (shouldExcludeFile(file, config.readyCheck.excludeFiles)) {
@@ -67,7 +72,6 @@ export const readyCheckCommand = new Command('ready-check')
                 try {
                     const content = await readFile(file, 'utf-8');
                     const lines = content.split('\n');
-                    const wipRegexes = getWipPatterns(config);
 
                     lines.forEach((line, i) => {
                         for (const regex of wipRegexes) {
