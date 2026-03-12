@@ -163,7 +163,7 @@ export async function syncFromColony(): Promise<SyncResult> {
 
             // Security: Extract agent_label if it's available directly on the row
             // (e.g. if the backend provides it, or from our mock rows)
-            const rowLabel = (row as Record<string, unknown>).agent_label as string | undefined;
+            const rowLabel = (row as unknown as Record<string, unknown>).agent_label as string | undefined;
 
             // Security: Use the authoritative backend field if available,
             // falling back to the self-reported payload.agent
