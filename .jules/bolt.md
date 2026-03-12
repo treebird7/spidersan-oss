@@ -19,4 +19,4 @@
 
 ## 2025-05-20 - RegExp Hoisting in Loops
 **Learning:** Instantiating `RegExp` objects inside loops that iterate over many lines (like in `ready-check.ts` WIP detection) creates significant memory overhead and performance degradation, turning an O(L * P) operation with constant allocation overhead into an O(L * P) operation with per-iteration allocation overhead.
-**Action:** Always hoist `RegExp` creation outside of file and line iteration loops. Further improve I/O bound operations by processing files concurrently with `Promise.all`.
+**Action:** Always hoist `RegExp` creation outside of file and line iteration loops. When improving I/O-bound operations, prefer bounded concurrency (e.g., a small promise pool or concurrency limit) instead of naive `Promise.all` over large file lists, which can exhaust file descriptors (`EMFILE`).
