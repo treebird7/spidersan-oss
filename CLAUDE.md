@@ -511,11 +511,17 @@ cat .pending_task.md 2>/dev/null && rm .pending_task.md
 # Start session (optional)
 spidersan wake
 
+# Register your working files so stale/conflicts detection works (do this early)
+spidersan register --files "<files you plan to touch>"
+# Example: spidersan register --files "src/commands/sync.ts,src/lib/activity.ts"
+
 # Check inbox (optional)
 envoak vault inject --key $(cat ~/.envoak/ssan.key) -- toak inbox
 ```
 
 > **Note:** These are available commands, not automatic actions. Only run when the user explicitly asks you to start a session or run these commands.
+>
+> **Important:** `spidersan stale`, `spidersan conflicts`, and `spidersan list` are only useful if branches are registered. Always run `spidersan register` early in a session, otherwise the registry is dark and those commands return nothing.
 
 ## Ecosystem Conventions (Learned)
 
