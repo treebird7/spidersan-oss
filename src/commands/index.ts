@@ -35,3 +35,6 @@ export { logCommand } from './log.js';
 
 // L2: Daily Bridge
 export { dailyCommand } from './daily.js';
+
+// Task Torrenting
+export { torrentCommand } from './torrent.js';
