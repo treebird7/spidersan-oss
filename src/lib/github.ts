@@ -54,6 +54,13 @@ export interface AheadBehind {
     behind: number;
 }
 
+export interface GitHubPRDetails {
+    number: number;
+    title: string;
+    headBranch: string;
+    files: string[];
+}
+
 /**
  * Check if GitHub CLI (gh) is available and authenticated.
  */
@@ -204,4 +211,49 @@ export async function getAheadBehind(config: GitHubRepoConfig, branch: string, b
     } catch {
         return { ahead: 0, behind: 0 };
     }
+}
+
+/**
+ * Fetch details for a specific pull request: head branch name and list of changed files.
+ * Requires `gh` CLI to be authenticated and run from inside the repository directory.
+ */
+export async function getPRDetails(prNumber: number): Promise<GitHubPRDetails> {
+    if (!Number.isInteger(prNumber) || prNumber <= 0) {
+        throw new Error(`Invalid PR number: ${prNumber}`);
+    }
+
+    // Get PR metadata (head branch, title, number)
+    let prOutput: string;
+    try {
+        prOutput = execFileSync('gh', [
+            'pr', 'view', String(prNumber),
+            '--json', 'headRefName,title,number',
+        ], { encoding: 'utf-8' });
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`Failed to fetch PR #${prNumber} metadata: ${msg}`);
+    }
+
+    const prData = JSON.parse(prOutput) as { headRefName: string; title: string; number: number };
+
+    // Get changed file paths via the diff (--name-only lists one file per line)
+    let diffOutput: string;
+    try {
+        diffOutput = execFileSync('gh', [
+            'pr', 'diff', String(prNumber),
+            '--name-only',
+        ], { encoding: 'utf-8' });
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`Failed to fetch changed files for PR #${prNumber}: ${msg}`);
+    }
+
+    const files = diffOutput.trim().split('\n').filter(f => f.length > 0);
+
+    return {
+        number: prData.number,
+        title: prData.title,
+        headBranch: prData.headRefName,
+        files,
+    };
 }

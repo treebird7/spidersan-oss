@@ -16,6 +16,7 @@ import { validateAgentId, validateBranchName } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
 import { logActivity } from '../lib/activity.js';
+import { isGhAvailable, getPRDetails } from '../lib/github.js';
 
 // Config
 const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
@@ -260,6 +261,7 @@ async function confirmAction(prompt: string, autoConfirm: boolean = false): Prom
 export const conflictsCommand = new Command('conflicts')
     .description('Detect file conflicts between branches (with tiered blocking)')
     .option('--branch <name>', 'Check conflicts for specific branch')
+    .option('--pr <number>', 'Check conflicts for a GitHub pull request by number')
     .option('--json', 'Output as JSON')
     .option('--tier <level>', 'Filter by minimum tier (1, 2, or 3)', '1')
     .option('--strict', 'Strict mode: exit with error if TIER 2+ conflicts found')
@@ -278,18 +280,50 @@ export const conflictsCommand = new Command('conflicts')
             process.exit(1);
         }
 
-        const targetBranch = options.branch || getCurrentBranch();
-        const target = await storage.get(targetBranch);
         const minTier = parseInt(options.tier, 10) as 1 | 2 | 3;
 
         // Load custom patterns from config
         const highSeverity = (config.conflicts?.highSeverityPatterns || []).map(p => new RegExp(p));
         const mediumSeverity = (config.conflicts?.mediumSeverityPatterns || []).map(p => new RegExp(p));
 
-        if (!target) {
-            console.error(`❌ Branch "${targetBranch}" is not registered.`);
-            console.error('   Run: spidersan register --files "..."');
-            process.exit(1);
+        let targetBranch: string;
+        let targetFiles: string[];
+
+        if (options.pr) {
+            // --pr mode: fetch PR head branch + changed files from GitHub
+            const prNumber = parseInt(options.pr, 10);
+            if (isNaN(prNumber) || prNumber <= 0) {
+                console.error('❌ Invalid PR number. Provide a positive integer, e.g. --pr 42');
+                process.exit(1);
+            }
+            if (!isGhAvailable()) {
+                console.error('❌ GitHub CLI (gh) is not available or not authenticated.');
+                console.error('   Install: https://cli.github.com  →  gh auth login');
+                process.exit(1);
+            }
+            let prDetails;
+            try {
+                prDetails = await getPRDetails(prNumber);
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.error(`❌ Failed to fetch PR #${prNumber}: ${msg}`);
+                process.exit(1);
+            }
+            targetBranch = prDetails.headBranch;
+            targetFiles = prDetails.files;
+            console.log(`🕷️ Checking conflicts for PR #${prNumber}: "${prDetails.title}"`);
+            console.log(`   Branch: ${targetBranch} (${targetFiles.length} file(s) changed)`);
+        } else {
+            // Normal --branch or current branch mode
+            targetBranch = options.branch || getCurrentBranch();
+            const target = await storage.get(targetBranch);
+
+            if (!target) {
+                console.error(`❌ Branch "${targetBranch}" is not registered.`);
+                console.error('   Run: spidersan register --files "..."');
+                process.exit(1);
+            }
+            targetFiles = target.files;
         }
 
         const allBranches = await storage.list();
@@ -298,7 +332,7 @@ export const conflictsCommand = new Command('conflicts')
         // Performance Optimization: Convert target files to Set for O(1) lookup
         // Reduces complexity from O(N*M*K) to O(N*M) where N=branches, M=files/branch, K=target_files
         // Filter excluded paths (node_modules/, dist/, etc.) at query time to handle stale registrations
-        const targetFilesSet = new Set(target.files.filter(f => !isExcludedPath(f)));
+        const targetFilesSet = new Set(targetFiles.filter(f => !isExcludedPath(f)));
 
         for (const branch of allBranches) {
             if (branch.name === targetBranch || branch.status !== 'active') continue;
