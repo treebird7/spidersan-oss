@@ -218,10 +218,10 @@ export async function syncFromColony(): Promise<SyncResult> {
         const conflicts: ConflictReport[] = [];
 
         for (let i = 0; i < activeBranches.length; i++) {
+            const a = activeBranches[i];
+            const aFiles = new Set(a.files); // Hoist Set creation out of inner loop to reduce time complexity from O(N^2 * M) to O(N * M)
             for (let j = i + 1; j < activeBranches.length; j++) {
-                const a = activeBranches[i];
                 const b = activeBranches[j];
-                const aFiles = new Set(a.files);
                 const overlapping = b.files.filter(f => aFiles.has(f));
                 if (overlapping.length > 0) {
                     conflicts.push({

@@ -13,6 +13,7 @@
 ## 2024-05-22 - AST Traversal Performance
 **Learning:** Replacing recursive `node.child(i)` traversal (which instantiates `SyntaxNode` objects) with iterative `TreeCursor` traversal yielded a ~6x speedup (190ms -> 32ms for 32KB).
 **Action:** Always prefer `tree.walk()` and `TreeCursor` for AST traversal over object-based navigation.
+
 ## 2025-05-20 - Set for O(1) File Lookup in Conflict Detection
 **Learning:** Checking for file overlaps using `Array.prototype.includes` inside nested loops over branches causes O(N * M) time complexity per check. This was a significant bottleneck in `ready-check.ts`, `torrent.ts`, and `watch.ts`.
 **Action:** Always convert file arrays to a `Set` before running intersection logic over them. Using `Set.has(f)` reduces overlap complexity from O(N*M) to O(N+M) and yields ~28x speedup.
@@ -20,3 +21,7 @@
 ## 2025-05-20 - RegExp Hoisting in Loops
 **Learning:** Instantiating `RegExp` objects inside loops that iterate over many lines (like in `ready-check.ts` WIP detection) creates significant memory overhead and performance degradation, turning an O(L * P) operation with constant allocation overhead into an O(L * P) operation with per-iteration allocation overhead.
 **Action:** Always hoist `RegExp` creation outside of file and line iteration loops. When improving I/O-bound operations, prefer bounded concurrency (e.g., a small promise pool or concurrency limit) instead of naive `Promise.all` over large file lists, which can exhaust file descriptors (`EMFILE`).
+
+## 2025-05-20 - O(N^2) Loop Optimization in Object Instantiations
+**Learning:** In nested loops comparing active objects (e.g., N active branches against each other), placing object instantiations like `Set` creation inside the inner loop is an anti-pattern that creates redundant allocations. This was observed in `colony-subscriber.ts` where `new Set(a.files)` was inside the inner `j` loop, causing $O(N^2 \cdot M)$ complexity.
+**Action:** Always hoist invariant object allocations out of inner loops. Moving the `Set` creation to the outer `i` loop reduces the complexity to $O(N \cdot M)$.
