@@ -9,7 +9,8 @@
  */
 
 import { Command } from 'commander';
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
+import { basename } from 'path';
 import { getStorage } from '../storage/index.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
 import { validateAgentId, validateBranchName } from '../lib/security.js';
@@ -258,6 +259,106 @@ async function confirmAction(prompt: string, autoConfirm: boolean = false): Prom
     });
 }
 
+// ── Ecosystem scan ────────────────────────────────────────────────────────────
+
+const DEFAULT_ECOSYSTEM_REPOS = [
+    '/Users/freedbird/Dev/Envoak',
+    '/Users/freedbird/Dev/treebird-internal',
+    '/Users/freedbird/Dev/spidersan',
+    '/Users/freedbird/Dev/Toak',
+    '/Users/freedbird/Dev/flockview',
+    '/Users/freedbird/Dev/mappersan',
+];
+
+interface EcosystemRepoResult {
+    repo: string;
+    name: string;
+    tier3: number;
+    tier2: number;
+    tier1: number;
+    skipped?: boolean;
+    error?: string;
+}
+
+function runEcosystemScan(repos: string[], asJson: boolean): void {
+    const results: EcosystemRepoResult[] = [];
+
+    for (const repo of repos) {
+        const name = basename(repo);
+        const result = spawnSync(
+            'spidersan',
+            ['conflicts', '--json'],
+            { cwd: repo, encoding: 'utf-8', timeout: 15000 },
+        );
+
+        if (result.status === null || result.error) {
+            results.push({ repo, name, tier3: 0, tier2: 0, tier1: 0, error: 'spawn failed' });
+            continue;
+        }
+
+        if (result.status !== 0) {
+            // Exit 1 can be --strict mode; try to parse stdout anyway
+            // If it says "not initialized", mark as skipped
+            const combinedOut = (result.stderr ?? '') + (result.stdout ?? '');
+            if (combinedOut.includes('not initialized') || combinedOut.includes('not registered')) {
+                results.push({ repo, name, tier3: 0, tier2: 0, tier1: 0, skipped: true });
+                continue;
+            }
+        }
+
+        try {
+            const data = JSON.parse(result.stdout) as { summary: { tier3: number; tier2: number; tier1: number } };
+            results.push({
+                repo,
+                name,
+                tier3: data.summary.tier3,
+                tier2: data.summary.tier2,
+                tier1: data.summary.tier1,
+            });
+        } catch {
+            results.push({ repo, name, tier3: 0, tier2: 0, tier1: 0, error: 'parse failed' });
+        }
+    }
+
+    const totals = results.reduce(
+        (acc, r) => ({ tier3: acc.tier3 + r.tier3, tier2: acc.tier2 + r.tier2, tier1: acc.tier1 + r.tier1 }),
+        { tier3: 0, tier2: 0, tier1: 0 },
+    );
+    const reposWithConflicts = results.filter(r => r.tier3 + r.tier2 + r.tier1 > 0).length;
+
+    if (asJson) {
+        console.log(JSON.stringify({
+            ecosystem: true,
+            repos: results,
+            summary: { ...totals, repos_scanned: results.length, repos_with_conflicts: reposWithConflicts },
+        }, null, 2));
+        return;
+    }
+
+    console.log(`
+🕷️  ECOSYSTEM CONFLICT SCAN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`);
+    for (const r of results) {
+        if (r.skipped) {
+            console.log(`  ⬜ ${r.name.padEnd(22)} (not initialized)`);
+            continue;
+        }
+        if (r.error) {
+            console.log(`  ❓ ${r.name.padEnd(22)} (${r.error})`);
+            continue;
+        }
+        const icon = r.tier3 > 0 ? '🔴' : r.tier2 > 0 ? '🟠' : r.tier1 > 0 ? '🟡' : '✅';
+        const counts = r.tier3 + r.tier2 + r.tier1 > 0
+            ? `  T3:${r.tier3} T2:${r.tier2} T1:${r.tier1}`
+            : '  clean';
+        console.log(`  ${icon} ${r.name.padEnd(22)}${counts}`);
+    }
+    console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.log(`📊 Total: 🔴 ${totals.tier3} BLOCK | 🟠 ${totals.tier2} PAUSE | 🟡 ${totals.tier1} WARN`);
+    console.log(`   Repos scanned: ${results.length} | With conflicts: ${reposWithConflicts}`);
+}
+
 export const conflictsCommand = new Command('conflicts')
     .description('Detect file conflicts between branches (with tiered blocking)')
     .option('--branch <name>', 'Check conflicts for specific branch')
@@ -271,7 +372,17 @@ export const conflictsCommand = new Command('conflicts')
     .option('--auto', 'Auto mode: skip confirmations (enables Ralph Wiggum loop)')
     .option('--max-retries <count>', 'Maximum retry attempts in auto mode (default: 5)', '5')
     .option('--semantic', 'Use semantic (AST) analysis for symbol-level conflict detection')
+    .option('--ecosystem', 'Scan all ecosystem repos and aggregate conflict tiers')
+    .option('--repos <paths>', 'Comma-separated repo paths for --ecosystem scan')
     .action(async (options) => {
+        // ── Ecosystem shortcut ───────────────────────────────────────────────
+        if (options.ecosystem) {
+            const repos = options.repos
+                ? (options.repos as string).split(',').map((r: string) => r.trim()).filter(Boolean)
+                : DEFAULT_ECOSYSTEM_REPOS;
+            runEcosystemScan(repos, !!options.json);
+            return;
+        }
         const storage = await getStorage();
         const config = await loadConfig();
 
