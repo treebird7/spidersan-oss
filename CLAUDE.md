@@ -95,13 +95,13 @@ spidersan depends                 # Show current dependencies
 ### Agent Messaging (via Toak)
 ```bash
 # Send a Toak message
-envoak vault inject --key $(cat ~/.envoak/ssan.key) -- toak say <agent> "<message>"
+envoak vault inject --key $(cat ~/.envoak/agent-ssan.key) -- toak say <agent> "<message>"
 
 # Check inbox
-envoak vault inject --key $(cat ~/.envoak/ssan.key) -- toak inbox
+envoak vault inject --key $(cat ~/.envoak/agent-ssan.key) -- toak inbox
 ```
 
-> **Note:** Spidersan's key is at `~/.envoak/ssan.key` (30d TTL). If missing, ping bsan to re-provision.
+> **Note:** Spidersan's key is at `~/.envoak/agent-ssan.key` (30d TTL). If missing, ping bsan to re-provision.
 > `TOAK_AGENT_ID` is injected automatically via the agent's vault key (`agent-ssan/TOAK_AGENT_ID`). No manual prefix needed.
 
 ### Encryption
@@ -488,9 +488,9 @@ SPIDERSAN_AGENT=claude    # Your agent identifier
 
 ### Encryption Setup (for Toak via Envoak)
 ```bash
-# Toak keys are provisioned by bsan and stored at ~/.envoak/ssan.key
+# Toak keys are provisioned by bsan and stored at ~/.envoak/agent-ssan.key
 # If missing, ping bsan to re-provision:
-# envoak vault inject --key $(cat ~/.envoak/ssan.key) -- toak say bsan "ssan key missing"
+# envoak vault inject --key $(cat ~/.envoak/agent-ssan.key) -- toak say bsan "ssan key missing"
 ```
 
 ## Toak Identity
@@ -498,7 +498,7 @@ SPIDERSAN_AGENT=claude    # Your agent identifier
 | Field | Value |
 |-------|-------|
 | Agent ID | `ssan` |
-| Key location | `~/.envoak/ssan.key` (30d TTL, provisioned by bsan) |
+| Key location | `~/.envoak/agent-ssan.key` (standard fleet path, 30d TTL, provisioned by bsan) |
 
 ## Session Startup
 
@@ -516,7 +516,7 @@ spidersan register --files "<files you plan to touch>"
 # Example: spidersan register --files "src/commands/sync.ts,src/lib/activity.ts"
 
 # Check inbox (optional)
-envoak vault inject --key $(cat ~/.envoak/ssan.key) -- toak inbox
+envoak vault inject --key $(cat ~/.envoak/agent-ssan.key) -- toak inbox
 ```
 
 > **Note:** These are available commands, not automatic actions. Only run when the user explicitly asks you to start a session or run these commands.
