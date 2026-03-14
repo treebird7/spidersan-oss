@@ -95,8 +95,11 @@ export class LocalStorage implements StorageAdapter {
 
     async findByFiles(files: string[]): Promise<Branch[]> {
         const branches = await this.list();
+
+        // ⚡ Bolt: Optimize file lookup from O(N*M) to O(N+M) using Set
+        const filesSet = new Set(files);
         return branches.filter(branch =>
-            branch.files.some(file => files.includes(file))
+            branch.files.some(file => filesSet.has(file))
         );
     }
 
