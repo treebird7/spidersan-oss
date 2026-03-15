@@ -10,6 +10,7 @@ import util from 'tweetnacl-util';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
+import { validateAgentId } from './security.js';
 
 // Key storage location
 const KEYS_DIR = join(homedir(), '.spidersan', 'keys');
@@ -43,7 +44,8 @@ function ensureKeysDir(): void {
  * Get path to agent's keypair file
  */
 function getKeyPath(agentId: string): string {
-    return join(KEYS_DIR, `${agentId}.key.json`);
+    const safeAgentId = validateAgentId(agentId);
+    return join(KEYS_DIR, `${safeAgentId}.key.json`);
 }
 
 /**
@@ -124,8 +126,9 @@ export function loadKnownKeys(): Record<string, string> {
  */
 export function saveKnownKey(agentId: string, publicKeyBase64: string): void {
     ensureKeysDir();
+    const safeAgentId = validateAgentId(agentId);
     const keys = loadKnownKeys();
-    keys[agentId] = publicKeyBase64;
+    keys[safeAgentId] = publicKeyBase64;
     writeFileSync(getPublicKeysPath(), JSON.stringify(keys, null, 2));
 }
 
@@ -133,8 +136,9 @@ export function saveKnownKey(agentId: string, publicKeyBase64: string): void {
  * Get public key for an agent (from known keys)
  */
 export function getKnownKey(agentId: string): Uint8Array | null {
+    const safeAgentId = validateAgentId(agentId);
     const keys = loadKnownKeys();
-    const keyBase64 = keys[agentId];
+    const keyBase64 = keys[safeAgentId];
     if (!keyBase64) return null;
     return util.decodeBase64(keyBase64);
 }

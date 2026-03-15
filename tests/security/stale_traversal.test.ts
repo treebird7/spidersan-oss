@@ -30,7 +30,7 @@ describe('Security: Stale Command Path Traversal', () => {
         // Mock readFileSync to avoid crash
         vi.mocked(fs.readFileSync).mockReturnValue('');
 
-        const result = updatePendingTaskFile(maliciousAgentId, 'stale-branch', 10);
+        const result = updatePendingTaskFile(maliciousAgentId, [{ name: 'stale-branch', daysOld: 10 }]);
 
         // It should fail because validation blocks invalid agentId
         expect(result).toBe(false);

@@ -48,3 +48,8 @@
 **Vulnerability:** Unvalidated `agentId` and `input.from` passed to `spawnSync` environment variable `MYCELIUMAIL_AGENT_ID`.
 **Learning:** Passing user-controlled variables to `spawnSync` `env` options can lead to command injection if the underlying tool (`mycmail`) improperly evaluates the environment variables, or if a shell is accidentally invoked. Even though `validateAgentId` was available, it was not applied to the instantiation of `MycmailAdapter` or `input.from`.
 **Prevention:** Always sanitize inputs directly *before* placing them into environment variables or subprocess calls, regardless of whether a shell is directly involved, to maintain defense-in-depth.
+
+## 2026-03-05 - Path Traversal via Unvalidated Agent IDs in Storage
+**Vulnerability:** Arbitrary file read/write via unvalidated `agentId` in `agent-errors.ts` and `crypto.ts`. By providing an `agentId` containing directory traversal sequences (e.g. `../../../etc/passwd`), attackers could write encrypted data/error logs outside of intended storage or read unauthorized files.
+**Learning:** Security functions like `validateAgentId` exist in the codebase but were missing at critical file I/O sink boundaries. Relying on validation at the "top" of CLI inputs is insufficient for defense-in-depth, especially for shared storage and utility functions.
+**Prevention:** Ensure that identifiers used in file system paths are uniformly validated against strict patterns (e.g. via `validateAgentId`) immediately prior to path concatenation (`path.join`).
