@@ -95,8 +95,11 @@ export class LocalStorage implements StorageAdapter {
 
     async findByFiles(files: string[]): Promise<Branch[]> {
         const branches = await this.list();
+        // Performance Optimization: Convert search files to Set for O(1) lookup
+        // Reduces file overlap detection complexity from O(N*M) to O(N+M)
+        const fileSet = new Set(files);
         return branches.filter(branch =>
-            branch.files.some(file => files.includes(file))
+            branch.files.some(file => fileSet.has(file))
         );
     }
 
