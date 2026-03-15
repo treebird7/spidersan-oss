@@ -105,11 +105,12 @@ echo ""
 echo "## VAULT"
 if [ -f "$KEY_FILE" ]; then
   KEY_CONTENT=$(cat "$KEY_FILE")
-  vault_out=$(TOAK_AGENT_ID="$AGENT_ID" envoak vault inject --key "$KEY_CONTENT" -- envoak vault status 2>&1)
-  if echo "$vault_out" | grep -q "Logged in"; then
-    echo "$vault_out" | grep -E "Logged in|expires" | sed 's/^/  ✅ /'
-  else
+  vault_out=$(TOAK_AGENT_ID="$AGENT_ID" envoak vault inject --key "$KEY_CONTENT" -- envoak vault status 2>&1) || vault_out="Not logged in"
+  if echo "$vault_out" | grep -q "Not logged in"; then
     echo "  ❌ Vault not logged in — run: envoak vault login"
+  else
+    # Strip inject noise line, show account info
+    echo "  ✅ $(echo "$vault_out" | grep -v "Injecting" | head -1)"
   fi
 else
   echo "  ⚠️  No agent key at $KEY_FILE"
