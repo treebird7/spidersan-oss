@@ -264,7 +264,7 @@ async function confirmAction(prompt: string, autoConfirm: boolean = false): Prom
 const DEFAULT_ECOSYSTEM_REPOS = [
     '/Users/freedbird/Dev/Envoak',
     '/Users/freedbird/Dev/treebird-internal',
-    '/Users/freedbird/Dev/spidersan',
+    '/Users/freedbird/Dev/spidersan-oss',
     '/Users/freedbird/Dev/Toak',
     '/Users/freedbird/Dev/flockview',
     '/Users/freedbird/Dev/mappersan',
