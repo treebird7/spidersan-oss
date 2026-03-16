@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Security: Command injection in auto-register workflow** — Replaced direct `${{ }}` interpolation in shell commands with `env:` variables to prevent arbitrary command execution via malicious branch names
+- **CI: Security tests failing silently** — Added `git config user.name/email` so git-messages and git-injection tests pass in CI
+- **CI: Lint failures swallowed** — Removed `|| true` and `continue-on-error: true` from lint step; lint now blocks CI
+- **Publish: No tests before npm publish** — Added `npm test -- --run` to publish workflow so broken releases cannot ship
+- **Publish: Bad version input ignored** — Removed `continue-on-error` from `npm version` step; invalid semver now fails the workflow
+
+### Added
+- **CI: Node.js version matrix** — Tests now run on Node 18, 20, and 22
+- **CI: npm audit step** — `npm audit --audit-level=high` runs on every build
+- **CI: MCP server test job** — New `test-mcp` job builds and tests the MCP server in CI
+- **Publish: Dry-run verification** — `npm publish --dry-run` validates package contents before actual publish
+
+### Changed
+- **auto-register workflow**: Deduplicated `spidersan init` calls (3 → 1)
+
+### Documentation
+- Test coverage analysis (`docs/TEST_COVERAGE_ANALYSIS.md`)
+- CI/CD workflow coverage analysis (`docs/CI_CD_COVERAGE_ANALYSIS.md`)
+
 ## [0.4.5] - 2026-02-18
 ### Added
 - **Fork Sync Use Case**: New documentation pattern for safely cherry-picking commits from a public fork into a private branch using spidersan conflict detection (`docs/USE_CASES.md` Use Case #8)
