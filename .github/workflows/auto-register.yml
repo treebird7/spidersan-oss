@@ -1,4 +1,4 @@
-# 🕷️ Spidersan Auto-Registration
+# Spidersan Auto-Registration
 # Automatically registers branches + files when agents push
 # Part of Codex 5.2 Proposal #1: Auto-registration
 
@@ -18,18 +18,18 @@ jobs:
   auto-register:
     runs-on: ubuntu-latest
     name: Register branch with Spidersan
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Need full history for file detection
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      
+
       - name: Install Spidersan
         run: npm install -g spidersan
 
@@ -38,10 +38,15 @@ jobs:
 
       - name: Extract commit info
         id: commit
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_REF_NAME: ${{ github.ref_name }}
+          GH_BEFORE: ${{ github.event.before }}
+          GH_SHA: ${{ github.sha }}
         run: |
           # Get agent name from commit author or branch prefix
-          AUTHOR="${{ github.actor }}"
-          BRANCH="${{ github.ref_name }}"
+          AUTHOR="$GH_ACTOR"
+          BRANCH="$GH_REF_NAME"
 
           # Try to extract agent from branch name (e.g., sherlocksan/feature-x)
           if [[ "$BRANCH" == */* ]]; then
@@ -52,55 +57,55 @@ jobs:
 
           # Get changed files in this push
           # Handle initial push where 'before' is all zeros
-          BEFORE="${{ github.event.before }}"
-          if [[ "$BEFORE" == "0000000000000000000000000000000000000000" ]]; then
-            FILES=$(git diff --name-only origin/main...${{ github.sha }} 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
+          if [[ "$GH_BEFORE" == "0000000000000000000000000000000000000000" ]]; then
+            FILES=$(git diff --name-only "origin/main...$GH_SHA" 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
           else
-            FILES=$(git diff --name-only "$BEFORE" ${{ github.sha }} | tr '\n' ',' | sed 's/,$//')
+            FILES=$(git diff --name-only "$GH_BEFORE" "$GH_SHA" | tr '\n' ',' | sed 's/,$//')
           fi
 
           echo "agent=$AGENT" >> $GITHUB_OUTPUT
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           echo "files=$FILES" >> $GITHUB_OUTPUT
 
-          echo "🕷️ Detected:"
+          echo "Detected:"
           echo "   Agent: $AGENT"
           echo "   Branch: $BRANCH"
           echo "   Files: $FILES"
 
-      - name: Initialize Spidersan
-        run: spidersan init
-
       - name: Register with Spidersan
         if: steps.commit.outputs.files != ''
+        env:
+          REGISTER_AGENT: ${{ steps.commit.outputs.agent }}
+          REGISTER_FILES: ${{ steps.commit.outputs.files }}
         run: |
-          echo "🕷️ Initializing Spidersan..."
-          spidersan init
-
-          echo "🕷️ Auto-registering branch..."
+          echo "Auto-registering branch..."
           spidersan register \
-            --agent "${{ steps.commit.outputs.agent }}" \
-            --files "${{ steps.commit.outputs.files }}" \
+            --agent "$REGISTER_AGENT" \
+            --files "$REGISTER_FILES" \
             --description "Auto-registered via GitHub Actions"
 
-          echo "✅ Branch registered with Spidersan"
-      
+          echo "Branch registered with Spidersan"
+
       - name: Check for conflicts
         if: steps.commit.outputs.files != ''
+        env:
+          REGISTER_BRANCH: ${{ steps.commit.outputs.branch }}
         run: |
-          echo "🕷️ Checking for conflicts..."
-          spidersan conflicts --branch "${{ steps.commit.outputs.branch }}" --json || true
-      
+          echo "Checking for conflicts..."
+          spidersan conflicts --branch "$REGISTER_BRANCH" --json || true
+
       - name: Notify on TIER 2+ conflicts
         if: steps.commit.outputs.files != ''
+        env:
+          REGISTER_BRANCH: ${{ steps.commit.outputs.branch }}
         run: |
           # Check for serious conflicts
-          CONFLICTS=$(spidersan conflicts --branch "${{ steps.commit.outputs.branch }}" --tier 2 --json 2>/dev/null || echo '{"conflicts":[]}')
+          CONFLICTS=$(spidersan conflicts --branch "$REGISTER_BRANCH" --tier 2 --json 2>/dev/null || echo '{"conflicts":[]}')
           COUNT=$(echo "$CONFLICTS" | jq '.conflicts | length')
-          
+
           if [ "$COUNT" -gt 0 ]; then
-            echo "⚠️ TIER 2+ conflicts detected!"
+            echo "TIER 2+ conflicts detected!"
             echo "::warning::Spidersan detected $COUNT potential conflicts. Run 'spidersan conflicts' locally to review."
           else
-            echo "✅ No blocking conflicts detected"
+            echo "No blocking conflicts detected"
           fi

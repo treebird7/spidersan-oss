@@ -21,43 +21,59 @@ jobs:
     permissions:
       contents: read
       id-token: write  # Required for npm Trusted Publisher (OIDC)
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Build
         run: npm run build
-      
+
       - name: Verify build
         run: |
           node dist/bin/spidersan.js --version
           node dist/bin/spidersan.js --help
-      
+
+      - name: Configure git for tests
+        run: |
+          git config --global user.email "ci@spidersan.dev"
+          git config --global user.name "CI"
+
+      - name: Run tests
+        run: npm test -- --run
+
       - name: Set version (manual dispatch)
         if: github.event_name == 'workflow_dispatch'
-        continue-on-error: true
-        run: npm version ${{ inputs.version }} --no-git-tag-version
-      
+        env:
+          PUBLISH_VERSION: ${{ inputs.version }}
+        run: npm version "$PUBLISH_VERSION" --no-git-tag-version
+
+      - name: Verify package contents
+        run: npm publish --dry-run
+
       - name: Publish to npm (Trusted Publisher)
-        run: npm publish --provenance --access public --tag ${{ inputs.tag || 'latest' }}
-      
+        env:
+          NPM_TAG: ${{ inputs.tag || 'latest' }}
+        run: npm publish --provenance --access public --tag "$NPM_TAG"
+
       - name: Summary
+        env:
+          NPM_TAG: ${{ inputs.tag || 'latest' }}
         run: |
-          echo "## 📦 Published to npm" >> $GITHUB_STEP_SUMMARY
+          echo "## Published to npm" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Package:** spidersan" >> $GITHUB_STEP_SUMMARY
-          echo "- **Version:** $(node -p \"require('./package.json').version\")" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tag:** ${{ inputs.tag || 'latest' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version:** $(node -p "require('./package.json').version")" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tag:** $NPM_TAG" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Install with:" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
