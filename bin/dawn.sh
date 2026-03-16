@@ -6,7 +6,7 @@
 #   bin/dawn.sh            # defaults to ssan
 #   bin/dawn.sh <agent>    # run as any fleet agent
 
-set -euo pipefail
+set -eu
 
 AGENT_ID="${1:-ssan}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
