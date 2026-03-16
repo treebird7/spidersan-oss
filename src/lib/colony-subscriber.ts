@@ -63,8 +63,8 @@ export function resolveAgentName(agentKeyId: string, agentLabel?: string): strin
 // ─── Supabase REST helpers ────────────────────────────────────────────────────
 
 function getColonyCredentials(): { url: string; key: string } | null {
-    const url = process.env.COLONY_SUPABASE_URL;
-    const key = process.env.COLONY_SUPABASE_KEY;
+    const url = process.env.COLONY_SUPABASE_URL || process.env.SUPABASE_URL;
+    const key = process.env.COLONY_SUPABASE_KEY || process.env.SUPABASE_KEY;
     if (!url || !key) return null;
     return { url, key };
 }
