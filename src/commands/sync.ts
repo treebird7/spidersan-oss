@@ -10,12 +10,19 @@ import { getStorage } from '../storage/index.js';
 import { logActivity } from '../lib/activity.js';
 
 function getGitBranches(): string[] {
+    const branches = new Set<string>();
     try {
-        const output = execSync('git branch --format="%(refname:short)"', { encoding: 'utf-8' });
-        return output.trim().split('\n').filter(Boolean);
-    } catch {
-        return [];
-    }
+        const local = execSync('git branch --format="%(refname:short)"', { encoding: 'utf-8' });
+        local.trim().split('\n').filter(Boolean).forEach(b => branches.add(b));
+    } catch { /* no local branches */ }
+    try {
+        const remote = execSync('git branch -r --format="%(refname:short)"', { encoding: 'utf-8' });
+        remote.trim().split('\n').filter(Boolean)
+            .map(b => b.replace(/^origin\//, ''))
+            .filter(b => b !== 'HEAD')
+            .forEach(b => branches.add(b));
+    } catch { /* no remote branches */ }
+    return Array.from(branches);
 }
 
 export const syncCommand = new Command('sync')
