@@ -37,7 +37,7 @@ export function scanRepo(repoPath: string): RepoState | null {
         let branch = '';
         try {
             branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
-                cwd: repoPath, encoding: 'utf-8',
+                cwd: repoPath, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
             }).trim();
         } catch {
             return null;
@@ -49,19 +49,19 @@ export function scanRepo(repoPath: string): RepoState | null {
 
         try {
             execFileSync('git', ['rev-parse', '--abbrev-ref', '@{u}'], {
-                cwd: repoPath, encoding: 'utf-8',
+                cwd: repoPath, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
             });
             hasUpstream = true;
 
             try {
                 unpushed = parseInt(execFileSync('git', ['rev-list', '--count', 'HEAD..@{u}'], {
-                    cwd: repoPath, encoding: 'utf-8',
+                    cwd: repoPath, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
                 }).trim(), 10) || 0;
             } catch { /* no commits to push */ }
 
             try {
                 unpulled = parseInt(execFileSync('git', ['rev-list', '--count', '@{u}..HEAD'], {
-                    cwd: repoPath, encoding: 'utf-8',
+                    cwd: repoPath, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
                 }).trim(), 10) || 0;
             } catch { /* no commits to pull */ }
         } catch {
@@ -71,7 +71,7 @@ export function scanRepo(repoPath: string): RepoState | null {
         let isDirty = false;
         try {
             isDirty = execFileSync('git', ['status', '--porcelain'], {
-                cwd: repoPath, encoding: 'utf-8',
+                cwd: repoPath, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
             }).trim().length > 0;
         } catch { /* error checking status */ }
 

@@ -35,6 +35,7 @@ import {
     githubSyncCommand,
     syncAdvisorCommand,
     dashboardCommand,
+    rebaseHelperCommand,
     logCommand,
     dailyCommand,
     loadEcosystemCommands,
@@ -115,6 +116,7 @@ program.addCommand(queenCommand);
 program.addCommand(githubSyncCommand);
 program.addCommand(syncAdvisorCommand());
 program.addCommand(dashboardCommand);
+program.addCommand(rebaseHelperCommand);
 logCommand(program);
 dailyCommand(program);
 
