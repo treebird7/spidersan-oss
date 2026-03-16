@@ -158,6 +158,11 @@ export const dashboardCommand = new Command('dashboard')
   .description('Real-time TUI dashboard (4 panels)')
   .option('--refresh <n>', 'Refresh interval in seconds', '5')
   .action(async (options) => {
+    if (!process.stdout.isTTY) {
+      console.error('❌ spidersan dashboard requires an interactive terminal (TTY).');
+      console.error('   Use spidersan pulse --quiet for a non-interactive health summary.');
+      process.exit(1);
+    }
     const machine = await loadMachineIdentity();
     const config = await loadConfig();
     const url = process.env.SUPABASE_URL || config.storage.supabaseUrl;
