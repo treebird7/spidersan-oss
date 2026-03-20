@@ -270,6 +270,29 @@ const DEFAULT_ECOSYSTEM_REPOS = [
     '/Users/freedbird/Dev/mappersan',
     '/Users/freedbird/Dev/treebird',
     '/Users/freedbird/Dev/treementor',
+    // Agent repos
+    '/Users/freedbird/Dev/Artisan',
+    '/Users/freedbird/Dev/Birdsan',
+    '/Users/freedbird/Dev/Cosan',
+    '/Users/freedbird/Dev/Marksan',
+    '/Users/freedbird/Dev/Sherlocksan',
+    '/Users/freedbird/Dev/Teachersan',
+    '/Users/freedbird/Dev/Watsan',
+    '/Users/freedbird/Dev/Yosef',
+    // Tools & libs
+    '/Users/freedbird/Dev/boidz',
+    '/Users/freedbird/Dev/beads',
+    '/Users/freedbird/Dev/birdseye',
+    '/Users/freedbird/Dev/invoak',
+    '/Users/freedbird/Dev/myceliumail',
+    '/Users/freedbird/Dev/nanoclaw',
+    '/Users/freedbird/Dev/nanoclaw-private',
+    '/Users/freedbird/Dev/proaksy',
+    '/Users/freedbird/Dev/sasu',
+    '/Users/freedbird/Dev/skills',
+    '/Users/freedbird/Dev/spidersan',
+    '/Users/freedbird/Dev/treebird-heavy',
+    '/Users/freedbird/Dev/Recovery-Tree-New',
 ];
 
 interface EcosystemRepoResult {
