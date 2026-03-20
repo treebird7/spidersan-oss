@@ -10,6 +10,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { validateAgentId } from './security.js';
 
 const AGENT_ERRORS_DIR = path.join(os.homedir(), '.agent-errors');
 const MAX_LOG_SIZE = 1024 * 1024; // 1MB per log file
@@ -155,7 +156,8 @@ export async function withErrorLogging<T>(
  * Get error log file path for an agent
  */
 export function getErrorLogPath(agent: string): string {
-    return path.join(AGENT_ERRORS_DIR, `${agent}.log`);
+    const safeAgent = validateAgentId(agent);
+    return path.join(AGENT_ERRORS_DIR, `${safeAgent}.log`);
 }
 
 /**
