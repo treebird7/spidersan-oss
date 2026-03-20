@@ -12,7 +12,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 
 const LOCAL_REGISTRY_DIRNAME = '.spidersan';
 const REGISTRY_FILE = 'registry.json';
@@ -44,7 +44,7 @@ function getRegistryPath(): string {
 
 function getRepoRoot(): string {
     try {
-        return execSync('git rev-parse --show-toplevel', { encoding: 'utf-8' }).trim();
+        return execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf-8' }).trim();
     } catch {
         return process.cwd();
     }
@@ -149,7 +149,7 @@ export function getBranch(name: string): Branch | null {
  */
 export function getCurrentBranch(): string {
     try {
-        return execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim();
+        return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' }).trim();
     } catch {
         throw new Error('Not in a git repository');
     }

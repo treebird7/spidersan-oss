@@ -5,18 +5,18 @@
  */
 
 import { Command } from 'commander';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import { logActivity } from '../lib/activity.js';
 
 function getGitBranches(): string[] {
     const branches = new Set<string>();
     try {
-        const local = execSync('git branch --format="%(refname:short)"', { encoding: 'utf-8' });
+        const local = execFileSync('git', ['branch', '--format=%(refname:short)'], { encoding: 'utf-8' });
         local.trim().split('\n').filter(Boolean).forEach(b => branches.add(b));
     } catch { /* no local branches */ }
     try {
-        const remote = execSync('git branch -r --format="%(refname:short)"', { encoding: 'utf-8' });
+        const remote = execFileSync('git', ['branch', '-r', '--format=%(refname:short)'], { encoding: 'utf-8' });
         remote.trim().split('\n').filter(Boolean)
             .map(b => b.replace(/^origin\//, ''))
             .filter(b => b !== 'HEAD')
