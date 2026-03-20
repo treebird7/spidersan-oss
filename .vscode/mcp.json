@@ -10,7 +10,10 @@
       "enabled": true,
       "command": "bash",
       "args": ["/Users/freedbird/Dev/spidersan/scripts/toak-mcp-wrapper.sh"],
-      "env": {}
+      "env": {
+        "TOAK_AGENT_ID": "ssan",
+        "SPIDERSAN_CONFIG_DIR": "/Users/freedbird/Dev/spidersan-oss"
+      }
     },
     "envoak": {
       "enabled": true,
