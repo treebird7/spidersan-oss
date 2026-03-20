@@ -20,3 +20,7 @@
 ## 2025-05-20 - RegExp Hoisting in Loops
 **Learning:** Instantiating `RegExp` objects inside loops that iterate over many lines (like in `ready-check.ts` WIP detection) creates significant memory overhead and performance degradation, turning an O(L * P) operation with constant allocation overhead into an O(L * P) operation with per-iteration allocation overhead.
 **Action:** Always hoist `RegExp` creation outside of file and line iteration loops. When improving I/O-bound operations, prefer bounded concurrency (e.g., a small promise pool or concurrency limit) instead of naive `Promise.all` over large file lists, which can exhaust file descriptors (`EMFILE`).
+
+## 2025-05-20 - Set Creation Hoisting in O(N^2) algorithms
+**Learning:** Re-instantiating `new Set(a.files)` on every iteration of an inner loop `j` in an `i`x`j` branch comparison results in massive, redundant O(N^2 * M) object allocations and GC thrash.
+**Action:** Always hoist `Set` or other lookup object instantiations outside of nested inner loops so they are only allocated O(N) times. This reliably cuts O(N^2 * M) time complexity down to O(N * M).
