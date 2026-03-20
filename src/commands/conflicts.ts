@@ -268,6 +268,8 @@ const DEFAULT_ECOSYSTEM_REPOS = [
     '/Users/freedbird/Dev/Toak',
     '/Users/freedbird/Dev/flockview',
     '/Users/freedbird/Dev/mappersan',
+    '/Users/freedbird/Dev/treebird',
+    '/Users/freedbird/Dev/treementor',
 ];
 
 interface EcosystemRepoResult {
