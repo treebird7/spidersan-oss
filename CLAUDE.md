@@ -57,6 +57,13 @@ spidersan cleanup                 # Remove stale branches
 spidersan sync                    # Sync registry with git
 ```
 
+### Cross-Machine & Ecosystem
+```bash
+spidersan conflicts --ecosystem   # Scan all 29 registered repos for conflicts
+spidersan cross-conflicts         # Cross-machine conflict detection via Supabase
+spidersan registry-sync           # Push/pull registry to/from Supabase (F1)
+```
+
 ### Session Lifecycle (Toak Integration)
 ```bash
 spidersan wake                    # Start session: sync, conflicts, announce presence
@@ -523,17 +530,30 @@ envoak vault inject --key $(cat ~/.envoak/agent-ssan.key) -- toak inbox
 >
 > **Important:** `spidersan stale`, `spidersan conflicts`, and `spidersan list` are only useful if branches are registered. Always run `spidersan register` early in a session, otherwise the registry is dark and those commands return nothing.
 
+## Security Conventions
+
+When writing or modifying commands in `src/commands/`:
+- **Shell execution:** Always `execFileSync(cmd, [args])` — never `execSync('cmd ' + input)`. Pass env vars via `env: { ...process.env }` object, not inline in the string.
+- **Input validation:** Call `validateAgentId`, `validateBranchName`, `validateFilePath` etc. from `src/lib/security.ts` immediately before using inputs in file paths or git commands. Validate at the sink, not just at CLI entry.
+- **`validateFilePath` throws; `sanitizeFilePaths` silently filters** — choose based on whether you want partial success or strict rejection.
+- **No prototype pollution:** `deepMerge` in `src/lib/config.ts` guards against `__proto__` keys — do not bypass.
+
 ## Ecosystem Conventions (Learned)
+
+### Ecosystem Scan
+- **29 repos registered** as of 2026-03-20. List lives in `DEFAULT_ECOSYSTEM_REPOS` in `src/commands/conflicts.ts`.
+- Adding a repo: (1) `spidersan init` in repo, (2) `spidersan register --files ...`, (3) add path to array, (4) `npm run build`.
+- **git-maze is intentionally excluded** — special sandbox environment.
 
 ### Daily Collab
 - **Canonical location:** `treebird-internal/collab/daily/` — this is the source of truth
-- **Write via:** `node /Users/macbook/Dev/toak/dist/bin/toak.js collab "message"`
+- **Write via:** `toak collab "message"` (toak CLI, path varies by machine)
 - **Do NOT** write directly to `sansan-knowledge/collab/` — it is a one-way rsync mirror (`--delete`) and will wipe manually created files on next sync
 - `treesync` auto-commits changes to `treebird-internal` — no need to manually commit after editing files there
 
 ### Skills Repo
-- **Canonical location:** `/Users/macbook/Dev/Skills` (capital S) — git-tracked, `treebird7/skills.git`
-- `/Dev/skills/` (lowercase) is stale — do not use
+- **Canonical location:** `~/Dev/Skills` (capital S) — git-tracked, `treebird7/skills.git`
+- On macOS case-insensitive FS, `~/Dev/skills` and `~/Dev/Skills` resolve to the same path
 
 ### npm Publish Checklist
 - `"files"` field in `package.json` **overrides `.npmignore` entirely** — negations like `!CHANGELOG.md` are ignored; add files explicitly to `"files"` array
@@ -574,10 +594,18 @@ docs/
 ## Testing
 
 ```bash
-npm test              # Run unit tests
-npm run stress-test   # Run stress tests (200+ branches)
-npm run lint          # ESLint
-npm run build         # TypeScript compilation
+npm run test:run       # Vitest single run (CI — use this)
+npm test               # Vitest watch mode (dev)
+npm run test:coverage  # Vitest with v8 coverage
+npm run lint           # ESLint on src/**/*.ts
+npm run typecheck      # tsc --noEmit
+npm run build          # TypeScript compilation (tsc)
+
+# Run a single test file
+npx vitest run tests/core.test.ts
+
+# Run tests matching a pattern
+npx vitest run -t "should register a branch"
 ```
 
 ---
