@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 
 export const rebaseHelperCommand = new Command('rebase-helper')
     .description('Detect and help resolve local git rebase states (non-interactive guidance)')
@@ -26,7 +26,10 @@ export const rebaseHelperCommand = new Command('rebase-helper')
 
         if (options.abort) {
             try {
-                execSync('GIT_EDITOR=true GIT_SEQUENCE_EDITOR=true git rebase --abort', { stdio: 'inherit' });
+                execFileSync('git', ['rebase', '--abort'], {
+                    stdio: 'inherit',
+                    env: { ...process.env, GIT_EDITOR: 'true', GIT_SEQUENCE_EDITOR: 'true' }
+                });
                 console.log('✅ Rebase aborted successfully');
             } catch {
                 console.error('❌ Failed to abort rebase non-interactively. Try aborting in your terminal.');
@@ -37,7 +40,10 @@ export const rebaseHelperCommand = new Command('rebase-helper')
 
         if (options.continue) {
             try {
-                execSync('GIT_EDITOR=true GIT_SEQUENCE_EDITOR=true git rebase --continue', { stdio: 'inherit' });
+                execFileSync('git', ['rebase', '--continue'], {
+                    stdio: 'inherit',
+                    env: { ...process.env, GIT_EDITOR: 'true', GIT_SEQUENCE_EDITOR: 'true' }
+                });
                 console.log('✅ Rebase continued (or completed).');
             } catch {
                 console.error('❌ Failed to continue rebase non-interactively. Please resolve conflicts and run git rebase --continue');
