@@ -3,23 +3,27 @@
     "spidersan-local": {
       "enabled": true,
       "command": "node",
-      "args": ["/Users/freedbird/Dev/spidersan/mcp-server/dist/server.js"],
-      "env": {}
+      "args": ["${env:SPIDERSAN_HOME}/mcp-server/dist/server.js"],
+      "env": {
+        "SPIDERSAN_HOME": "${workspaceFolder}"
+      }
     },
     "toak": {
       "enabled": true,
       "command": "bash",
-      "args": ["/Users/freedbird/Dev/spidersan/scripts/toak-mcp-wrapper.sh"],
+      "args": ["${env:SPIDERSAN_HOME}/scripts/toak-mcp-wrapper.sh"],
       "env": {
         "TOAK_AGENT_ID": "ssan",
-        "SPIDERSAN_CONFIG_DIR": "/Users/freedbird/Dev/spidersan-oss"
+        "SPIDERSAN_HOME": "${workspaceFolder}"
       }
     },
     "envoak": {
       "enabled": true,
       "command": "bash",
-      "args": ["/Users/freedbird/Dev/spidersan/scripts/envoak-mcp-wrapper.sh"],
-      "env": {}
+      "args": ["${env:SPIDERSAN_HOME}/scripts/envoak-mcp-wrapper.sh"],
+      "env": {
+        "SPIDERSAN_HOME": "${workspaceFolder}"
+      }
     }
   }
 }

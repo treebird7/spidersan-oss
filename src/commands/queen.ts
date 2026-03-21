@@ -75,13 +75,14 @@ function resolveRepos(reposOption?: string): string[] {
     if (envRepos) {
         return envRepos.split(':').map((r) => r.trim()).filter(Boolean);
     }
+    const homeDir = process.env.HOME || '/Users/freedbird';
     return [
-        '/Users/freedbird/Dev/Envoak',
-        '/Users/freedbird/Dev/treebird-internal',
-        '/Users/freedbird/Dev/spidersan-oss',
-        '/Users/freedbird/Dev/Toak',
-        '/Users/freedbird/Dev/flockview',
-        '/Users/freedbird/Dev/mappersan',
+        `${homeDir}/Dev/Envoak`,
+        `${homeDir}/Dev/treebird-internal`,
+        `${homeDir}/Dev/spidersan`,
+        `${homeDir}/Dev/Toak`,
+        `${homeDir}/Dev/flockview`,
+        `${homeDir}/Dev/mappersan`,
     ];
 }
 

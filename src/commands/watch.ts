@@ -310,14 +310,22 @@ Press Ctrl+C to stop.
  * Default ecosystem repos to watch. Override with --repos flag or
  * SPIDERSAN_REPOS env var (colon-separated paths).
  */
-const DEFAULT_TREETOP_REPOS = [
-    '/Users/freedbird/Dev/Envoak',
-    '/Users/freedbird/Dev/treebird-internal',
-    '/Users/freedbird/Dev/spidersan-oss',
-    '/Users/freedbird/Dev/Toak',
-    '/Users/freedbird/Dev/flockview',
-    '/Users/freedbird/Dev/mappersan',
-];
+function getDefaultTreetopRepos(): string[] {
+    if (process.env.SPIDERSAN_REPOS) {
+        return process.env.SPIDERSAN_REPOS.split(':').map((r) => r.trim()).filter(Boolean);
+    }
+    const homeDir = process.env.HOME || '/Users/freedbird';
+    return [
+        `${homeDir}/Dev/Envoak`,
+        `${homeDir}/Dev/treebird-internal`,
+        `${homeDir}/Dev/spidersan`,
+        `${homeDir}/Dev/Toak`,
+        `${homeDir}/Dev/flockview`,
+        `${homeDir}/Dev/mappersan`,
+    ];
+}
+
+const DEFAULT_TREETOP_REPOS = getDefaultTreetopRepos();
 
 interface TickResult {
     tier3: number;

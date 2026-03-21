@@ -261,39 +261,51 @@ async function confirmAction(prompt: string, autoConfirm: boolean = false): Prom
 
 // ── Ecosystem scan ────────────────────────────────────────────────────────────
 
-const DEFAULT_ECOSYSTEM_REPOS = [
-    '/Users/freedbird/Dev/Envoak',
-    '/Users/freedbird/Dev/treebird-internal',
-    '/Users/freedbird/Dev/spidersan-oss',
-    '/Users/freedbird/Dev/Toak',
-    '/Users/freedbird/Dev/flockview',
-    '/Users/freedbird/Dev/mappersan',
-    '/Users/freedbird/Dev/treebird',
-    '/Users/freedbird/Dev/treementor',
-    // Agent repos
-    '/Users/freedbird/Dev/Artisan',
-    '/Users/freedbird/Dev/Birdsan',
-    '/Users/freedbird/Dev/Cosan',
-    '/Users/freedbird/Dev/Marksan',
-    '/Users/freedbird/Dev/Sherlocksan',
-    '/Users/freedbird/Dev/Teachersan',
-    '/Users/freedbird/Dev/Watsan',
-    '/Users/freedbird/Dev/Yosef',
-    // Tools & libs
-    '/Users/freedbird/Dev/boidz',
-    '/Users/freedbird/Dev/beads',
-    '/Users/freedbird/Dev/birdseye',
-    '/Users/freedbird/Dev/invoak',
-    '/Users/freedbird/Dev/myceliumail',
-    '/Users/freedbird/Dev/nanoclaw',
-    '/Users/freedbird/Dev/nanoclaw-private',
-    '/Users/freedbird/Dev/proaksy',
-    '/Users/freedbird/Dev/sasu',
-    '/Users/freedbird/Dev/skills',
-    '/Users/freedbird/Dev/spidersan',
-    '/Users/freedbird/Dev/treebird-heavy',
-    '/Users/freedbird/Dev/Recovery-Tree-New',
-];
+/**
+ * Default ecosystem repos. Configurable via SPIDERSAN_ECOSYSTEM env var.
+ * Falls back to ~/Dev/ structure (old) or ~/Dev/projects/ structure (new).
+ */
+function getDefaultEcosystemRepos(): string[] {
+    if (process.env.SPIDERSAN_ECOSYSTEM) {
+        return process.env.SPIDERSAN_ECOSYSTEM.split(':').map((r) => r.trim()).filter(Boolean);
+    }
+    const homeDir = process.env.HOME || '/Users/freedbird';
+    return [
+        `${homeDir}/Dev/Envoak`,
+        `${homeDir}/Dev/treebird-internal`,
+        `${homeDir}/Dev/spidersan`,
+        `${homeDir}/Dev/Toak`,
+        `${homeDir}/Dev/flockview`,
+        `${homeDir}/Dev/mappersan`,
+        `${homeDir}/Dev/treebird`,
+        `${homeDir}/Dev/treementor`,
+        // Agent repos
+        `${homeDir}/Dev/Artisan`,
+        `${homeDir}/Dev/Birdsan`,
+        `${homeDir}/Dev/Cosan`,
+        `${homeDir}/Dev/Marksan`,
+        `${homeDir}/Dev/Sherlocksan`,
+        `${homeDir}/Dev/Teachersan`,
+        `${homeDir}/Dev/Watsan`,
+        `${homeDir}/Dev/Yosef`,
+        // Tools & libs
+        `${homeDir}/Dev/boidz`,
+        `${homeDir}/Dev/beads`,
+        `${homeDir}/Dev/birdseye`,
+        `${homeDir}/Dev/invoak`,
+        `${homeDir}/Dev/myceliumail`,
+        `${homeDir}/Dev/nanoclaw`,
+        `${homeDir}/Dev/nanoclaw-private`,
+        `${homeDir}/Dev/proaksy`,
+        `${homeDir}/Dev/sasu`,
+        `${homeDir}/Dev/skills`,
+        `${homeDir}/Dev/spidersan`,
+        `${homeDir}/Dev/treebird-heavy`,
+        `${homeDir}/Dev/Recovery-Tree-New`,
+    ];
+}
+
+const DEFAULT_ECOSYSTEM_REPOS = getDefaultEcosystemRepos();
 
 interface EcosystemRepoResult {
     repo: string;
