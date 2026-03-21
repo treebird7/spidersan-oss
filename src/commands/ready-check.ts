@@ -6,7 +6,7 @@
  */
 
 import { Command } from 'commander';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { readFile } from 'fs/promises';
 import { getStorage } from '../storage/index.js';
 import { loadConfig, getWipPatterns } from '../lib/config.js';
@@ -14,7 +14,7 @@ import { minimatch } from 'minimatch';
 
 function getCurrentBranch(): string {
     try {
-        return execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim();
+        return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' }).trim();
     } catch {
         throw new Error('Not in a git repository');
     }
@@ -22,13 +22,29 @@ function getCurrentBranch(): string {
 
 function getChangedFiles(): string[] {
     try {
-        const diff = execSync('git diff --name-only main...HEAD 2>/dev/null || git diff --name-only HEAD~1 2>/dev/null || git diff --name-only HEAD 2>/dev/null', {
+        const diff = execFileSync('git', ['diff', '--name-only', 'main...HEAD'], {
             encoding: 'utf-8',
             stdio: ['pipe', 'pipe', 'ignore']
         });
         return diff.trim().split('\n').filter(Boolean);
     } catch {
-        return [];
+        try {
+            const diff = execFileSync('git', ['diff', '--name-only', 'HEAD~1'], {
+                encoding: 'utf-8',
+                stdio: ['pipe', 'pipe', 'ignore']
+            });
+            return diff.trim().split('\n').filter(Boolean);
+        } catch {
+            try {
+                const diff = execFileSync('git', ['diff', '--name-only', 'HEAD'], {
+                    encoding: 'utf-8',
+                    stdio: ['pipe', 'pipe', 'ignore']
+                });
+                return diff.trim().split('\n').filter(Boolean);
+            } catch {
+                return [];
+            }
+        }
     }
 }
 
