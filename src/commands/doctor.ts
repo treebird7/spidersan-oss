@@ -323,9 +323,15 @@ function checkGitignore(): Check {
             { pattern: '*.key', description: 'key files' },
         ];
 
+        // ⚡ Bolt Performance Optimization:
+        // Hoisted .gitignore content string splitting outside the iteration loop.
+        // This avoids O(P * L) repeated string allocations, where P is the number
+        // of essential patterns and L is the length of the .gitignore file.
+        const lines = content.split('\n');
+
         for (const { pattern, description } of essentialPatterns) {
             // Check if pattern or similar is present
-            const hasPattern = content.split('\n').some((line: string) => {
+            const hasPattern = lines.some((line: string) => {
                 const trimmed = line.trim();
                 return !trimmed.startsWith('#') &&
                     (trimmed === pattern ||
