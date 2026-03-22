@@ -91,15 +91,22 @@ export const readyCheckCommand = new Command('ready-check')
             }
 
             // Check for experimental patterns
-            if (config.readyCheck.enableExperimentalDetection) {
+            if (config.readyCheck.enableExperimentalDetection && config.readyCheck.experimentalPatterns.length > 0) {
+                // Performance Optimization: Hoist experimental patterns RegExp pre-filter
+                // to avoid O(N * M) string includes checks
+                const escapedPatterns = config.readyCheck.experimentalPatterns.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+                const consolidatedRegex = new RegExp(escapedPatterns.join('|'));
+
                 for (const file of changedFiles) {
-                    for (const pattern of config.readyCheck.experimentalPatterns) {
-                        if (file.includes(pattern)) {
-                            issues.push({
-                                type: 'experimental',
-                                file,
-                                pattern,
-                            });
+                    if (consolidatedRegex.test(file)) {
+                        for (const pattern of config.readyCheck.experimentalPatterns) {
+                            if (file.includes(pattern)) {
+                                issues.push({
+                                    type: 'experimental',
+                                    file,
+                                    pattern,
+                                });
+                            }
                         }
                     }
                 }
