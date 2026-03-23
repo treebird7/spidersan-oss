@@ -16,25 +16,8 @@ COLLAB="$TREEBIRD_INTERNAL/collab/daily/$TODAY-daily.md"
 YESTERDAY=$(date -v-1d +%Y-%m-%d 2>/dev/null || date -d yesterday +%Y-%m-%d)
 LESSONS="$TREEBIRD_INTERNAL/knowledge/LESSONS_LEARNED_$YESTERDAY.md"
 
-case "$AGENT_ID" in
-  bsan)    AGENT_KEY_ID="0f3be59a"; AGENT_CAPS="review,merge,test,audit,context" ;;
-  ssan)    AGENT_KEY_ID="8f851dfd"; AGENT_CAPS="review,merge,test,audit,context" ;;
-  wsan)    AGENT_KEY_ID="6bd70725"; AGENT_CAPS="review,merge,test,audit,context" ;;
-  msan)    AGENT_KEY_ID="d2175d1a"; AGENT_CAPS="review,merge,test,audit,context" ;;
-  srlk)    AGENT_KEY_ID="77c71871"; AGENT_CAPS="review,audit,context" ;;
-  mycs)    AGENT_KEY_ID="8b99d102"; AGENT_CAPS="review,audit,context" ;;
-  tsan)    AGENT_KEY_ID="07683c04"; AGENT_CAPS="review,audit,context" ;;
-  yosef)   AGENT_KEY_ID="1ffef837"; AGENT_CAPS="review,test,audit,context" ;;
-  mark)    AGENT_KEY_ID="3de8ce22"; AGENT_CAPS="review,merge,test,audit,context" ;;
-  arti)    AGENT_KEY_ID="689ca14a"; AGENT_CAPS="review,merge,test,audit,context" ;;
-  *)       AGENT_KEY_ID=""; AGENT_CAPS="review,audit,context" ;;
-esac
-
-case "$AGENT_ID" in
-  mycs) KEY_FILE="$HOME/.envoak/agent-mycsan.key" ;;
-  mark) KEY_FILE="$HOME/.envoak/agent-marksan.key" ;;
-  *)    KEY_FILE="$HOME/.envoak/agent-${AGENT_ID}.key" ;;
-esac
+# shellcheck source=../treebird-internal/bin/agent-registry.sh
+source "${TREEBIRD_INTERNAL}/bin/agent-registry.sh"
 
 SEP="━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
@@ -49,7 +32,7 @@ echo "## GIT SYNC"
 git_pull() {
   local dir="$1" name="$2"
   local result
-  result=$(cd "$dir" && git pull origin main 2>&1)
+  result=$(cd "$dir" && git pull origin main 2>&1) || { echo "  $name: ⚠️ pull failed"; return 0; }
   if echo "$result" | grep -q "Already up to date"; then
     echo "  $name: up to date"
   else
