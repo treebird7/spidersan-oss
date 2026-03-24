@@ -104,9 +104,13 @@ function parseDuration(s: string): Date {
 
 function formatDetail(event: string, details: Record<string, unknown>): string {
     if (event === 'conflict_detected') {
-        const tier = details.tier as number;
+        // details stores tier counts {tier3, tier2, tier1} — derive max tier
+        const t3 = (details.tier3 as number | undefined) ?? 0;
+        const t2 = (details.tier2 as number | undefined) ?? 0;
+        const t1 = (details.tier1 as number | undefined) ?? 0;
+        const maxTier = t3 > 0 ? 3 : t2 > 0 ? 2 : t1 > 0 ? 1 : (details.tier as number | undefined);
         const branches = (details.conflicting_branches as string[] | undefined)?.join(', ');
-        return `TIER ${tier}${branches ? ` with ${branches}` : ''}`;
+        return `TIER ${maxTier ?? '?'}${branches ? ` with ${branches}` : ''}`;
     }
     if (event === 'register' && details.description) return details.description as string;
     if (event === 'merge' && details.pr_number) return `PR #${details.pr_number}`;

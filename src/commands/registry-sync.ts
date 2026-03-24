@@ -69,8 +69,8 @@ function getRepoPath(): string {
  */
 async function getSupabaseStorage(): Promise<SupabaseStorage | null> {
     const config = await loadConfig();
-    const url = process.env.SUPABASE_URL || config.storage.supabaseUrl;
-    const key = process.env.SUPABASE_KEY || config.storage.supabaseKey;
+    const url = process.env.SUPABASE_URL || process.env.COLONY_SUPABASE_URL || config.storage.supabaseUrl;
+    const key = process.env.SUPABASE_KEY || process.env.COLONY_SUPABASE_KEY || config.storage.supabaseKey;
 
     if (!url || !key) return null;
     return new SupabaseStorage({ url, key });
