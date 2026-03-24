@@ -6,7 +6,7 @@
 
 import { Command } from 'commander';
 import { existsSync, statSync, readFileSync, readdirSync, type Dirent } from 'fs';
-import { execSync, execFileSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { homedir } from 'os';
 import { basename, join } from 'path';
 import { getStorage } from '../storage/index.js';
@@ -198,8 +198,8 @@ function formatRemoteTable(rows: RemoteHealthRow[]): string[] {
 
 function checkGitContext(): Check {
     try {
-        execSync('git rev-parse --git-dir', { stdio: 'ignore' });
-        const branch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim();
+        execFileSync('git', ['rev-parse', '--git-dir'], { stdio: 'ignore' });
+        const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' }).trim();
         return { name: 'Git Context', status: 'ok', message: `In git repo, branch: ${branch}` };
     } catch {
         return { name: 'Git Context', status: 'warn', message: 'Not in a git repository' };
@@ -276,8 +276,11 @@ function checkEnvConflict(): Check {
 
 function checkMycmail(): Check {
     try {
-        execSync('which mycmail', { stdio: 'ignore' });
-        const version = execSync('mycmail --version 2>/dev/null || echo "unknown"', { encoding: 'utf-8' }).trim();
+        execFileSync('which', ['mycmail'], { stdio: 'ignore' });
+        let version = 'unknown';
+        try {
+            version = execFileSync('mycmail', ['--version'], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+        } catch { /* mycmail --version may fail, use unknown */ }
         return { name: 'Myceliumail', status: 'ok', message: `Installed (${version})` };
     } catch {
         return { name: 'Myceliumail', status: 'warn', message: 'Not installed (optional)' };
@@ -314,6 +317,7 @@ function checkGitignore(): Check {
 
     try {
         const content = readFileSync(gitignorePath, 'utf-8');
+        const lines = content.split('\n');
         const missing: string[] = [];
 
         // Essential patterns that should be in .gitignore
@@ -324,8 +328,8 @@ function checkGitignore(): Check {
         ];
 
         for (const { pattern, description } of essentialPatterns) {
-            // Check if pattern or similar is present
-            const hasPattern = content.split('\n').some((line: string) => {
+            // Check if pattern or similar is present (split hoisted outside loop)
+            const hasPattern = lines.some((line: string) => {
                 const trimmed = line.trim();
                 return !trimmed.startsWith('#') &&
                     (trimmed === pattern ||
@@ -405,7 +409,7 @@ function checkErrorLogs(): Check {
 
 function checkEmfileLimit(): Check {
     try {
-        const limit = parseInt(execSync('ulimit -n', { encoding: 'utf-8' }).trim(), 10);
+        const limit = parseInt(execFileSync('sh', ['-c', 'ulimit -n'], { encoding: 'utf-8' }).trim(), 10);
         if (limit < 2048) {
             return {
                 name: 'File Limits',
