@@ -62,7 +62,8 @@ interface ColonySignalRow {
 }
 
 interface ColonyStateResponse {
-    gradient?: ColonySignalRow[];
+    signals?: ColonySignalRow[];
+    gradient?: ColonySignalRow[];  // legacy alias
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -111,9 +112,11 @@ function emitQueenSignal(task: string, repos: string[]): string | null {
         return null;
     }
 
-    // Parse signal ID from JSON output (envoak colony signal --json not yet supported,
-    // so fall back to reading the colony gradient for the latest ssan signal)
-    // For now return a placeholder — caller can override with --queen-signal-id
+    // Parse signal ID directly from "Signal emitted (id: UUID)" in stdout
+    const match = (result.stdout ?? '').match(/Signal emitted \(id:\s*([\w-]+)\)/);
+    if (match?.[1]) return match[1];
+
+    // Fallback: query the colony gradient for the latest in-progress signal with this task
     try {
         const statusResult = spawnSync(
             'envoak',
@@ -121,8 +124,9 @@ function emitQueenSignal(task: string, repos: string[]): string | null {
             { encoding: 'utf-8', timeout: 10000 },
         );
         if (statusResult.stdout) {
-            const gradient = JSON.parse(statusResult.stdout) as ColonyStateResponse;
-            const latest = (gradient.gradient ?? []).find(
+            const data = JSON.parse(statusResult.stdout) as ColonyStateResponse;
+            const gradient = data.signals ?? data.gradient ?? [];
+            const latest = gradient.find(
                 (s) => s.task === task && s.status === 'in-progress',
             );
             if (latest) return latest.id;
@@ -306,16 +310,17 @@ const queenStatusCommand = new Command('status')
             process.exit(1);
         }
 
-        let gradient: ColonySignalRow[] = [];
+        let data: ColonyStateResponse = {};
         try {
-            const data = JSON.parse(result.stdout) as ColonyStateResponse;
-            gradient = data.gradient ?? [];
+            const parsed = JSON.parse(result.stdout) as ColonyStateResponse;
+            data = parsed;
         } catch {
             console.error('[QUEEN] Failed to parse colony gradient JSON');
             process.exit(1);
         }
 
         // Filter to sub-spidersans: signals where payload.spawned_by matches queen signal ID
+        const gradient = data.signals ?? data.gradient ?? [];
         const subs = gradient.filter((s) => {
             if (!options.queenSignalId) {
                 // No filter — show all signals with a spawned_by field
