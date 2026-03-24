@@ -5,7 +5,7 @@
  *
  * Usage:
  *   spidersan sync-advisor
- *   spidersan sync-advisor --dir /Users/freedbird/Dev
+ *   spidersan sync-advisor --dir ~/Dev
  *   spidersan sync-advisor --repo /path/to/repo
  *   spidersan sync-advisor --json
  */

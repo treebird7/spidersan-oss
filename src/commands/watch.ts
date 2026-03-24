@@ -3,6 +3,7 @@ import { execSync, spawnSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import * as chokidar from 'chokidar';
 import * as path from 'path';
+import { homedir } from 'os';
 import { io, Socket } from 'socket.io-client';
 import { loadConfig } from '../lib/config.js';
 import { syncFromColony } from '../lib/colony-subscriber.js';
@@ -314,7 +315,7 @@ function getDefaultTreetopRepos(): string[] {
     if (process.env.SPIDERSAN_REPOS) {
         return process.env.SPIDERSAN_REPOS.split(':').map((r) => r.trim()).filter(Boolean);
     }
-    const homeDir = process.env.HOME || '/Users/freedbird';
+    const homeDir = process.env.HOME || homedir();
     return [
         `${homeDir}/Dev/Envoak`,
         `${homeDir}/Dev/treebird-internal`,

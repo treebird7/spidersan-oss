@@ -25,7 +25,7 @@ export interface SpiderRegistry {
     machine_id: string;                  // from envoak machine.json
     machine_name: string;                // e.g. "m2"
     hostname: string;                    // e.g. "Mac.lan"
-    repo_path: string;                   // e.g. "/Users/freedbird/Dev/spidersan"
+    repo_path: string;                   // e.g. "~/Dev/spidersan"
     repo_name: string;                   // e.g. "spidersan"
     branch_name: string;
     files: string[];
@@ -73,7 +73,7 @@ export interface MachineRegistryView {
     machine_name: string;
     hostname: string;
     repo_name: string;                   // e.g. "spidersan"
-    repo_path: string;                   // e.g. "/Users/freedbird/Dev/spidersan"
+    repo_path: string;                   // e.g. "~/Dev/spidersan"
     branches: import('../storage/adapter.js').Branch[];
     last_synced: string;                 // ISO 8601
 }

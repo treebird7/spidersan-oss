@@ -11,6 +11,7 @@
 import { Command } from 'commander';
 import { execFileSync, spawnSync } from 'child_process';
 import { basename } from 'path';
+import { homedir } from 'os';
 import { getStorage } from '../storage/index.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
 import { validateAgentId, validateBranchName } from '../lib/security.js';
@@ -269,7 +270,7 @@ function getDefaultEcosystemRepos(): string[] {
     if (process.env.SPIDERSAN_ECOSYSTEM) {
         return process.env.SPIDERSAN_ECOSYSTEM.split(':').map((r) => r.trim()).filter(Boolean);
     }
-    const homeDir = process.env.HOME || '/Users/freedbird';
+    const homeDir = process.env.HOME || homedir();
     return [
         `${homeDir}/Dev/Envoak`,
         `${homeDir}/Dev/treebird-internal`,

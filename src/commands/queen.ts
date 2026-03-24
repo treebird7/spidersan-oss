@@ -75,7 +75,7 @@ function resolveRepos(reposOption?: string): string[] {
     if (envRepos) {
         return envRepos.split(':').map((r) => r.trim()).filter(Boolean);
     }
-    const homeDir = process.env.HOME || '/Users/freedbird';
+    const homeDir = process.env.HOME || os.homedir();
     return [
         `${homeDir}/Dev/Envoak`,
         `${homeDir}/Dev/treebird-internal`,
