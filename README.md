@@ -87,23 +87,76 @@ spidersan merge-order
 | `spidersan init` | Initialize Spidersan in the current project |
 | `spidersan register --files` | Register a branch with the files being modified |
 | `spidersan list` | List all registered branches and their file ownership |
-| `spidersan conflicts` | Show file conflicts between your branch and others |
+| `spidersan conflicts` | Detect file conflicts between branches (tiered: T1/T2/T3) |
+| `spidersan conflicts --ecosystem` | Aggregate conflict scan across all repos in your dev folder |
 | `spidersan merge-order` | Get topologically-sorted optimal merge order |
 | `spidersan ready-check` | Verify branch is ready to merge (no WIP, no conflicts) |
 | `spidersan depends` | Set/show branch dependencies (Supabase only) |
 | `spidersan stale` | Find stale branches |
-| `spidersan cleanup` | Cleanup stale branches |
-| `spidersan rescue` | Start rescue mission for abandoned branch cleanup |
+| `spidersan cleanup` | Remove stale branches from registry |
+| `spidersan rescue` | Rescue mode — scan for and salvage rogue/unregistered work |
 | `spidersan abandon` | Abandon a branch (mark inactive) |
 | `spidersan merged` | Mark a branch merged |
-| `spidersan sync` | Sync registry (local/Supabase) |
+| `spidersan sync` | Sync registry with actual git branches |
 | `spidersan watch` | Daemon mode: watch files and auto-register |
 | `spidersan doctor` | Diagnose local state and registry health |
 | `spidersan config` | View/edit configuration + guided wizard |
 | `spidersan auto` | Auto-watch start/stop/status (config-based) |
 | `spidersan welcome` | Onboarding and quick start |
+| `spidersan log` | Show branch operation history (local activity log) |
+| `spidersan daily` | Show branch-relevant entries from daily collab logs |
+| `spidersan rebase-helper` | Detect and guide through local git rebase states |
 
-Advanced commands like `who-touched`, `monitor`, `lock`, `scan`, `triage`, and `salvage` live in the ecosystem plugin.
+### 🌐 Multi-Repo & Cloud Commands
+
+| Command | Description |
+|---------|-------------|
+| `spidersan sync-advisor` | Scan all repos and recommend push/pull/cleanup actions |
+| `spidersan registry-sync` | Sync local branch registry to/from Supabase (cross-machine) |
+| `spidersan cross-conflicts` | Detect file conflicts across machines via Supabase |
+| `spidersan github-sync` | Fetch branch/PR/CI status from GitHub for configured repos |
+| `spidersan pulse` | Sync from Colony then show active conflicts (quick health-check) |
+
+### 👑 Queen Mode (Parallel Dispatch)
+
+Dispatch sub-spidersans to run ground jobs across multiple repos in parallel:
+
+```bash
+# Spawn sub-spidersans for a task (generates fire-complete-dissolve scripts)
+spidersan queen spawn --task "morning sync" --type sync --repos "repo1,repo2"
+
+# Dry-run: preview scripts without emitting colony signals
+spidersan queen spawn --task "conflict scan" --type conflicts --dry-run
+
+# Monitor active sub-spidersans via the colony gradient
+spidersan queen status --queen-signal-id <id>
+
+# Manually dissolve a stuck sub-spidersan
+spidersan queen dissolve <signal-id>
+```
+
+Job types: `sync` | `conflicts` | `cleanup` | `custom`
+
+### 🔄 Task Torrenting (Branch-per-Task)
+
+Create and manage parallel task branches with conflict-aware merge ordering:
+
+```bash
+spidersan torrent create DASH-001 --agent myagent
+spidersan torrent status
+spidersan torrent tree
+spidersan torrent complete DASH-001
+spidersan torrent merge-order
+spidersan torrent decompose DASH --into "DASH-A,DASH-B,DASH-C"
+```
+
+### 📊 TUI Dashboard
+
+Real-time 4-panel terminal UI — ecosystem overview, conflict map, activity feed, merge queue:
+
+```bash
+spidersan dashboard
+```
 
 ### Watch Mode (Daemon)
 
