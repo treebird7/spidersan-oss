@@ -53,3 +53,7 @@
 **Vulnerability:** Arbitrary file read/write via unvalidated `agentId` in `agent-errors.ts` and `crypto.ts`. By providing an `agentId` containing directory traversal sequences (e.g. `../../../etc/passwd`), attackers could write encrypted data/error logs outside of intended storage or read unauthorized files.
 **Learning:** Security functions like `validateAgentId` exist in the codebase but were missing at critical file I/O sink boundaries. Relying on validation at the "top" of CLI inputs is insufficient for defense-in-depth, especially for shared storage and utility functions.
 **Prevention:** Ensure that identifiers used in file system paths are uniformly validated against strict patterns (e.g. via `validateAgentId`) immediately prior to path concatenation (`path.join`).
+## 2026-03-09 - Systemic execSync Remediation
+**Vulnerability:** Shell Command Injection via `execSync` across multiple commands.
+**Learning:** `execSync` inherently executes inside a shell (e.g. `/bin/sh`), which parses shell metacharacters (`;&|()<>`). Using it with interpolated variables exposes the application to command injection. Even hardcoded strings are problematic as refactoring may later introduce variables.
+**Prevention:** Systematically replace all uses of `execSync` with `execFileSync` passing an array of arguments to bypass the shell entirely. For shell builtins that require a shell (like `ulimit`), explicitly wrap them as `execFileSync('sh', ['-c', 'ulimit -n'])`.

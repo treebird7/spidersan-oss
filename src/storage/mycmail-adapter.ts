@@ -5,7 +5,7 @@
  * This is the highest tier with real-time, full features.
  */
 
-import { execSync, spawnSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import type {
     MessageStorageAdapter,
     Message,
@@ -58,7 +58,7 @@ export class MycmailAdapter implements MessageStorageAdapter {
         }
 
         try {
-            execSync('which mycmail', { stdio: 'ignore' });
+            execFileSync('which', ['mycmail'], { stdio: 'ignore' });
             this.mycmailAvailable = true;
             return true;
         } catch {

@@ -8,7 +8,7 @@
  */
 
 import { Command } from 'commander';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import { existsSync, mkdirSync, copyFileSync } from 'fs';
 import { join, basename } from 'path';
@@ -29,7 +29,7 @@ export const rescueCommand = new Command('rescue')
         // 1. Scan for Untracked Files
         let untracked: string[] = [];
         try {
-            const output = execSync('git status --porcelain', { encoding: 'utf-8' });
+            const output = execFileSync('git', ['status', '--porcelain'], { encoding: 'utf-8' });
             untracked = output.split('\n')
                 .filter(line => line.startsWith('?? '))
                 .map(line => line.substring(3));
@@ -40,7 +40,7 @@ export const rescueCommand = new Command('rescue')
         // 2. Scan for Unregistered Branches
         let ghosts: string[] = [];
         try {
-            const localBranches = execSync('git branch --format="%(refname:short)"', { encoding: 'utf-8' })
+            const localBranches = execFileSync('git', ['branch', '--format=%(refname:short)'], { encoding: 'utf-8' })
                 .split('\n').filter(Boolean);
 
             const registered = await storage.list();

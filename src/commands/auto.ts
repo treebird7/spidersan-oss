@@ -5,7 +5,7 @@
  */
 
 import { Command } from 'commander';
-import { execSync, spawn } from 'child_process';
+import { execFileSync, spawn } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { loadConfig } from '../lib/config.js';
@@ -24,7 +24,7 @@ interface AutoWatchState {
 
 function getRepoRoot(): string {
     try {
-        return execSync('git rev-parse --show-toplevel', { encoding: 'utf-8' }).trim();
+        return execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf-8' }).trim();
     } catch {
         return process.cwd();
     }
