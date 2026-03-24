@@ -323,9 +323,12 @@ function checkGitignore(): Check {
             { pattern: '*.key', description: 'key files' },
         ];
 
+        // ⚡ Bolt: Hoist string splitting outside the loop to prevent redundant allocations
+        const lines = content.split('\n');
+
         for (const { pattern, description } of essentialPatterns) {
             // Check if pattern or similar is present
-            const hasPattern = content.split('\n').some((line: string) => {
+            const hasPattern = lines.some((line: string) => {
                 const trimmed = line.trim();
                 return !trimmed.startsWith('#') &&
                     (trimmed === pattern ||
