@@ -153,3 +153,9 @@ scripts/license-keys.json
 prompt.md
 todo
 embeddings.json
+
+# Agent-specific directories (never commit)
+.jules/
+.claude/
+.agent/
+.myctoak/

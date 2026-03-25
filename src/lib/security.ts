@@ -114,6 +114,16 @@ export function escapeGitArg(arg: string): string {
     return arg;
 }
 
+/**
+ * Escapes a string so it can be safely used in a shell script.
+ * Replaces single quotes with '\'' and wraps the result in single quotes.
+ * Prevents command injection when generating bash scripts.
+ */
+export function escapeShellString(str: string): string {
+    if (str === null || str === undefined) return "''";
+    return `'${String(str).replace(/'/g, "'\\''")}'`;
+}
+
 // Export validation patterns for testing
 export const patterns = {
     VALID_AGENT_ID,
