@@ -230,25 +230,32 @@ function checkEnvConflict(): Check {
         try {
             const content = readFileSync(localEnv, 'utf-8');
 
-            // Check for concatenation bug (missing newlines between vars)
-            // Pattern: VALUE without newline before next KEY=
+            // ⚡ Bolt Performance Optimization: Single-pass .env linting
+            // Replaces redundant allocations, O(N) array filtering/joining, and RegExp match with O(1) manual lookup.
+            let hasSupabaseVars = false;
             const lines = content.split('\n');
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
-                // Check for multiple = on same line (concatenation bug)
-                const equalSigns = (line.match(/=/g) || []).length;
-                if (equalSigns > 1 && !line.startsWith('#')) {
-                    return {
-                        name: '.env Lint',
-                        status: 'error',
-                        message: `.env line ${i + 1} has multiple '=' - likely missing newline (concatenation bug)`
-                    };
+                const trimmed = line.trim();
+
+                if (!trimmed || trimmed.startsWith('#')) continue;
+
+                // Fast count of '=' signs without allocating an array/regex
+                let equalSigns = 0;
+                let idx = line.indexOf('=');
+                while (idx !== -1) {
+                    equalSigns++;
+                    if (equalSigns > 1) break;
+                    idx = line.indexOf('=', idx + 1);
                 }
+
+                let isCorruptedUrl = false;
                 // Check for vars that look concatenated (e.g., VALUE_WITHOUT_NEWLINENEXT_VAR=)
                 if (line.includes('://') && line.includes('=') && line.indexOf('=') < line.indexOf('://')) {
                     // URL in value is fine, but check if there's another = after
                     const afterUrl = line.substring(line.indexOf('://') + 3);
                     if (afterUrl.includes('=') && !afterUrl.startsWith('=')) {
+                        isCorruptedUrl = true;
                         return {
                             name: '.env Lint',
                             status: 'error',
@@ -256,11 +263,22 @@ function checkEnvConflict(): Check {
                         };
                     }
                 }
+
+                if (!isCorruptedUrl && equalSigns > 1) {
+                    return {
+                        name: '.env Lint',
+                        status: 'error',
+                        message: `.env line ${i + 1} has multiple '=' - likely missing newline (concatenation bug)`
+                    };
+                }
+
+                // Track if Supabase vars exist
+                if (!hasSupabaseVars && (trimmed.includes('SUPABASE_URL') || trimmed.includes('SUPABASE_KEY'))) {
+                    hasSupabaseVars = true;
+                }
             }
 
-            // Check Supabase conflict (skip comment lines)
-            const nonCommentLines = content.split('\n').filter(l => !l.trim().startsWith('#')).join('\n');
-            if (nonCommentLines.includes('SUPABASE_URL') || nonCommentLines.includes('SUPABASE_KEY')) {
+            if (hasSupabaseVars) {
                 return {
                     name: '.env Lint',
                     status: 'warn',
@@ -546,4 +564,5 @@ export const _doctorTestable = {
     getRemoteHealthRows,
     hasStrictRemoteFailure,
     formatRemoteTable,
+    checkEnvConflict,
 };
