@@ -9,7 +9,7 @@ describe('doctor checkEnvConflict optimizations', () => {
         fs.writeFileSync('.env', 'A=https://foo.comNEXT=val\n');
         const res = checkEnvConflict();
         expect(res.status).toBe('error');
-        expect(res.message).toInclude('appears corrupted');
+        expect(res.message).toContain('appears corrupted');
         fs.unlinkSync('.env');
     });
 
@@ -17,7 +17,7 @@ describe('doctor checkEnvConflict optimizations', () => {
         fs.writeFileSync('.env', 'KEY==http://example.com\n');
         const res = checkEnvConflict();
         expect(res.status).toBe('error');
-        expect(res.message).toInclude('multiple');
+        expect(res.message).toContain('multiple');
         fs.unlinkSync('.env');
     });
 });
