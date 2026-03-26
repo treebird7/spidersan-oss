@@ -40,14 +40,18 @@ CREATE POLICY "Anyone can read all registries"
 
 CREATE POLICY "Insert own machine registries"
     ON spider_registries FOR INSERT
+    TO anon, authenticated
     WITH CHECK (true);
 
 CREATE POLICY "Update own machine registries"
     ON spider_registries FOR UPDATE
-    USING (true);
+    TO anon, authenticated
+    USING (true)
+    WITH CHECK (true);
 
 CREATE POLICY "Delete own machine registries"
     ON spider_registries FOR DELETE
+    TO anon, authenticated
     USING (true);
 
 -- View: active branches across all machines for a repo

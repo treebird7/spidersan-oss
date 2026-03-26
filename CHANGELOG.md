@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **RLS: spider_registries write policies now apply to anon+authenticated** — `CREATE POLICY` with no `TO` clause silently defaults to `service_role` in PostgreSQL; INSERT/UPDATE/DELETE policies dropped and recreated with explicit `TO anon, authenticated`. `registry-sync --push` was blocked by `42501` for all non-service-role clients. Both migration files (`20260219_spider_registries.sql`, `PASTE_THIS.sql`) patched with explicit role grants.
+
 ## [0.5.0] - 2026-03-24
 
 ### Added

@@ -9,9 +9,9 @@ DROP POLICY IF EXISTS "Update own machine registries" ON spider_registries;
 DROP POLICY IF EXISTS "Delete own machine registries" ON spider_registries;
 
 CREATE POLICY "Anyone can read all registries" ON spider_registries FOR SELECT USING (true);
-CREATE POLICY "Insert own machine registries" ON spider_registries FOR INSERT WITH CHECK (true);
-CREATE POLICY "Update own machine registries" ON spider_registries FOR UPDATE USING (true);
-CREATE POLICY "Delete own machine registries" ON spider_registries FOR DELETE USING (true);
+CREATE POLICY "Insert own machine registries" ON spider_registries FOR INSERT TO anon, authenticated WITH CHECK (true);
+CREATE POLICY "Update own machine registries" ON spider_registries FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Delete own machine registries" ON spider_registries FOR DELETE TO anon, authenticated USING (true);
 
 CREATE OR REPLACE VIEW spider_active_registries AS
 SELECT * FROM spider_registries WHERE status = 'active' ORDER BY synced_at DESC;

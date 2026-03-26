@@ -154,8 +154,26 @@ prompt.md
 todo
 embeddings.json
 
-# Agent-specific directories (never commit)
-.jules/
-.claude/
-.agent/
+# Agent/session local files
 .myctoak/
+.mcp.json
+.pending_task.md
+collab/
+tasks/
+.agent/
+.claude/
+.jules/
+INDEX_MOVED.md
+bin/
+run.sh
+CLAUDE.md
+SPIDERSAN_LESSONS_LEARNED.md
+BACKLOG.md
+MAINTENANCE_TASKS.md
+tools/
+
+# IDE — local machine settings only
+.vscode/settings.json
+.cursor/
+.gemini/
+.cline/
