@@ -13,6 +13,8 @@ on:
 env:
   SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
   SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+  COLONY_SUPABASE_URL: ${{ secrets.COLONY_SUPABASE_URL }}
+  COLONY_SUPABASE_KEY: ${{ secrets.COLONY_SUPABASE_KEY }}
 
 jobs:
   auto-register:
@@ -84,8 +86,14 @@ jobs:
             --description "Auto-registered via GitHub Actions"
 
           echo "✅ Branch registered with Spidersan"
+
+      - name: Sync registry to colony
+        if: steps.commit.outputs.files != ''
+        run: |
+          echo "🕷️ Syncing registry to colony..."
+          spidersan registry-sync --push || echo "⚠️  Colony sync skipped (COLONY_SUPABASE_URL/KEY not configured)"
+          echo "✅ Registry synced"
       
-      - name: Check for conflicts
         if: steps.commit.outputs.files != ''
         run: |
           echo "🕷️ Checking for conflicts..."
