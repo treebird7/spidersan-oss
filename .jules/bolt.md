@@ -1,0 +1,3 @@
+## 2024-03-25 - .env Parsing Optimization Rejected
+**Learning:** Even if a string parsing optimization converts O(N) array/regex allocations to O(1) loop lookups and benchmarks 3x faster, it may be rejected if the target file (like `.env`) is never large enough in practice to cause actual bottlenecks. The complexity of managing state (like `isCorruptedUrl` flags) and robust testing (needing `try/finally` for cleanup) outweighed the marginal real-world speedup.
+**Action:** Before optimizing parsing logic, verify the actual size of the data being processed in production. Do not optimize cold paths or small files just because the algorithm can be improved.
