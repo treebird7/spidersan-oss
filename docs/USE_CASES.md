@@ -351,7 +351,43 @@ jobs:
 
 ---
 
-### 4.3 PR Auto-Labeling Based on Conflicts
+### 4.3 Cross-Machine Fleet Awareness
+**Scenario:** You have multiple AI agents running on different machines (or CI + local dev), each registering branches independently. Agent A on machine 1 has no idea what Agent B on machine 2 is touching — local conflict detection is blind to the other side.
+
+**Spidersan Solution:**
+
+Each machine pushes its registry to the colony Supabase project:
+```bash
+# On each machine / in each agent session
+spidersan registry-sync --push
+```
+
+Any machine can then pull the full fleet view and run conflict detection across all of them:
+```bash
+# See all branches across all machines for this repo
+spidersan registry-sync --pull
+
+# Conflict detection now includes remote machines' branches
+spidersan conflicts
+spidersan cross-conflicts
+```
+
+**Setup:** Add `COLONY_SUPABASE_URL` and `COLONY_SUPABASE_KEY` to your environment (or vault). The `registry-sync --push` step can be added to your agent's session startup or wired into CI:
+
+```yaml
+# .github/workflows/auto-register.yml
+env:
+  COLONY_SUPABASE_URL: ${{ secrets.COLONY_SUPABASE_URL }}
+  COLONY_SUPABASE_KEY: ${{ secrets.COLONY_SUPABASE_KEY }}
+```
+
+**Why it matters:** Without this, `spidersan conflicts` only sees branches registered on the *current machine*. With registry-sync, a fleet of 4 agents across 2 machines all share one registry — conflicts surface before they become merge disasters, regardless of where each agent is running.
+
+**Hashtags:** `#multi-machine` `#fleet` `#cross-machine` `#registry-sync` `#ai-agents`
+
+---
+
+### 4.4 PR Auto-Labeling Based on Conflicts
 **Scenario:** Automatically label PRs that have conflicts with other branches.
 
 **Spidersan Solution:**

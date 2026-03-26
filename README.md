@@ -112,7 +112,9 @@ spidersan merge-order
 | Command | Description |
 |---------|-------------|
 | `spidersan sync-advisor` | Scan all repos and recommend push/pull/cleanup actions |
-| `spidersan registry-sync` | Sync local branch registry to/from Supabase (cross-machine) |
+| `spidersan registry-sync --push` | Push local branch registry to colony Supabase (share with fleet) |
+| `spidersan registry-sync --pull` | Pull other machines' registries — see what the full fleet is working on |
+| `spidersan registry-sync --status` | Show sync status across all machines |
 | `spidersan cross-conflicts` | Detect file conflicts across machines via Supabase |
 | `spidersan github-sync` | Fetch branch/PR/CI status from GitHub for configured repos |
 | `spidersan pulse` | Sync from Colony then show active conflicts (quick health-check) |
