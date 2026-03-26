@@ -72,7 +72,7 @@ export function logAgentError(
     try {
         ensureErrorsDir();
 
-        const logPath = path.join(AGENT_ERRORS_DIR, `${agent}.log`);
+        const logPath = getErrorLogPath(agent);
         rotateLogIfNeeded(logPath);
 
         const entry: AgentError = {
@@ -97,7 +97,7 @@ export function logAgentError(
  */
 export function readAgentErrors(agent: string, limit = 10): AgentError[] {
     try {
-        const logPath = path.join(AGENT_ERRORS_DIR, `${agent}.log`);
+        const logPath = getErrorLogPath(agent);
         if (!fs.existsSync(logPath)) return [];
 
         const content = fs.readFileSync(logPath, 'utf-8');
