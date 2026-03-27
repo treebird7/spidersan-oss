@@ -10,6 +10,7 @@
  */
 
 import { Command } from 'commander';
+import { compilePatterns } from '../lib/regex-utils.js';
 import { execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import { syncFromColony } from '../lib/colony-subscriber.js';
@@ -40,13 +41,21 @@ const TIER_2_PATTERNS = [
     /config\.(ts|js)$/,
 ];
 
-function classifyTier(file: string): 1 | 2 | 3 {
-    for (const p of TIER_3_PATTERNS) {
+
+const COMPILED_TIER_3 = compilePatterns(TIER_3_PATTERNS);
+const COMPILED_TIER_2 = compilePatterns(TIER_2_PATTERNS);
+
+function classifyTier(file: string, compiledHigh: RegExp[] = [], compiledMedium: RegExp[] = []): 1 | 2 | 3 {
+    const tier3 = [...COMPILED_TIER_3, ...compiledHigh];
+    for (const p of tier3) {
         if (p.test(file)) return 3;
     }
-    for (const p of TIER_2_PATTERNS) {
+
+    const tier2 = [...COMPILED_TIER_2, ...compiledMedium];
+    for (const p of tier2) {
         if (p.test(file)) return 2;
     }
+
     return 1;
 }
 
@@ -73,12 +82,11 @@ export const pulseCommand = new Command('pulse')
         }
 
         const config = await loadConfig();
-        const highSeverity = (config.conflicts?.highSeverityPatterns || []).map(
-            (p: string) => new RegExp(p),
-        );
-        const mediumSeverity = (config.conflicts?.mediumSeverityPatterns || []).map(
-            (p: string) => new RegExp(p),
-        );
+        const highSeverity = (config.conflicts?.highSeverityPatterns || []).map((p: string) => new RegExp(p));
+        const mediumSeverity = (config.conflicts?.mediumSeverityPatterns || []).map((p: string) => new RegExp(p));
+
+        const compiledHigh = compilePatterns(highSeverity);
+        const compiledMedium = compilePatterns(mediumSeverity);
 
         // ── Colony sync ───────────────────────────────────────────────────────
         let colonySynced = 0;
@@ -127,16 +135,7 @@ export const pulseCommand = new Command('pulse')
             // Determine max tier for this conflict group
             let maxTier: 1 | 2 | 3 = 1;
             for (const file of overlapping) {
-                let tier: 1 | 2 | 3 = classifyTier(file);
-                // Also apply config-level patterns
-                for (const p of highSeverity) {
-                    if (p.test(file)) { tier = 3; break; }
-                }
-                if (tier < 3) {
-                    for (const p of mediumSeverity) {
-                        if (p.test(file)) { tier = Math.max(tier, 2) as 2; break; }
-                    }
-                }
+                const tier = classifyTier(file, compiledHigh, compiledMedium);
                 if (tier > maxTier) maxTier = tier;
             }
 
