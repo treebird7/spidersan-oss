@@ -13,6 +13,7 @@ function createTempGitRepo(): string {
     execSync('git init', { cwd: dir, stdio: 'ignore' });
     execSync('git config user.email "you@example.com"', { cwd: dir, stdio: 'ignore' });
     execSync('git config user.name "Your Name"', { cwd: dir, stdio: 'ignore' });
+    execSync('git config commit.gpgsign false', { cwd: dir, stdio: 'ignore' });
     // Create initial commit
     execSync('touch README.md', { cwd: dir, stdio: 'ignore' });
     execSync('git add README.md', { cwd: dir, stdio: 'ignore' });

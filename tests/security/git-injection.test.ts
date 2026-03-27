@@ -19,6 +19,7 @@ describe('GitMessagesAdapter Security', () => {
         execSync('git init', { stdio: 'ignore' });
         execSync('git config user.email "test@example.com"', { stdio: 'ignore' });
         execSync('git config user.name "Test User"', { stdio: 'ignore' });
+        execSync('git config commit.gpgsign false', { stdio: 'ignore' });
         execSync('touch file', { stdio: 'ignore' });
         execSync('git add file', { stdio: 'ignore' });
         execSync('git commit -m "initial"', { stdio: 'ignore' });
