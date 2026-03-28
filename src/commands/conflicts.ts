@@ -55,25 +55,31 @@ interface ConflictTier {
     action: string;
 }
 
-function getConflictTier(file: string, combinedTier3Regex?: RegExp, combinedTier2Regex?: RegExp): ConflictTier {
+function getConflictTier(file: string, highSeverityPatterns: RegExp[] = [], mediumSeverityPatterns: RegExp[] = []): ConflictTier {
     // Check TIER 3 first (most critical)
-    if (combinedTier3Regex && combinedTier3Regex.test(file)) {
-        return {
-            tier: 3,
-            label: 'BLOCK',
-            icon: '🔴',
-            action: 'Merge blocked. Resolve conflict first.'
-        };
+    const tier3 = [...TIER_3_PATTERNS, ...highSeverityPatterns];
+    for (const pattern of tier3) {
+        if (pattern.test(file)) {
+            return {
+                tier: 3,
+                label: 'BLOCK',
+                icon: '🔴',
+                action: 'Merge blocked. Resolve conflict first.'
+            };
+        }
     }
 
     // Check TIER 2 
-    if (combinedTier2Regex && combinedTier2Regex.test(file)) {
-        return {
-            tier: 2,
-            label: 'PAUSE',
-            icon: '🟠',
-            action: 'Coordinate with other agent before proceeding.'
-        };
+    const tier2 = [...TIER_2_PATTERNS, ...mediumSeverityPatterns];
+    for (const pattern of tier2) {
+        if (pattern.test(file)) {
+            return {
+                tier: 2,
+                label: 'PAUSE',
+                icon: '🟠',
+                action: 'Coordinate with other agent before proceeding.'
+            };
+        }
     }
 
     // Default: TIER 1
@@ -426,20 +432,8 @@ export const conflictsCommand = new Command('conflicts')
         const minTier = parseInt(options.tier, 10) as 1 | 2 | 3;
 
         // Load custom patterns from config
-        const highSeverity = config.conflicts?.highSeverityPatterns || [];
-        const mediumSeverity = config.conflicts?.mediumSeverityPatterns || [];
-
-        // Performance Optimization: Consolidate patterns into a single RegExp per tier
-        // This provides an O(1) lookup per file instead of O(K) where K is number of patterns
-        const combinedTier3Regex = new RegExp(
-            [...TIER_3_PATTERNS.map(p => p.source), ...highSeverity].join('|'),
-            'i' // Use case-insensitive matching if it applies, assuming string patterns match regardless
-        );
-
-        const combinedTier2Regex = new RegExp(
-            [...TIER_2_PATTERNS.map(p => p.source), ...mediumSeverity].join('|'),
-            'i'
-        );
+        const highSeverity = (config.conflicts?.highSeverityPatterns || []).map(p => new RegExp(p));
+        const mediumSeverity = (config.conflicts?.mediumSeverityPatterns || []).map(p => new RegExp(p));
 
         let targetBranch: string;
         let targetFiles: string[];
@@ -497,7 +491,7 @@ export const conflictsCommand = new Command('conflicts')
                 // Get highest tier for this conflict
                 let maxTier: ConflictTier = { tier: 1, label: 'WARN', icon: '🟡', action: '' };
                 for (const file of overlappingFiles) {
-                    const fileTier = getConflictTier(file, combinedTier3Regex, combinedTier2Regex);
+                    const fileTier = getConflictTier(file, highSeverity, mediumSeverity);
                     if (fileTier.tier > maxTier.tier) {
                         maxTier = fileTier;
                     }
@@ -601,7 +595,7 @@ export const conflictsCommand = new Command('conflicts')
         for (const conflict of conflicts) {
             console.log(`${conflict.tierInfo.icon} TIER ${conflict.tier} (${conflict.tierInfo.label}): ${conflict.branch}`);
             for (const file of conflict.files) {
-                const fileTier = getConflictTier(file, combinedTier3Regex, combinedTier2Regex);
+                const fileTier = getConflictTier(file, highSeverity, mediumSeverity);
                 console.log(`   ${fileTier.icon} ${file}`);
             }
             console.log(`   → ${conflict.tierInfo.action}`);
