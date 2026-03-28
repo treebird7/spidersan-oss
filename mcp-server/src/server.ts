@@ -16,7 +16,7 @@ import * as storage from './lib/storage.js';
 import { existsSync, realpathSync, mkdirSync } from 'fs';
 import { readFile, writeFile } from 'fs/promises';
 import { resolve, isAbsolute, sep } from 'path';
-import { execSync, execFile } from 'child_process';
+import { execFileSync, execFile } from 'child_process';
 import { randomUUID } from 'crypto';
 import { homedir } from 'os';
 import { promisify } from 'util';
@@ -131,7 +131,7 @@ async function ensureValidBranchName(branchName: string, repoDir: string): Promi
 
 function getRepoRootForDir(dir: string): string {
     try {
-        return execSync('git rev-parse --show-toplevel', { cwd: dir, encoding: 'utf-8' }).trim();
+        return execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, encoding: 'utf-8' }).trim();
     } catch {
         return dir;
     }
