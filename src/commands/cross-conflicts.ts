@@ -12,6 +12,7 @@
  */
 
 import { Command } from 'commander';
+import { compilePatterns } from '../lib/regex-utils.js';
 import { getStorage } from '../storage/index.js';
 import { LocalStorage } from '../storage/local.js';
 import { SupabaseStorage } from '../storage/supabase.js';
@@ -47,11 +48,15 @@ const TIER_2_PATTERNS = [
     /config\.(ts|js)$/,
 ];
 
+
+const COMPILED_TIER_3 = compilePatterns(TIER_3_PATTERNS);
+const COMPILED_TIER_2 = compilePatterns(TIER_2_PATTERNS);
+
 function classifyTier(file: string): 1 | 2 | 3 {
-    for (const p of TIER_3_PATTERNS) {
+    for (const p of COMPILED_TIER_3) {
         if (p.test(file)) return 3;
     }
-    for (const p of TIER_2_PATTERNS) {
+    for (const p of COMPILED_TIER_2) {
         if (p.test(file)) return 2;
     }
     return 1;
