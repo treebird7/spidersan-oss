@@ -30,6 +30,8 @@ export interface RepoState {
  * Scan a single repository for git state.
  * Returns null if not a git repo or unreadable.
  */
+const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', '.cache', '.next']);
+
 export function scanRepo(repoPath: string): RepoState | null {
     try {
         if (!existsSync(join(repoPath, '.git'))) return null;
@@ -98,7 +100,7 @@ function findRepos(basePath: string, maxDepth = 2, currentDepth = 0): string[] {
         const entries = readdirSync(basePath, { withFileTypes: true });
         for (const entry of entries) {
             if (entry.name.startsWith('.') && entry.name !== '.git') continue;
-            if (['node_modules', 'dist', 'build', '.cache', '.next'].includes(entry.name)) continue;
+            if (SKIP_DIRS.has(entry.name)) continue;
 
             const fullPath = join(basePath, entry.name);
             if (entry.isDirectory()) {

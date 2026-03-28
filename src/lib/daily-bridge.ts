@@ -39,6 +39,8 @@ const BRANCH_KEYWORDS = [
     'tidy', 'cleanup', 'register',
 ];
 
+const DAILY_FILE_REGEX = /^\d{4}-\d{2}-\d{2}-daily\.md$/;
+
 const AGENT_EMOJI_MAP: Record<string, string> = {
     '🌳': 'treesan',
     '🐦': 'birdsan',
@@ -149,7 +151,7 @@ function listDailyFiles(dailyDir: string, lookback: number): Array<{ date: strin
     if (!existsSync(dailyDir)) return [];
 
     const files = readdirSync(dailyDir)
-        .filter(f => f.match(/^\d{4}-\d{2}-\d{2}-daily\.md$/))
+        .filter(f => DAILY_FILE_REGEX.test(f))
         .sort()
         .reverse();
 
@@ -224,7 +226,7 @@ export function listDailyDates(dailyDir?: string): string[] {
     const dir = dailyDir || getDailyDir();
     if (!existsSync(dir)) return [];
     return readdirSync(dir)
-        .filter(f => f.match(/^\d{4}-\d{2}-\d{2}-daily\.md$/))
+        .filter(f => DAILY_FILE_REGEX.test(f))
         .map(f => f.slice(0, 10))
         .sort()
         .reverse();
