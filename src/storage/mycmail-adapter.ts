@@ -26,11 +26,6 @@ function validateAgentId(agentId: string): string {
     return agentId;
 }
 
-function sanitizeText(text: string): string {
-    // Remove shell metacharacters but allow normal text
-    return text.replace(/[`$(){}[\]|;&<>]/g, '');
-}
-
 export class MycmailAdapter implements MessageStorageAdapter {
     private agentId: string;
     private mycmailAvailable: boolean | null = null;
@@ -210,9 +205,11 @@ export class MycmailAdapter implements MessageStorageAdapter {
     async send(input: SendMessageInput): Promise<Message> {
         const safeFrom = validateAgentId(input.from);
         const safeTo = validateAgentId(input.to);
-        const safeSubject = sanitizeText(input.subject);
+        // Security Pattern: Subject and body are passed via argument arrays in spawnSync,
+        // safely preventing shell injection while preserving data integrity
+        const safeSubject = input.subject;
         const fullMessage = this.formatMessageBody(input);
-        const safeMessage = sanitizeText(fullMessage);
+        const safeMessage = fullMessage;
 
         const args = ['send', safeTo, safeSubject, '--message', safeMessage];
         if (input.encrypted) {
