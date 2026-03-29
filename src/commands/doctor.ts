@@ -229,38 +229,68 @@ function checkEnvConflict(): Check {
     if (existsSync(localEnv)) {
         try {
             const content = readFileSync(localEnv, 'utf-8');
+            let hasSupabaseVars = false;
 
-            // Check for concatenation bug (missing newlines between vars)
-            // Pattern: VALUE without newline before next KEY=
-            const lines = content.split('\n');
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                // Check for multiple = on same line (concatenation bug)
-                const equalSigns = (line.match(/=/g) || []).length;
-                if (equalSigns > 1 && !line.startsWith('#')) {
-                    return {
-                        name: '.env Lint',
-                        status: 'error',
-                        message: `.env line ${i + 1} has multiple '=' - likely missing newline (concatenation bug)`
-                    };
-                }
-                // Check for vars that look concatenated (e.g., VALUE_WITHOUT_NEWLINENEXT_VAR=)
-                if (line.includes('://') && line.includes('=') && line.indexOf('=') < line.indexOf('://')) {
-                    // URL in value is fine, but check if there's another = after
-                    const afterUrl = line.substring(line.indexOf('://') + 3);
-                    if (afterUrl.includes('=') && !afterUrl.startsWith('=')) {
+            // Performance Optimization: Single-pass primitive lookup avoids O(N) array allocation
+            // and chained method overhead from split('\n'), match(/=/g), filter, and join.
+            let start = 0;
+            let lineNumber = 1;
+            const length = content.length;
+
+            while (start < length) {
+                let end = content.indexOf('\n', start);
+                if (end === -1) end = length;
+
+                const line = content.substring(start, end);
+                const trimmed = line.trimStart();
+
+                if (trimmed.length > 0 && !trimmed.startsWith('#')) {
+                    // Check for multiple = on same line (concatenation bug)
+                    let equalCount = 0;
+                    let equalIndex = line.indexOf('=');
+
+                    while (equalIndex !== -1) {
+                        // Heuristic: exclude = if preceded by ? or & (likely URL params)
+                        if (equalIndex === 0 || (line[equalIndex - 1] !== '?' && line[equalIndex - 1] !== '&')) {
+                            equalCount++;
+                        }
+                        equalIndex = line.indexOf('=', equalIndex + 1);
+                    }
+
+                    if (equalCount > 1) {
                         return {
                             name: '.env Lint',
                             status: 'error',
-                            message: `.env line ${i + 1} appears corrupted - check for missing newlines`
+                            message: `.env line ${lineNumber} has multiple '=' - likely missing newline (concatenation bug)`
                         };
                     }
+
+                    // Check for vars that look concatenated (e.g., VALUE_WITHOUT_NEWLINENEXT_VAR=)
+                    const urlIdx = line.indexOf('://');
+                    const eqIdx = line.indexOf('=');
+                    if (urlIdx !== -1 && eqIdx !== -1 && eqIdx < urlIdx) {
+                        // URL in value is fine, but check if there's another = after
+                        const afterUrl = line.substring(urlIdx + 3);
+                        if (afterUrl.includes('=') && !afterUrl.startsWith('=')) {
+                            return {
+                                name: '.env Lint',
+                                status: 'error',
+                                message: `.env line ${lineNumber} appears corrupted - check for missing newlines`
+                            };
+                        }
+                    }
+
+                    // Check Supabase conflict
+                    if (line.includes('SUPABASE_URL') || line.includes('SUPABASE_KEY')) {
+                        hasSupabaseVars = true;
+                    }
                 }
+
+                start = end + 1;
+                lineNumber++;
             }
 
-            // Check Supabase conflict (skip comment lines)
-            const nonCommentLines = content.split('\n').filter(l => !l.trim().startsWith('#')).join('\n');
-            if (nonCommentLines.includes('SUPABASE_URL') || nonCommentLines.includes('SUPABASE_KEY')) {
+            if (hasSupabaseVars) {
                 return {
                     name: '.env Lint',
                     status: 'warn',
@@ -317,7 +347,6 @@ function checkGitignore(): Check {
 
     try {
         const content = readFileSync(gitignorePath, 'utf-8');
-        const lines = content.split('\n');
         const missing: string[] = [];
 
         // Essential patterns that should be in .gitignore
@@ -327,16 +356,33 @@ function checkGitignore(): Check {
             { pattern: '*.key', description: 'key files' },
         ];
 
+        // Performance Optimization: Single-pass primitive lookup avoids O(N) array allocation
+        // and chained method overhead from split('\n').some(...)
         for (const { pattern, description } of essentialPatterns) {
-            // Check if pattern or similar is present (split hoisted outside loop)
-            const hasPattern = lines.some((line: string) => {
-                const trimmed = line.trim();
-                return !trimmed.startsWith('#') &&
-                    (trimmed === pattern ||
-                        trimmed.startsWith(pattern) ||
-                        trimmed.includes(pattern));
-            });
-            if (!hasPattern) {
+            let pos = content.indexOf(pattern);
+            let found = false;
+
+            while (pos !== -1) {
+                // Walk backward to the start of the line to check for comment markers
+                let lineStart = pos;
+                while (lineStart > 0 && content[lineStart - 1] !== '\n') {
+                    lineStart--;
+                }
+
+                // Skip leading whitespace to find the first character of the line
+                let i = lineStart;
+                while (i < pos && (content[i] === ' ' || content[i] === '\t')) {
+                    i++;
+                }
+
+                if (content[i] !== '#') {
+                    found = true;
+                    break;
+                }
+                pos = content.indexOf(pattern, pos + 1);
+            }
+
+            if (!found) {
                 missing.push(description);
             }
         }
@@ -373,19 +419,58 @@ function checkErrorLogs(): Check {
 
         for (const file of files) {
             const content = readFileSync(join(errorsDir, file), 'utf-8');
-            const lines = content.trim().split('\n').filter(l => l);
-            totalErrors += lines.length;
+            const length = content.length;
+            if (length === 0) continue;
 
-            // Count recent errors (last hour)
-            for (const line of lines.slice(-20)) {
-                try {
-                    const entry = JSON.parse(line);
-                    if (now - new Date(entry.timestamp).getTime() < oneHour) {
-                        recentErrors++;
+            // Performance Optimization: Count lines manually to avoid O(N) memory allocation
+            // of `content.trim().split('\n').filter(...)`
+            let lineCount = 0;
+            let pos = 0;
+            while (pos < length) {
+                let nextPos = content.indexOf('\n', pos);
+                if (nextPos === -1) nextPos = length;
+
+                // Only count non-empty lines (ignoring just spaces/tabs)
+                let isEmpty = true;
+                for (let i = pos; i < nextPos; i++) {
+                    if (content[i] !== ' ' && content[i] !== '\t' && content[i] !== '\r') {
+                        isEmpty = false;
+                        break;
                     }
-                } catch {
-                    // Skip malformed lines
                 }
+                if (!isEmpty) lineCount++;
+                pos = nextPos + 1;
+            }
+            totalErrors += lineCount;
+
+            // Performance Optimization: To read the last 20 lines, parse backwards from the end
+            let n = 20;
+            let lastPos = length - 1;
+            while (lastPos >= 0 && n > 0) {
+                lastPos = content.lastIndexOf('\n', lastPos - 1);
+                n--;
+            }
+
+            const recentLinesStr = lastPos >= 0 ? content.substring(lastPos + 1) : content;
+            let recentPos = 0;
+            const recentLength = recentLinesStr.length;
+
+            while (recentPos < recentLength) {
+                let nextRecent = recentLinesStr.indexOf('\n', recentPos);
+                if (nextRecent === -1) nextRecent = recentLength;
+
+                const line = recentLinesStr.substring(recentPos, nextRecent).trim();
+                if (line) {
+                    try {
+                        const entry = JSON.parse(line);
+                        if (now - new Date(entry.timestamp).getTime() < oneHour) {
+                            recentErrors++;
+                        }
+                    } catch {
+                        // Skip malformed lines
+                    }
+                }
+                recentPos = nextRecent + 1;
             }
         }
 
