@@ -3,27 +3,21 @@
     "spidersan-local": {
       "enabled": true,
       "command": "node",
-      "args": ["${env:SPIDERSAN_HOME}/mcp-server/dist/server.js"],
-      "env": {
-        "SPIDERSAN_HOME": "${workspaceFolder}"
-      }
+      "args": ["/Users/macbook/Dev/spidersan-oss/mcp-server/dist/server.js"]
     },
     "toak": {
-      "enabled": true,
+      "enabled": false,
       "command": "bash",
-      "args": ["${env:SPIDERSAN_HOME}/scripts/toak-mcp-wrapper.sh"],
+      "args": ["/Users/macbook/Dev/spidersan-oss/scripts/toak-mcp-wrapper.sh"],
       "env": {
-        "TOAK_AGENT_ID": "ssan",
-        "SPIDERSAN_HOME": "${workspaceFolder}"
+        "TOAK_AGENT_ID": "cp-cli",
+        "SPIDERSAN_HOME": "/Users/macbook/Dev/spidersan-oss"
       }
     },
     "envoak": {
       "enabled": true,
       "command": "bash",
-      "args": ["${env:SPIDERSAN_HOME}/scripts/envoak-mcp-wrapper.sh"],
-      "env": {
-        "SPIDERSAN_HOME": "${workspaceFolder}"
-      }
+      "args": ["/Users/macbook/Dev/spidersan-oss/scripts/envoak-mcp-wrapper.sh"]
     }
   }
 }
