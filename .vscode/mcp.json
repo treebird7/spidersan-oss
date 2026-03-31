@@ -6,7 +6,7 @@
       "args": ["/Users/macbook/Dev/spidersan-oss/mcp-server/dist/server.js"]
     },
     "toak": {
-      "enabled": false,
+      "enabled": true,
       "command": "bash",
       "args": ["/Users/macbook/Dev/spidersan-oss/scripts/toak-mcp-wrapper.sh"],
       "env": {
