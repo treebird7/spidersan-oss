@@ -102,27 +102,31 @@ export const mergeOrderCommand = new Command('merge-order')
 function buildConflictGraph(branches: Branch[]): Map<string, string[]> {
     const graph = new Map<string, string[]>();
 
-    // Performance Optimization: Pre-compute sets of files for O(1) lookups
-    // Reduces nested loop complexity from O(N^2 * M * K) to O(N^2 * M)
-    const fileSets = new Map<string, Set<string>>();
+    // Performance Optimization: Build a mapping of files to branches that touch them
+    // Reduces nested loop complexity from O(N^2 * M) to O(N * M)
+    const fileToBranches = new Map<string, string[]>();
     for (const branch of branches) {
-        fileSets.set(branch.name, new Set(branch.files));
+        for (const file of branch.files) {
+            if (!fileToBranches.has(file)) {
+                fileToBranches.set(file, []);
+            }
+            fileToBranches.get(file)!.push(branch.name);
+        }
     }
 
     for (const branch of branches) {
-        const conflicts: string[] = [];
-
-        for (const other of branches) {
-            if (branch.name === other.name) continue;
-
-            const otherFilesSet = fileSets.get(other.name)!;
-            const overlap = branch.files.some(f => otherFilesSet.has(f));
-            if (overlap) {
-                conflicts.push(other.name);
+        const conflicts = new Set<string>();
+        for (const file of branch.files) {
+            const branchesWithFile = fileToBranches.get(file);
+            if (branchesWithFile) {
+                for (const otherBranch of branchesWithFile) {
+                    if (otherBranch !== branch.name) {
+                        conflicts.add(otherBranch);
+                    }
+                }
             }
         }
-
-        graph.set(branch.name, conflicts);
+        graph.set(branch.name, Array.from(conflicts));
     }
 
     return graph;
