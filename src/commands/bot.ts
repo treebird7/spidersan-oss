@@ -166,32 +166,66 @@ function saveHwm(id: number): void {
 // TODO: implement — the self-improve loop fills these in
 
 function executePull(cfg: RepoConfig, branch?: string): string {
-  return `git pull --ff-only --rebase ${cfg.repo} ${branch}`;
+  try {
+    const b = branch || cfg.branch;
+    const r = execFileSync('git', ['pull', '--ff-only', 'origin', b], { cwd: cfg.path, encoding: 'utf-8', timeout: 60000 });
+    return r.trim().substring(0, 500);
+  } catch (err: any) {
+    return err.message;
+  }
 }
- ${branch}`;
-}
- ${branch}`;
-}
-
 
 function executePush(cfg: RepoConfig): string {
-  return 'not implemented';
+  try {
+    for (const filePattern of cfg.autoPush) {
+      execFileSync('git', ['add', filePattern], { cwd: cfg.path, encoding: 'utf-8' });
+    }
+    try {
+      execFileSync('git', ['diff', '--cached', '--quiet'], { cwd: cfg.path, encoding: 'utf-8' });
+      return 'No changes to push';
+    } catch { /* has staged changes */ }
+    execFileSync('git', ['commit', '-m', 'spidersan bot auto-push'], { cwd: cfg.path, encoding: 'utf-8' });
+    const r = execFileSync('git', ['push'], { cwd: cfg.path, encoding: 'utf-8', timeout: 60000 });
+    return r.trim().substring(0, 500) || 'Pushed';
+  } catch (err: any) {
+    return err.message;
+  }
 }
 
 function executeSync(cfg: RepoConfig): string {
-  return 'not implemented';
+  const pull = executePull(cfg);
+  const push = executePush(cfg);
+  return `Pull: ${pull}\nPush: ${push}`;
 }
 
 function executeStatus(cfg: RepoConfig): string {
-  return 'not implemented';
+  try {
+    const status = execFileSync('git', ['status', '--porcelain'], { cwd: cfg.path, encoding: 'utf-8' });
+    const branch = execFileSync('git', ['branch', '--show-current'], { cwd: cfg.path, encoding: 'utf-8' });
+    return `${status.trim()}\nBranch: ${branch.trim()}`.substring(0, 500);
+  } catch (err: any) {
+    return err.message;
+  }
 }
 
 function executeLog(cfg: RepoConfig, n = 10): string {
-  return 'not implemented';
+  try {
+    const limitedN = Math.min(n, 50);
+    const r = execFileSync('git', ['log', '--oneline', `-${limitedN}`], { cwd: cfg.path, encoding: 'utf-8' });
+    return r.trim().substring(0, 500);
+  } catch (err: any) {
+    return err.message;
+  }
 }
 
 function executeConflicts(cfg: RepoConfig): string {
-  return 'not implemented';
+  try {
+    const r = execFileSync('spidersan', ['conflicts'], { cwd: cfg.path, encoding: 'utf-8', timeout: 60000 });
+    return r.trim().substring(0, 500);
+  } catch (err: any) {
+    if (err.code === 'ENOENT') return 'spidersan command not found';
+    return err.message;
+  }
 }
 
 // ── Rate limiter ────────────────────────────────────────────────────────────
