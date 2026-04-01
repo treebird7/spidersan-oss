@@ -41,3 +41,6 @@ export { torrentCommand } from './torrent.js';
 
 // Mode 3: Queen Spider
 export { queenCommand } from './queen.js';
+
+// Bot: message-driven git ops via smalltoak
+export { botCommand } from './bot.js';

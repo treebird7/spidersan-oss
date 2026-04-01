@@ -32,6 +32,7 @@ import {
     pulseCommand,
     torrentCommand,
     queenCommand,
+    botCommand,
     githubSyncCommand,
     syncAdvisorCommand,
     dashboardCommand,
@@ -113,6 +114,7 @@ program.addCommand(crossConflictsCommand);
 program.addCommand(pulseCommand);
 program.addCommand(torrentCommand);
 program.addCommand(queenCommand);
+program.addCommand(botCommand);
 program.addCommand(githubSyncCommand);
 program.addCommand(syncAdvisorCommand());
 program.addCommand(dashboardCommand);
