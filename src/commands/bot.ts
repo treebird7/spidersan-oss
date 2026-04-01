@@ -208,9 +208,10 @@ function checkConflictsBefore(cfg: RepoConfig): string | null {
   try {
     const result = execFileSync('spidersan', ['conflicts', '--json'], { cwd: cfg.path, encoding: 'utf-8', timeout: 10000 });
     const data = JSON.parse(result);
-    const tier3 = (data.conflicts || []).filter((c: any) => c.tier === 3 || c.tier === 'BLOCK');
-    if (tier3.length > 0) {
-      return `BLOCKED: ${tier3.length} tier-3 conflict(s) — ${tier3.map((c: any) => c.file || c.branch).join(', ')}`;
+    const blocking = (data.conflicts || []).filter((c: any) => c.tier >= 2 || c.tier === 'BLOCK' || c.tier === 'PAUSE');
+    if (blocking.length > 0) {
+      const labels = blocking.map((c: any) => `${c.tierInfo?.label || 'T' + c.tier}: ${(c.files || [c.branch]).join(', ')}`);
+      return `BLOCKED: ${blocking.length} conflict(s) (tier 2+) — ${labels.join('; ')}`;
     }
   } catch { /* spidersan not available or no conflicts */ }
   return null;
