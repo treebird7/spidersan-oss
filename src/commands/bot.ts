@@ -176,6 +176,9 @@ function executePull(cfg: RepoConfig, branch?: string): string {
 }
 
 function executePush(cfg: RepoConfig): string {
+  registerFiles(cfg);
+  const conflict = checkConflictsBefore(cfg);
+  if (conflict) return conflict;
   try {
     for (const filePattern of cfg.autoPush) {
       execFileSync('git', ['add', filePattern], { cwd: cfg.path, encoding: 'utf-8' });
@@ -192,7 +195,31 @@ function executePush(cfg: RepoConfig): string {
   }
 }
 
+function registerFiles(cfg: RepoConfig): void {
+  try {
+    execFileSync('spidersan', ['register',
+      '--agent', 'spidersan-bot',
+      '--files', cfg.autoPush.join(','),
+    ], { cwd: cfg.path, encoding: 'utf-8', timeout: 10000 });
+  } catch { /* best effort */ }
+}
+
+function checkConflictsBefore(cfg: RepoConfig): string | null {
+  try {
+    const result = execFileSync('spidersan', ['conflicts', '--json'], { cwd: cfg.path, encoding: 'utf-8', timeout: 10000 });
+    const data = JSON.parse(result);
+    const tier3 = (data.conflicts || []).filter((c: any) => c.tier === 3 || c.tier === 'BLOCK');
+    if (tier3.length > 0) {
+      return `BLOCKED: ${tier3.length} tier-3 conflict(s) — ${tier3.map((c: any) => c.file || c.branch).join(', ')}`;
+    }
+  } catch { /* spidersan not available or no conflicts */ }
+  return null;
+}
+
 function executeSync(cfg: RepoConfig): string {
+  registerFiles(cfg);
+  const conflict = checkConflictsBefore(cfg);
+  if (conflict) return conflict;
   const pull = executePull(cfg);
   const push = executePush(cfg);
   return `Pull: ${pull}\nPush: ${push}`;
@@ -258,6 +285,20 @@ export const botCommand = new Command('bot')
     }
 
     console.log(`[bot] started — ${Object.keys(config.repos).length} repos, poll=${POLL_INTERVAL / 1000}s, sync=${SYNC_INTERVAL / 1000}s`);
+
+    // Register all configured repos/branches with spidersan for conflict detection
+    for (const [name, cfg] of Object.entries(config.repos)) {
+      try {
+        execFileSync('spidersan', ['register',
+          '--agent', 'spidersan-bot',
+          '--files', cfg.autoPush.join(','),
+          '--description', `git-bot auto-sync: ${name} (${cfg.branch})`
+        ], { cwd: cfg.path, encoding: 'utf-8', timeout: 10000 });
+        console.log(`[bot] registered ${name} (${cfg.branch}) — files: ${cfg.autoPush.join(', ')}`);
+      } catch (err: any) {
+        console.log(`[bot] register ${name} skipped: ${err.message.split('\n')[0]}`);
+      }
+    }
 
     const executors: Record<string, (cfg: RepoConfig, args: string[]) => string> = {
       sync: (cfg) => executeSync(cfg),
