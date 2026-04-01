@@ -223,9 +223,85 @@ export const botCommand = new Command('bot')
       process.exit(1);
     }
 
-    console.log(`[bot] started — ${Object.keys(config.repos).length} repos, poll=${POLL_INTERVAL / 1000}s`);
+    console.log(`[bot] started — ${Object.keys(config.repos).length} repos, poll=${POLL_INTERVAL / 1000}s, sync=${SYNC_INTERVAL / 1000}s`);
 
-    // TODO: main loop — the self-improve loop fills this in
+    const executors: Record<string, (cfg: RepoConfig, args: string[]) => string> = {
+      sync: (cfg) => executeSync(cfg),
+      pull: (cfg, args) => executePull(cfg, args[0]),
+      push: (cfg) => executePush(cfg),
+      status: (cfg) => executeStatus(cfg),
+      log: (cfg, args) => executeLog(cfg, args[0] ? parseInt(args[0]) : 10),
+      conflicts: (cfg) => executeConflicts(cfg),
+    };
+
+    async function processMessage(msg: any): Promise<void> {
+      const sender = msg.from || 'unknown';
+      const parsed = parseCommand(msg.text || '', config.repos);
+      if (!parsed) return;
+      const { cmd, repo, args } = parsed;
+
+      if (!isAuthorized(sender, cmd)) {
+        const tier = getTier(sender) || 'unknown';
+        await stPost(`DENIED: /${cmd} requires specialist or coordinator tier. Your tier: ${tier}.`, sender, msg.id);
+        return;
+      }
+      if (!rateCheck(repo)) {
+        await stPost(`RATE LIMITED: wait ${RATE_LIMIT / 1000}s between actions on ${repo}.`, sender, msg.id);
+        return;
+      }
+
+      const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+      console.log(`[${ts}] ${sender} → /${cmd} ${repo} ${args.join(' ')}`.trim());
+
+      try {
+        const result = executors[cmd](config.repos[repo], args);
+        await stPost(`/${cmd} ${repo}: ${result.substring(0, 500)}`, sender, msg.id);
+      } catch (err: any) {
+        await stPost(`/${cmd} ${repo}: Error: ${err.message}`, sender, msg.id);
+      }
+    }
+
+    let hwm = loadHwm();
+    let lastSync = 0;
+
+    const cycle = async () => {
+      const now = Date.now();
+
+      // Periodic auto-sync
+      if (now - lastSync >= SYNC_INTERVAL) {
+        for (const [name, cfg] of Object.entries(config.repos)) {
+          try {
+            const result = executeSync(cfg);
+            const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+            console.log(`[${ts}] auto-sync ${name}: ${result.substring(0, 100)}`);
+          } catch (err: any) {
+            console.log(`[auto-sync] ${name} failed: ${err.message}`);
+          }
+        }
+        lastSync = now;
+      }
+
+      // Poll for commands
+      try {
+        const msgs = await stRead(AGENT_NAME, 50);
+        const newMsgs = msgs.filter((m: any) => (m.id || 0) > hwm).sort((a: any, b: any) => a.id - b.id);
+        for (const msg of newMsgs) {
+          await processMessage(msg);
+          hwm = msg.id;
+          saveHwm(hwm);
+        }
+      } catch (err: any) {
+        console.log(`[poll] error: ${err.message}`);
+      }
+    };
+
+    // Run once or loop
+    await cycle();
+    if (opts.once) return;
+
+    setInterval(cycle, POLL_INTERVAL);
+    // Keep process alive
+    await new Promise(() => {});
   });
 
 // Sub-commands: add, remove, repos
