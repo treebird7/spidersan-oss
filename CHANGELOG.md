@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **Mycmail messaging layer** — removed 5 source files + 3 test files (~1,600 lines). Mycmail has been superseded by Toak for agent messaging and Colony for coordination. Spidersan's core (registry, conflicts, merge-order, watcher) is unaffected. Specifically removed: `message-adapter.ts`, `mycmail-adapter.ts`, `git-messages.ts`, `local-messages.ts`, `message-factory.ts`, mycmail notification from `conflicts` and `stale` commands, and mycmail health check from `doctor`.
+
 ### Fixed
 - **RLS: spider_registries write policies now apply to anon+authenticated** — `CREATE POLICY` with no `TO` clause silently defaults to `service_role` in PostgreSQL; INSERT/UPDATE/DELETE policies dropped and recreated with explicit `TO anon, authenticated`. `registry-sync --push` was blocked by `42501` for all non-service-role clients. Both migration files (`20260219_spider_registries.sql`, `PASTE_THIS.sql`) patched with explicit role grants.
 
