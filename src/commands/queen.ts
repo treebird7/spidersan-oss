@@ -263,7 +263,23 @@ Dry-run:  ${dryRun}
         }
 
         // Generate job scripts
-        const scriptDir = path.join(os.tmpdir(), `ssan-queen-${Date.now()}`);
+        let scriptDir: string;
+        if (!dryRun) {
+            try {
+                const { mkdtempSync } = await import('fs');
+                scriptDir = mkdtempSync(path.join(os.tmpdir(), 'ssan-queen-'));
+            } catch {
+                // Fallback if mkdtempSync fails, though it should be universally available
+                scriptDir = path.join(os.tmpdir(), `ssan-queen-${Date.now()}`);
+                try {
+                    const { mkdirSync } = await import('fs');
+                    mkdirSync(scriptDir, { recursive: true });
+                } catch {}
+            }
+        } else {
+            scriptDir = path.join(os.tmpdir(), 'ssan-queen-DRYRUN');
+        }
+
         const manifest: Array<{ repo: string; script: string; queenSignalId: string | null }> = [];
 
         for (const repo of repos) {
@@ -273,8 +289,6 @@ Dry-run:  ${dryRun}
 
             if (!dryRun) {
                 try {
-                    const { mkdirSync } = await import('fs');
-                    mkdirSync(scriptDir, { recursive: true });
                     writeFileSync(scriptPath, script, { mode: 0o755 });
                 } catch {
                     /* non-fatal */
