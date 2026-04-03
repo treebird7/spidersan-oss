@@ -294,7 +294,7 @@ function checkEnvConflict(): Check {
                 return {
                     name: '.env Lint',
                     status: 'warn',
-                    message: 'Local .env has Supabase vars - may conflict with mycmail'
+                    message: 'Local .env has Supabase vars - check configuration'
                 };
             }
         } catch {
@@ -302,19 +302,6 @@ function checkEnvConflict(): Check {
         }
     }
     return { name: '.env Lint', status: 'ok', message: 'No .env issues detected' };
-}
-
-function checkMycmail(): Check {
-    try {
-        execFileSync('which', ['mycmail'], { stdio: 'ignore' });
-        let version = 'unknown';
-        try {
-            version = execFileSync('mycmail', ['--version'], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
-        } catch { /* mycmail --version may fail, use unknown */ }
-        return { name: 'Myceliumail', status: 'ok', message: `Installed (${version})` };
-    } catch {
-        return { name: 'Myceliumail', status: 'warn', message: 'Not installed (optional)' };
-    }
 }
 
 async function checkStaleBranches(): Promise<Check> {
@@ -590,7 +577,6 @@ export const doctorCommand = new Command('doctor')
             checkEnvConflict(),
             checkGitignore(),
             checkErrorLogs(),
-            checkMycmail(),
             checkEmfileLimit(),
             checkWatcherStatus(),
             checkNodeVersion(),

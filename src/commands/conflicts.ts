@@ -160,45 +160,7 @@ async function wakeConflictingAgent(
         console.log(`  ⚠️ Could not wake ${agentId} via Hub`);
     }
 
-    // 2. Send a detailed mycmail message
-    try {
-        const { execFileSync } = await import('child_process');
-
-        // Security: Validate inputs before shell execution
-        const safeAgentId = validateAgentId(agentId);
-        const safeBranch = validateBranchName(theirBranch);
-        const safeMyBranch = validateBranchName(myBranch);
-
-        const subject = `🕷️ Conflict Alert: ${safeBranch}`;
-        const body = [
-            `Hey ${safeAgentId}!`,
-            ``,
-            `Spidersan detected a conflict between our branches:`,
-            ``,
-            `  My branch: ${safeMyBranch}`,
-            `  Your branch: ${safeBranch}`,
-            ``,
-            `Conflicting files: ${fileList}${more}`,
-            ``,
-            `Action needed:`,
-            `  1. Check your changes on these files`,
-            `  2. Coordinate with me or rebase`,
-            `  3. Run: spidersan conflicts --branch ${safeBranch}`,
-            ``,
-            `Let's sync up! 🕷️`
-        ].join('\n');
-
-        // Security: Use execFileSync with argument array instead of string interpolation
-        execFileSync('mycmail', ['send', safeAgentId, subject, '-m', body], {
-            encoding: 'utf-8',
-            stdio: 'pipe'
-        });
-        console.log(`  📧 Message sent to ${agentId}`);
-        return true;
-    } catch {
-        console.log(`  ⚠️ Could not send mycmail to ${agentId}`);
-        return false;
-    }
+    return true;
 }
 
 /**
@@ -644,7 +606,6 @@ export const conflictsCommand = new Command('conflicts')
             console.log(`
 🟠 TIER 2 CONFLICTS FOUND
    Coordinate with the other agent before proceeding.
-   Use: mycmail send <agent> "Need to sync on <file>"
             `);
         }
 
@@ -676,8 +637,7 @@ export const conflictsCommand = new Command('conflicts')
                 }
                 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
                 console.log('This will:');
-                console.log('  1. Send wake signal via Hub');
-                console.log('  2. Send mycmail with conflict details\n');
+                console.log('  1. Send wake signal via Hub\n');
 
                 const confirmed = await confirmAction('Wake these agents?', options.auto);
 
