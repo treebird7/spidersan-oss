@@ -1,8 +1,9 @@
 name: Publish to npm
 
 on:
-  release:
-    types: [published]
+  # Auto-publish on release disabled — we publish manually with pnpm
+  # release:
+  #   types: [published]
   workflow_dispatch:
     inputs:
       version:
