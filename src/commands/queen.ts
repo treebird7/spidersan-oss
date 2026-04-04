@@ -168,8 +168,10 @@ function buildGroundJobScript(
   git pull origin main --rebase 2>&1 | tail -3
   spidersan pulse --quiet`,
         conflicts: `  # GROUND JOB: conflict scan
-  spidersan conflicts --json --tier 1 > /tmp/ssan-conflicts-"$REPO_NAME_VAR".json
-  cat /tmp/ssan-conflicts-"$REPO_NAME_VAR".json | jq '.summary'`,
+  TMP_CONFLICTS=$(mktemp /tmp/ssan-conflicts-XXXXXX.json)
+  spidersan conflicts --json --tier 1 > "$TMP_CONFLICTS"
+  cat "$TMP_CONFLICTS" | jq '.summary'
+  rm -f "$TMP_CONFLICTS"`,
         cleanup: `  # GROUND JOB: stale cleanup
   spidersan stale
   envoak colony gc`,
@@ -263,8 +265,15 @@ Dry-run:  ${dryRun}
         }
 
         // Generate job scripts
-        const scriptDir = path.join(os.tmpdir(), `ssan-queen-${Date.now()}`);
         const manifest: Array<{ repo: string; script: string; queenSignalId: string | null }> = [];
+        let scriptDir: string;
+
+        if (dryRun) {
+            scriptDir = path.join(os.tmpdir(), 'ssan-queen-DRY-RUN');
+        } else {
+            const { mkdtempSync } = await import('fs');
+            scriptDir = mkdtempSync(path.join(os.tmpdir(), 'ssan-queen-'));
+        }
 
         for (const repo of repos) {
             const script = buildGroundJobScript(repo, options.task, jobType, queenSignalId);
@@ -273,8 +282,6 @@ Dry-run:  ${dryRun}
 
             if (!dryRun) {
                 try {
-                    const { mkdirSync } = await import('fs');
-                    mkdirSync(scriptDir, { recursive: true });
                     writeFileSync(scriptPath, script, { mode: 0o755 });
                 } catch {
                     /* non-fatal */
