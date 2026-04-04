@@ -1,0 +1,10 @@
+src/
+tests/
+scripts/
+.spidersan/
+security_best_practices_report.md
+vitest.config.ts
+tsconfig.json
+test-mcp.json
+supabase-config.env
+.gitignore
