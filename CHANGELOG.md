@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-04-04
+
 ### Removed
 - **Mycmail messaging layer** — removed 5 source files + 3 test files (~1,600 lines). Mycmail has been superseded by Toak for agent messaging and Colony for coordination. Spidersan's core (registry, conflicts, merge-order, watcher) is unaffected. Specifically removed: `message-adapter.ts`, `mycmail-adapter.ts`, `git-messages.ts`, `local-messages.ts`, `message-factory.ts`, mycmail notification from `conflicts` and `stale` commands, and mycmail health check from `doctor`.
 

@@ -1,6 +1,6 @@
 {
     "name": "spidersan",
-    "version": "0.5.0",
+    "version": "0.6.0",
     "description": "Branch coordination for AI coding agents",
     "type": "module",
     "main": "dist/index.js",
