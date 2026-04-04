@@ -27,9 +27,11 @@
     ],
     "author": "treebird7",
     "license": "SEE LICENSE IN ../LICENSE.md",
+    "homepage": "https://www.npmjs.com/package/spidersan",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/treebird7/spidersan-oss.git"
+        "url": "git+https://github.com/treebird7/spidersan-oss.git",
+        "directory": "mcp-server"
     },
     "engines": {
         "node": ">=18.0.0"
