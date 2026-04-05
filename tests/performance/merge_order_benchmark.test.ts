@@ -68,6 +68,7 @@ function buildConflictGraphNew(branches: Branch[]): Map<string, string[]> {
 }
 
 describe('merge order build conflict graph', () => {
+    // Increase timeout since the baseline O(N^2 * M) implementation takes ~10 seconds
     it('should improve performance significantly', () => {
         // Generate mock data
         const branches: Branch[] = [];
@@ -103,5 +104,5 @@ describe('merge order build conflict graph', () => {
             const newConflicts = newResult.get(branch) || [];
             expect(new Set(newConflicts)).toEqual(new Set(conflicts));
         }
-    });
+    }, 20000); // Set timeout as the 3rd argument for Vitest compatibility
 });
