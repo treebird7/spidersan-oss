@@ -19,7 +19,7 @@
 
 ## 🎯 The Problem
 
-**A multi coders or agents and multi branch work can result in a merging nightmare**
+Multi-agent teams working across branches inevitably collide — overlapping files, unclear merge order, rogue abandoned branches. The bigger the fleet, the worse the chaos.
 
 ## 🕷️ The Solution
 
@@ -194,7 +194,7 @@ spidersan auto status
 spidersan auto stop
 ```
 
-### 🤖 GitHub Actions Auto-Register (NEW!)
+### 🤖 GitHub Actions Auto-Register
 
 **Zero-effort branch registration via GitHub workflow**
 
