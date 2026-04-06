@@ -18,6 +18,7 @@
  */
 
 import { getStorage } from '../storage/index.js';
+import { validateBranchName, validateFilePath } from './security.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -162,11 +163,21 @@ export async function syncFromColony(): Promise<SyncResult> {
 
             if (!payload.branch) continue;
 
+            // Validate colony payload fields before using them
+            try {
+                validateBranchName(payload.branch);
+            } catch {
+                continue; // skip signals with invalid branch names
+            }
+
             // Resolve label: prefer row.agent_label (authoritative database field),
             // then fall back to payload.agent (self-reported, always available),
             // then fall back to UUID prefix.
             const agentName = resolveAgentName(row.agent_key_id, row.agent_label ?? payload.agent ?? undefined);
-            const files: string[] = Array.isArray(payload.files) ? payload.files : [];
+            const rawFiles: string[] = Array.isArray(payload.files) ? payload.files : [];
+            const files: string[] = rawFiles.filter(f => {
+                try { validateFilePath(f); return true; } catch { return false; }
+            });
 
             const existing = await storage.get(payload.branch);
             if (existing) {

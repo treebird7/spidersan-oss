@@ -40,11 +40,12 @@ jobs:
 
       - name: Extract commit info
         id: commit
+        env:
+          AUTHOR: ${{ github.actor }}
+          BRANCH: ${{ github.ref_name }}
+          BEFORE: ${{ github.event.before }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
-          # Get agent name from commit author or branch prefix
-          AUTHOR="${{ github.actor }}"
-          BRANCH="${{ github.ref_name }}"
-
           # Try to extract agent from branch name (e.g., sherlocksan/feature-x)
           if [[ "$BRANCH" == */* ]]; then
             AGENT=$(echo "$BRANCH" | cut -d'/' -f1)
@@ -54,16 +55,15 @@ jobs:
 
           # Get changed files in this push
           # Handle initial push where 'before' is all zeros
-          BEFORE="${{ github.event.before }}"
           if [[ "$BEFORE" == "0000000000000000000000000000000000000000" ]]; then
-            FILES=$(git diff --name-only origin/main...${{ github.sha }} 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
+            FILES=$(git diff --name-only "origin/main...$COMMIT_SHA" 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
           else
-            FILES=$(git diff --name-only "$BEFORE" ${{ github.sha }} | tr '\n' ',' | sed 's/,$//')
+            FILES=$(git diff --name-only "$BEFORE" "$COMMIT_SHA" | tr '\n' ',' | sed 's/,$//')
           fi
 
-          echo "agent=$AGENT" >> $GITHUB_OUTPUT
-          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
-          echo "files=$FILES" >> $GITHUB_OUTPUT
+          echo "agent=$AGENT" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "files=$FILES" >> "$GITHUB_OUTPUT"
 
           echo "🕷️ Detected:"
           echo "   Agent: $AGENT"
@@ -75,14 +75,17 @@ jobs:
 
       - name: Register with Spidersan
         if: steps.commit.outputs.files != ''
+        env:
+          REG_AGENT: ${{ steps.commit.outputs.agent }}
+          REG_FILES: ${{ steps.commit.outputs.files }}
         run: |
           echo "🕷️ Initializing Spidersan..."
           spidersan init
 
           echo "🕷️ Auto-registering branch..."
           spidersan register \
-            --agent "${{ steps.commit.outputs.agent }}" \
-            --files "${{ steps.commit.outputs.files }}" \
+            --agent "$REG_AGENT" \
+            --files "$REG_FILES" \
             --description "Auto-registered via GitHub Actions"
 
           echo "✅ Branch registered with Spidersan"
@@ -96,15 +99,19 @@ jobs:
 
       - name: Check for conflicts
         if: steps.commit.outputs.files != ''
+        env:
+          REG_BRANCH: ${{ steps.commit.outputs.branch }}
         run: |
           echo "🕷️ Checking for conflicts..."
-          spidersan conflicts --branch "${{ steps.commit.outputs.branch }}" --json || true
+          spidersan conflicts --branch "$REG_BRANCH" --json || true
 
       - name: Notify on TIER 2+ conflicts
         if: steps.commit.outputs.files != ''
+        env:
+          REG_BRANCH: ${{ steps.commit.outputs.branch }}
         run: |
           # Check for serious conflicts
-          CONFLICTS=$(spidersan conflicts --branch "${{ steps.commit.outputs.branch }}" --tier 2 --json 2>/dev/null || echo '{"conflicts":[]}')
+          CONFLICTS=$(spidersan conflicts --branch "$REG_BRANCH" --tier 2 --json 2>/dev/null || echo '{"conflicts":[]}')
           COUNT=$(echo "$CONFLICTS" | jq '.conflicts | length')
           
           if [ "$COUNT" -gt 0 ]; then
