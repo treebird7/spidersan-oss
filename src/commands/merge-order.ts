@@ -100,32 +100,46 @@ export const mergeOrderCommand = new Command('merge-order')
     });
 
 function buildConflictGraph(branches: Branch[]): Map<string, string[]> {
-    const graph = new Map<string, string[]>();
-
-    // Performance Optimization: Pre-compute sets of files for O(1) lookups
-    // Reduces nested loop complexity from O(N^2 * M * K) to O(N^2 * M)
-    const fileSets = new Map<string, Set<string>>();
+    // ⚡ Bolt: Build conflict graph using an inverted index (Map<File, Branch[]>)
+    // Reduces time complexity from O(N^2 * M) to O(N * M) compared to nested branch comparisons
+    const fileToBranches = new Map<string, string[]>();
     for (const branch of branches) {
-        fileSets.set(branch.name, new Set(branch.files));
-    }
-
-    for (const branch of branches) {
-        const conflicts: string[] = [];
-
-        for (const other of branches) {
-            if (branch.name === other.name) continue;
-
-            const otherFilesSet = fileSets.get(other.name)!;
-            const overlap = branch.files.some(f => otherFilesSet.has(f));
-            if (overlap) {
-                conflicts.push(other.name);
+        for (const file of branch.files) {
+            const list = fileToBranches.get(file);
+            if (list) {
+                list.push(branch.name);
+            } else {
+                fileToBranches.set(file, [branch.name]);
             }
         }
-
-        graph.set(branch.name, conflicts);
     }
 
-    return graph;
+    const graph = new Map<string, Set<string>>();
+    for (const branch of branches) {
+        graph.set(branch.name, new Set<string>());
+    }
+
+    for (const branchesTouchingFile of fileToBranches.values()) {
+        if (branchesTouchingFile.length > 1) {
+            for (let i = 0; i < branchesTouchingFile.length; i++) {
+                for (let j = i + 1; j < branchesTouchingFile.length; j++) {
+                    const b1 = branchesTouchingFile[i];
+                    const b2 = branchesTouchingFile[j];
+                    if (b1 !== b2) {
+                        graph.get(b1)!.add(b2);
+                        graph.get(b2)!.add(b1);
+                    }
+                }
+            }
+        }
+    }
+
+    const finalGraph = new Map<string, string[]>();
+    for (const [branch, conflicts] of graph.entries()) {
+        finalGraph.set(branch, Array.from(conflicts));
+    }
+
+    return finalGraph;
 }
 
 function topologicalSort(
