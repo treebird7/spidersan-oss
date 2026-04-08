@@ -101,28 +101,42 @@ export const mergeOrderCommand = new Command('merge-order')
 
 function buildConflictGraph(branches: Branch[]): Map<string, string[]> {
     const graph = new Map<string, string[]>();
+    const conflictSets = new Map<string, Set<string>>();
 
-    // Performance Optimization: Pre-compute sets of files for O(1) lookups
-    // Reduces nested loop complexity from O(N^2 * M * K) to O(N^2 * M)
-    const fileSets = new Map<string, Set<string>>();
+    // Performance Optimization: Use an inverted index (file -> branches)
+    // to map files to the branches that touch them.
+    // This reduces time complexity from O(N^2 * M) to O(N * M) compared to nested branch-to-branch comparisons.
+    const fileToBranches = new Map<string, string[]>();
+
     for (const branch of branches) {
-        fileSets.set(branch.name, new Set(branch.files));
+        conflictSets.set(branch.name, new Set<string>());
+        // Use Set to ensure unique files per branch
+        for (const file of new Set(branch.files)) {
+            let b = fileToBranches.get(file);
+            if (!b) {
+                b = [];
+                fileToBranches.set(file, b);
+            }
+            b.push(branch.name);
+        }
+    }
+
+    // Build conflicts using the inverted index
+    for (const branchesModifyingFile of fileToBranches.values()) {
+        if (branchesModifyingFile.length > 1) {
+            for (let i = 0; i < branchesModifyingFile.length; i++) {
+                const b1 = branchesModifyingFile[i];
+                for (let j = i + 1; j < branchesModifyingFile.length; j++) {
+                    const b2 = branchesModifyingFile[j];
+                    conflictSets.get(b1)!.add(b2);
+                    conflictSets.get(b2)!.add(b1);
+                }
+            }
+        }
     }
 
     for (const branch of branches) {
-        const conflicts: string[] = [];
-
-        for (const other of branches) {
-            if (branch.name === other.name) continue;
-
-            const otherFilesSet = fileSets.get(other.name)!;
-            const overlap = branch.files.some(f => otherFilesSet.has(f));
-            if (overlap) {
-                conflicts.push(other.name);
-            }
-        }
-
-        graph.set(branch.name, conflicts);
+        graph.set(branch.name, Array.from(conflictSets.get(branch.name)!));
     }
 
     return graph;
