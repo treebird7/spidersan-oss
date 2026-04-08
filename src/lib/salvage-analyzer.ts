@@ -6,7 +6,7 @@
  */
 
 import { execFileSync } from 'child_process';
-import { mkdirSync, writeFileSync, rmSync } from 'fs';
+import { mkdirSync, writeFileSync, rmSync, mkdtempSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { extractSymbols } from './symbol-extractor.js';
@@ -60,8 +60,8 @@ export async function analyzeSalvage(
     return report;
   }
 
-  const tmpDir = join(tmpdir(), `ssan-salvage-${Date.now()}`);
-  mkdirSync(tmpDir, { recursive: true });
+  // Security: Use mkdtempSync to prevent predictable tmpdir symlink attacks
+  const tmpDir = mkdtempSync(join(tmpdir(), 'ssan-salvage-'));
 
   try {
     for (const file of branchFiles) {

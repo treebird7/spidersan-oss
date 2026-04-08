@@ -25,7 +25,7 @@ import { Command } from 'commander';
 import { spawnSync } from 'child_process';
 import * as path from 'path';
 import * as os from 'os';
-import { writeFileSync } from 'fs';
+import { writeFileSync, mkdtempSync } from 'fs';
 import { escapeShellString } from '../lib/security.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -263,7 +263,8 @@ Dry-run:  ${dryRun}
         }
 
         // Generate job scripts
-        const scriptDir = path.join(os.tmpdir(), `ssan-queen-${Date.now()}`);
+        // Security: Use mkdtempSync to prevent predictable tmpdir symlink attacks
+        const scriptDir = mkdtempSync(path.join(os.tmpdir(), 'ssan-queen-'));
         const manifest: Array<{ repo: string; script: string; queenSignalId: string | null }> = [];
 
         for (const repo of repos) {
