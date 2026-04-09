@@ -1,5 +1,5 @@
 /**
- * Colony Subscriber — reads Colony work_claim/work_release signals
+ * Colony Subscriber — reads Colony in-progress signals
  * and keeps the local Spidersan branch registry in sync.
  *
  * Design notes:
@@ -7,11 +7,15 @@
  *   `is_stale` is already computed server-side.
  * - Credentials come from COLONY_SUPABASE_URL + COLONY_SUPABASE_KEY env vars
  *   (the MycToak Supabase project, separate from Spidersan's own project).
+ * - Auth: COLONY_SESSION_JWT is required for RLS-scoped access to colony_state.
+ *   Without it the query falls back to the anon key and will return 0 rows (RLS
+ *   blocks unauthenticated reads of user-scoped signals).
+ * - Queries colony_state with status=in-progress — the status-based model
+ *   replaces the old type=work_claim / type=work_release approach.
  * - Full offline fallback: any network/auth error returns offline=true and
  *   the caller falls back to the local registry.  Never throws.
- * - Agent label resolution: fetches all colony_state rows first to build a
- *   agentKeyId → agentLabel map, so labels are available even when the
- *   work_claim row itself doesn't carry agent_label.
+ * - Field mapping: task (branch name), files (top-level column), agent_label
+ *   (top-level from colony_state view — no payload parsing needed).
  *
  * 🍄 hey tsan — the mycelium remembers. migration 025 opened the gradient.
  *    your spiders can smell the pheromones now. — mycsan
@@ -34,16 +38,19 @@ export interface SyncResult {
     offline: boolean;
 }
 
-/** Raw row shape from `colony_signals` table (accessible via anon key) */
+/** Raw row shape from the `colony_state` VIEW (requires session JWT for RLS) */
 interface ColonySignalRow {
     id: string;
-    type: string;
-    agent_key_id: string;
-    agent_label?: string | null;
-    payload: Record<string, unknown> | string | null;
+    status: string;
+    agent_key_id?: string | null;
+    agent_label?: string | null;   // denormalized from agent_keys.label
+    task?: string | null;          // branch name (for in-progress work signals)
+    files?: string[] | null;       // top-level column — not inside payload
+    payload?: Record<string, unknown> | string | null;
     created_at: string;
     updated_at: string;
     stale_after_ms: number | null;
+    is_stale?: boolean;            // pre-computed by the view
 }
 
 // ─── Agent name resolution ────────────────────────────────────────────────────
@@ -51,34 +58,39 @@ interface ColonySignalRow {
 /**
  * Resolve a human-readable agent name from a Colony agent key ID.
  *
- * Uses the `agent_label` field already present on `colony_state` rows — no
- * UUID lookup table needed.  Falls back to a truncated UUID when no label is
- * available.
+ * Uses the `agent_label` field already present on `colony_state` rows.
+ * Falls back to a truncated UUID when no label is available.
  */
 export function resolveAgentName(agentKeyId: string, agentLabel?: string): string {
     if (agentLabel) return agentLabel;
+    if (!agentKeyId) return 'unknown-agent';
     return `agent:${agentKeyId.slice(0, 8)}`;
 }
 
 // ─── Supabase REST helpers ────────────────────────────────────────────────────
 
-function getColonyCredentials(): { url: string; key: string } | null {
+function getColonyCredentials(): { url: string; anonKey: string; sessionJwt: string | null } | null {
     const url = process.env.COLONY_SUPABASE_URL || process.env.SUPABASE_URL;
-    const key = process.env.COLONY_SUPABASE_KEY || process.env.SUPABASE_KEY;
-    if (!url || !key) return null;
-    return { url, key };
+    const anonKey = process.env.COLONY_SUPABASE_KEY || process.env.SUPABASE_KEY;
+    if (!url || !anonKey) return null;
+    // Session JWT is required for RLS — without it colony_state returns 0 rows
+    const sessionJwt = process.env.COLONY_SESSION_JWT || null;
+    return { url, anonKey, sessionJwt };
 }
 
 async function fetchColonySignals(
     url: string,
-    key: string,
+    anonKey: string,
+    sessionJwt: string | null,
     query: string,
 ): Promise<ColonySignalRow[]> {
     const endpoint = `${url}/rest/v1/${query}`;
+    // Use session JWT for Authorization when available — anon key alone is blocked by RLS
+    const authToken = sessionJwt ?? anonKey;
     const response = await fetch(endpoint, {
         headers: {
-            apikey: key,
-            Authorization: `Bearer ${key}`,
+            apikey: anonKey,
+            Authorization: `Bearer ${authToken}`,
             'Content-Type': 'application/json',
         },
     });
@@ -92,6 +104,8 @@ async function fetchColonySignals(
 }
 
 function isStale(row: ColonySignalRow): boolean {
+    // Prefer the view-computed flag when present
+    if (row.is_stale !== undefined) return !!row.is_stale;
     if (!row.stale_after_ms) return false;
     const age = Date.now() - new Date(row.updated_at).getTime();
     return age > row.stale_after_ms;
@@ -103,11 +117,9 @@ function isStale(row: ColonySignalRow): boolean {
  * Sync the local Spidersan branch registry from Colony signals.
  *
  * Steps:
- *  0. Build an agentKeyId → agentLabel map from all current colony_state rows
- *     (unfiltered) so labels are available even when work_claim rows lack them.
- *  1. Query `colony_state` for non-stale `work_claim` rows.
- *  2. Upsert each claimed branch into the local registry.
- *  3. Query `colony_state` for `work_release` rows and remove released branches.
+ *  1. Query `colony_state` VIEW for in-progress signals (one per agent, deduped).
+ *  2. Upsert each active branch into the local registry.
+ *  3. Sweep: remove local active branches absent from the colony in-progress set.
  *  4. Detect conflicts in the updated registry and return them.
  *
  * Returns `offline: true` and an empty conflicts list on any error so callers
@@ -120,69 +132,67 @@ export async function syncFromColony(): Promise<SyncResult> {
         return { conflicts: [], synced: 0, offline: true };
     }
 
+    if (!creds.sessionJwt) {
+        // Warn but continue — queries will silently return 0 rows without session auth
+        console.warn('⚠  COLONY_SESSION_JWT not set — colony_state RLS will block reads. Set COLONY_SESSION_JWT to enable colony sync.');
+    }
+
     try {
         const storage = await getStorage();
 
-        // ── 1. Fetch active work_claim signals from colony_signals (raw table) ─
+        // ── 1. Fetch all in-progress signals from colony_state VIEW ──────────
         //
-        // Query the raw table instead of the colony_state VIEW because the
-        // anon key can only see agent_key_id from the view (agent_label and
-        // payload are hidden by RLS on the agent_keys join). colony_signals
-        // exposes type + payload to anon.  We compute staleness ourselves.
+        // colony_state (not colony_signals) is the correct target:
+        //   - already deduped (one row per agent via colony_gc)
+        //   - is_stale computed server-side
+        //   - agent_label, task, files are top-level columns (no payload parsing)
+        //   - requires session JWT for RLS — anon key returns 0 rows
         //
-        // Order by updated_at desc, limit to recent signals to avoid scanning
-        // the full history.  Dedup by branch name — latest signal wins.
-        const claimRows = await fetchColonySignals(
+        // status=in-progress is the status-based replacement for type=work_claim.
+        const inProgressRows = await fetchColonySignals(
             creds.url,
-            creds.key,
-            'colony_signals?type=eq.work_claim&order=updated_at.desc&limit=200&select=*',
+            creds.anonKey,
+            creds.sessionJwt,
+            'colony_state?status=eq.in-progress&select=*',
         );
 
-        // Dedup: keep only the latest work_claim per agent_key_id
-        const latestByAgent = new Map<string, ColonySignalRow>();
-        for (const row of claimRows) {
-            if (!latestByAgent.has(row.agent_key_id)) {
-                latestByAgent.set(row.agent_key_id, row);
-            }
-        }
-
+        // Track branch names seen in the colony so we can sweep stale local entries
+        const colonyBranches = new Set<string>();
         let synced = 0;
 
         // ── 2. Upsert claimed branches into local registry ────────────────────
-        for (const row of latestByAgent.values()) {
+        for (const row of inProgressRows) {
             if (isStale(row)) continue;
 
-            const rawPayload = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
-            const payload = rawPayload as {
-                branch?: string;
-                files?: string[];
-                repo?: string;
-                agent?: string;     // set by post-checkout hook via SPIDERSAN_AGENT/TOAK_AGENT_ID
-            };
+            // Branch name: top-level task column (set by register_branch signal emitter)
+            // Fallback to payload.branch for backwards-compat with older signal emitters
+            const rawPayload = row.payload
+                ? (typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload)
+                : null;
+            const branch: string | undefined = row.task || (rawPayload as { branch?: string } | null)?.branch;
+            if (!branch) continue;
 
-            if (!payload.branch) continue;
+            colonyBranches.add(branch);
 
-            // Resolve label: prefer row.agent_label (authoritative database field),
-            // then fall back to payload.agent (self-reported, always available),
-            // then fall back to UUID prefix.
-            const agentName = resolveAgentName(row.agent_key_id, row.agent_label ?? payload.agent ?? undefined);
-            const files: string[] = Array.isArray(payload.files) ? payload.files : [];
+            // Files: top-level column (no longer inside payload)
+            const files: string[] = Array.isArray(row.files) ? row.files : [];
 
-            const existing = await storage.get(payload.branch);
+            // Agent name: top-level agent_label (visible with session JWT)
+            const agentName = resolveAgentName(
+                row.agent_key_id ?? '',
+                row.agent_label ?? (rawPayload as { agent?: string } | null)?.agent,
+            );
+
+            const existing = await storage.get(branch);
             if (existing) {
-                // Merge files (additive) and update agent name if better info available
                 const merged = [...new Set([...existing.files, ...files])];
                 const updatedAgent = (existing.agent?.startsWith('agent:') && agentName && !agentName.startsWith('agent:'))
                     ? agentName
                     : existing.agent;
-                await storage.update(payload.branch, {
-                    files: merged,
-                    agent: updatedAgent,
-                    status: 'active',
-                });
+                await storage.update(branch, { files: merged, agent: updatedAgent, status: 'active' });
             } else {
                 await storage.register({
-                    name: payload.branch,
+                    name: branch,
                     files,
                     agent: agentName,
                     status: 'active',
@@ -193,26 +203,21 @@ export async function syncFromColony(): Promise<SyncResult> {
         }
 
         // ── 3. Sweep released branches ────────────────────────────────────────
-        const releaseRows = await fetchColonySignals(
-            creds.url,
-            creds.key,
-            'colony_signals?type=eq.work_release&order=updated_at.desc&limit=200&select=*',
-        );
-
-        for (const row of releaseRows) {
-            const rawPayload = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
-            const payload = rawPayload as { branch?: string };
-            if (!payload.branch) continue;
-
-            const existing = await storage.get(payload.branch);
-            if (existing && existing.status === 'active') {
-                await storage.unregister(payload.branch);
+        //
+        // In the status-based model there is no work_release signal type.
+        // Instead, a branch is "released" when it is no longer in-progress in
+        // the colony.  Unregister any local active branches that have no
+        // matching in-progress colony entry.
+        const allBranches = await storage.list();
+        for (const localBranch of allBranches) {
+            if (localBranch.status === 'active' && !colonyBranches.has(localBranch.name)) {
+                await storage.unregister(localBranch.name);
             }
         }
 
         // ── 4. Detect conflicts in the updated registry ───────────────────────
-        const allBranches = await storage.list();
-        const activeBranches = allBranches.filter(b => b.status === 'active');
+        const postSweepBranches = await storage.list();
+        const activeBranches = postSweepBranches.filter(b => b.status === 'active');
         const conflicts: ConflictReport[] = [];
 
         for (let i = 0; i < activeBranches.length; i++) {
