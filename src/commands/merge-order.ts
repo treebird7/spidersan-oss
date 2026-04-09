@@ -102,27 +102,44 @@ export const mergeOrderCommand = new Command('merge-order')
 function buildConflictGraph(branches: Branch[]): Map<string, string[]> {
     const graph = new Map<string, string[]>();
 
-    // Performance Optimization: Pre-compute sets of files for O(1) lookups
-    // Reduces nested loop complexity from O(N^2 * M * K) to O(N^2 * M)
-    const fileSets = new Map<string, Set<string>>();
+    // Performance Optimization: Use an inverted index (file -> branches)
+    // Reduces time complexity from O(N^2 * M) nested loops to O(N * M)
+    const fileToBranches = new Map<string, string[]>();
+    const conflictSets = new Map<string, Set<string>>();
+
     for (const branch of branches) {
-        fileSets.set(branch.name, new Set(branch.files));
+        conflictSets.set(branch.name, new Set<string>());
+        // Avoid duplicate files within the same branch
+        const uniqueFiles = new Set(branch.files);
+        for (const file of uniqueFiles) {
+            let branchList = fileToBranches.get(file);
+            if (!branchList) {
+                branchList = [];
+                fileToBranches.set(file, branchList);
+            }
+            branchList.push(branch.name);
+        }
     }
 
-    for (const branch of branches) {
-        const conflicts: string[] = [];
-
-        for (const other of branches) {
-            if (branch.name === other.name) continue;
-
-            const otherFilesSet = fileSets.get(other.name)!;
-            const overlap = branch.files.some(f => otherFilesSet.has(f));
-            if (overlap) {
-                conflicts.push(other.name);
+    // Build the conflict graph from the inverted index
+    for (const branchList of fileToBranches.values()) {
+        if (branchList.length > 1) {
+            // All branches in this list share the current file, so they conflict
+            for (let i = 0; i < branchList.length; i++) {
+                const b1 = branchList[i]!;
+                const set1 = conflictSets.get(b1)!;
+                for (let j = i + 1; j < branchList.length; j++) {
+                    const b2 = branchList[j]!;
+                    set1.add(b2);
+                    conflictSets.get(b2)!.add(b1);
+                }
             }
         }
+    }
 
-        graph.set(branch.name, conflicts);
+    // Convert sets back to arrays for the return value
+    for (const [branch, conflicts] of conflictSets.entries()) {
+        graph.set(branch, Array.from(conflicts));
     }
 
     return graph;
