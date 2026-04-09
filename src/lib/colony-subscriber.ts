@@ -204,13 +204,13 @@ export async function syncFromColony(): Promise<SyncResult> {
 
         // ── 3. Sweep released branches ────────────────────────────────────────
         //
-        // In the status-based model there is no work_release signal type.
-        // Instead, a branch is "released" when it is no longer in-progress in
-        // the colony.  Unregister any local active branches that have no
-        // matching in-progress colony entry.
+        // Only sweep branches that were synced FROM colony (have a colony-sourced
+        // agent description). Manually-registered local branches are left alone.
         const allBranches = await storage.list();
         for (const localBranch of allBranches) {
-            if (localBranch.status === 'active' && !colonyBranches.has(localBranch.name)) {
+            const isColonySourced = localBranch.description?.startsWith('Colony claim by') ||
+                                    localBranch.agent?.startsWith('agent:');
+            if (localBranch.status === 'active' && !colonyBranches.has(localBranch.name) && isColonySourced) {
                 await storage.unregister(localBranch.name);
             }
         }
