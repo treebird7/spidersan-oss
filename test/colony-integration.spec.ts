@@ -339,6 +339,24 @@ describe('Colony-Spidersan integration', () => {
         const storage = new LocalStorage(tempDir);
         await storage.init();
 
+        // Register the branch locally to simulate it having been synced from Colony previously
+        await storage.register({
+            name: 'feature/to-be-released',
+            files: ['src/released.ts'],
+            agent: 'codex',
+            description: 'Colony claim by codex',
+            status: 'active'
+        });
+
+
+        // mockFetch needs to return empty array for in-progress because the branch is released
+        vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
+            return new Response(JSON.stringify([]), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+            });
+        });
+
         vi.doMock('../src/storage/index.js', async () => ({
             getStorage: async () => storage,
         }));
