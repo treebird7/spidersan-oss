@@ -10,7 +10,7 @@ import { execFileSync } from 'child_process';
 import { readFile } from 'fs/promises';
 import { getStorage } from '../storage/index.js';
 import { loadConfig, getWipPatterns } from '../lib/config.js';
-import { minimatch } from 'minimatch';
+import { Minimatch } from 'minimatch';
 
 function getCurrentBranch(): string {
     try {
@@ -37,8 +37,8 @@ function getChangedFiles(): string[] {
     return [];
 }
 
-export function shouldExcludeFile(file: string, excludePatterns: string[]): boolean {
-    return excludePatterns.some(pattern => minimatch(file, pattern));
+export function shouldExcludeFile(file: string, excludePatterns: Minimatch[]): boolean {
+    return excludePatterns.some(pattern => pattern.match(file));
 }
 
 export const readyCheckCommand = new Command('ready-check')
@@ -67,10 +67,11 @@ export const readyCheckCommand = new Command('ready-check')
             // Note: RegExp instances here do not use the global 'g' flag, so they are stateless
             // and safe to reuse across files and lines.
             const wipRegexes = getWipPatterns(config);
+            const excludePatternsCompiled = config.readyCheck.excludeFiles.map(p => new Minimatch(p));
 
             for (const file of changedFiles) {
                 // Skip excluded files
-                if (shouldExcludeFile(file, config.readyCheck.excludeFiles)) {
+                if (shouldExcludeFile(file, excludePatternsCompiled)) {
                     continue;
                 }
 
