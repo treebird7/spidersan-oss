@@ -52,12 +52,12 @@ function makeClaimRow(opts: {
 }) {
     return {
         id: opts.id ?? randomBytes(4).toString('hex'),
-        type: 'work_claim',
+        status: 'in-progress',
         agent_key_id: opts.agent_key_id,
         agent_label: opts.agent_label ?? null,
+        task: opts.branch,
+        files: opts.files ?? [],
         payload: {
-            branch: opts.branch,
-            files: opts.files ?? [],
             ...(opts.repo ? { repo: opts.repo } : {}),
         },
         created_at: new Date().toISOString(),
@@ -70,10 +70,12 @@ function makeClaimRow(opts: {
 function makeReleaseRow(opts: { branch: string; agent_key_id?: string }) {
     return {
         id: randomBytes(4).toString('hex'),
-        type: 'work_release',
+        status: 'completed',
         agent_key_id: opts.agent_key_id ?? 'release-agent',
         agent_label: null,
-        payload: { branch: opts.branch },
+        task: opts.branch,
+        files: [],
+        payload: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         is_stale: false,
@@ -84,8 +86,8 @@ function makeReleaseRow(opts: { branch: string; agent_key_id?: string }) {
 
 /**
  * Mock `global.fetch` so that:
- *   - Requests containing `type=eq.work_claim` return claimRows
- *   - Requests containing `type=eq.work_release` return releaseRows
+ *   - Requests containing `status=eq.in-progress` return claimRows
+ *   - Requests containing `type=eq.work_release` or completed return releaseRows (not used by subscriber, but mapped for test compat)
  *   - Anything else returns []
  */
 function mockFetch(
@@ -95,7 +97,7 @@ function mockFetch(
     return vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
         const url = input instanceof Request ? input.url : String(input);
         let body: unknown[];
-        if (url.includes('type=eq.work_claim')) {
+        if (url.includes('status=eq.in-progress')) {
             body = claimRows;
         } else if (url.includes('type=eq.work_release')) {
             body = releaseRows;
@@ -275,7 +277,7 @@ describe('Colony-Spidersan integration', () => {
 
         const { resolveAgentName } = await import('../src/lib/colony-subscriber.js');
 
-        const branch = staleRow.payload.branch;
+        const branch = staleRow.task;
         expect(branch).toBe('feature/old-work');
 
         const lastActivity = new Date(staleRow.updated_at);
@@ -320,24 +322,23 @@ describe('Colony-Spidersan integration', () => {
     // ── Scenario C — Work release ──────────────────────────────────────────────
 
     it('Scenario C: work_release signal removes the branch from the local registry after sync', async () => {
-        const claimRows = [
-            makeClaimRow({
-                agent_key_id: 'release-agent-uuid',
-                agent_label: 'codex',
-                branch: 'feature/to-be-released',
-                files: ['src/released.ts'],
-            }),
-        ];
-
-        const releaseRows = [
-            makeReleaseRow({ branch: 'feature/to-be-released', agent_key_id: 'release-agent-uuid' }),
-        ];
-
+        // We simulate a branch that was previously synced from the colony
+        const claimRows: unknown[] = [];
+        const releaseRows: unknown[] = [];
         mockFetch(claimRows, releaseRows);
 
         const { LocalStorage } = await import('../src/storage/local.js');
         const storage = new LocalStorage(tempDir);
         await storage.init();
+
+        // Seed the registry with a colony-sourced active branch
+        await storage.register({
+            name: 'feature/to-be-released',
+            files: ['src/released.ts'],
+            agent: 'codex',
+            description: 'Colony claim by codex',
+            status: 'active'
+        });
 
         vi.doMock('../src/storage/index.js', async () => ({
             getStorage: async () => storage,
