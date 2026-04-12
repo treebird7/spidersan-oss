@@ -1,4 +1,5 @@
-import { resolve, relative, isAbsolute } from 'path';
+import { resolve, relative, isAbsolute, dirname, extname } from 'path';
+import { fileURLToPath } from 'url';
 
 /**
  * Spidersan Security Utilities
@@ -180,4 +181,17 @@ export function escapeBlessed(text: string): string {
         return '';
     }
     return text.replace(/[{}]/g, (char) => char === '{' ? '{open}' : '{close}');
+}
+
+/**
+ * Safely resolves the CLI entry point path to prevent process.argv[1] manipulation.
+ * Resolves relative to the module instead of relying on runtime arguments.
+ */
+export function getCLIPath(): string {
+    const currentPath = fileURLToPath(import.meta.url);
+    const currentDir = dirname(currentPath);
+    const ext = extname(currentPath);
+    // Relative from src/lib/security.ts to src/bin/spidersan.ts
+    // or dist/lib/security.js to dist/bin/spidersan.js
+    return resolve(currentDir, `../bin/spidersan${ext}`);
 }
