@@ -54,7 +54,10 @@ function makeClaimRow(opts: {
         id: opts.id ?? randomBytes(4).toString('hex'),
         type: 'work_claim',
         agent_key_id: opts.agent_key_id,
+        status: 'in-progress',
         agent_label: opts.agent_label ?? null,
+        task: opts.branch,
+        files: opts.files ?? [],
         payload: {
             branch: opts.branch,
             files: opts.files ?? [],
@@ -71,6 +74,7 @@ function makeReleaseRow(opts: { branch: string; agent_key_id?: string }) {
     return {
         id: randomBytes(4).toString('hex'),
         type: 'work_release',
+        status: 'completed',
         agent_key_id: opts.agent_key_id ?? 'release-agent',
         agent_label: null,
         payload: { branch: opts.branch },
@@ -95,9 +99,9 @@ function mockFetch(
     return vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
         const url = input instanceof Request ? input.url : String(input);
         let body: unknown[];
-        if (url.includes('type=eq.work_claim')) {
+        if (url.includes('type=eq.work_claim') || url.includes('status=eq.in-progress')) {
             body = claimRows;
-        } else if (url.includes('type=eq.work_release')) {
+        } else if (url.includes('type=eq.work_release') || url.includes('status=eq.completed')) {
             body = releaseRows;
         } else {
             body = [];
@@ -322,14 +326,7 @@ describe('Colony-Spidersan integration', () => {
     // ── Scenario C — Work release ──────────────────────────────────────────────
 
     it('Scenario C: work_release signal removes the branch from the local registry after sync', async () => {
-        const claimRows = [
-            makeClaimRow({
-                agent_key_id: 'release-agent-uuid',
-                agent_label: 'codex',
-                branch: 'feature/to-be-released',
-                files: ['src/released.ts'],
-            }),
-        ];
+        const claimRows: any[] = []; // In-progress rows are empty
 
         const releaseRows = [
             makeReleaseRow({ branch: 'feature/to-be-released', agent_key_id: 'release-agent-uuid' }),
@@ -340,6 +337,15 @@ describe('Colony-Spidersan integration', () => {
         const { LocalStorage } = await import('../src/storage/local.js');
         const storage = new LocalStorage(tempDir);
         await storage.init();
+
+        // Seed the registry to simulate an existing claim
+        await storage.register({
+            name: 'feature/to-be-released',
+            files: ['src/released.ts'],
+            agent: 'codex',
+            status: 'active',
+            description: 'Colony claim by codex',
+        });
 
         vi.doMock('../src/storage/index.js', async () => ({
             getStorage: async () => storage,
