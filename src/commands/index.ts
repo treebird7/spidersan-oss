@@ -41,3 +41,7 @@ export { torrentCommand } from './torrent.js';
 
 // Mode 3: Queen Spider
 export { queenCommand } from './queen.js';
+
+// AI Core: Context, Ask, Advise, Explain
+export { contextCommand } from './context.js';
+export { askCommand, adviseCommand, explainCommand, aiPingCommand } from './ai.js';

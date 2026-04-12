@@ -38,6 +38,11 @@ import {
     rebaseHelperCommand,
     logCommand,
     dailyCommand,
+    contextCommand,
+    askCommand,
+    adviseCommand,
+    explainCommand,
+    aiPingCommand,
     loadEcosystemCommands,
     getEcosystemStatus,
 } from '../commands/index.js';
@@ -119,6 +124,13 @@ program.addCommand(dashboardCommand);
 program.addCommand(rebaseHelperCommand);
 logCommand(program);
 dailyCommand(program);
+
+// AI Core commands
+program.addCommand(contextCommand);
+program.addCommand(askCommand);
+program.addCommand(adviseCommand);
+program.addCommand(explainCommand);
+program.addCommand(aiPingCommand);
 
 async function main(): Promise<void> {
     const ecosystemCommands = await loadEcosystemCommands();
