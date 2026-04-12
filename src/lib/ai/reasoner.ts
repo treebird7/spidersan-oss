@@ -67,6 +67,36 @@ Commands: pulse → cross-conflicts → cross-conflicts --local → doctor --rem
 ### SCENARIO 12: Activity & Context
 Commands: log → log --since 7d → log --branch <name> → daily → daily --branch <name> --tldr → daily --context --branch <name>
 
+### SCENARIO 13: AI-Assisted Analysis
+Situation: Complex repo state that needs intelligent analysis — stale branches, hidden conflicts, unknown branches.
+Commands: ai-ping → context → context --json → ask "<question>" → advise → explain <branch>
+Decision: ai-ping first (verify LLM is alive). context for overview. ask for specific questions. advise for "what next?" explain for investigating a specific branch.
+
+### SCENARIO 14: Branch Abandonment & Rebase Recovery
+Situation: Dead branches (0 commits ahead) cluttering registry, or a branch stuck mid-rebase.
+Commands: abandon <branch> → list --status abandoned → rebase-helper
+Decision: If branch has 0 unique commits → abandon. If .git/rebase-merge exists → rebase-helper to diagnose. After rebase resolution → register updated files.
+
+### SCENARIO 15: Remote Sync & GitHub Integration
+Situation: Local registry out of sync with remote. Need to see GitHub PR/CI state.
+Commands: github-sync → sync-advisor → registry-sync --pull → registry-sync --push
+Decision: github-sync for remote branch/PR overview. sync-advisor for push/pull recommendations. registry-sync to align local ↔ Supabase registry.
+
+### SCENARIO 16: Configuration & Onboarding
+Situation: Setting up spidersan for the first time or changing LLM/stale settings.
+Commands: welcome → config list → config set llm.provider <provider> → config set stale.days <n>
+Decision: welcome for guided setup. config for tweaking. Set llm.provider to lmstudio (local), ollama (local), or copilot (remote, opt-in).
+
+### SCENARIO 17: Dependency Management
+Situation: Multiple branches with merge-order dependencies that must be respected.
+Commands: depends <branch> --on <other> → depends --show → merge-order
+Decision: Set deps before merging. If circular dependency detected → break the cycle by removing one dep. merge-order respects the dependency graph.
+
+### SCENARIO 18: Fleet Dashboard & Monitoring
+Situation: Need real-time visibility into branch state, conflicts, and agent activity.
+Commands: dashboard → doctor --remote → pulse → cross-conflicts
+Decision: dashboard for TUI overview. doctor --remote for ahead/behind/diverged across repos. pulse + cross-conflicts for fleet-wide coordination.
+
 ### Decision Tree
 Starting new work? → init + register + doctor
 Found unknown branches? → rescue --scan → rescue --symbols → sync
@@ -75,7 +105,12 @@ Branches piling up? → stale → cleanup → sync
 Multi-agent task? → torrent decompose → create → complete → tree
 Blocked by another? → conflicts --wake → depends → merge-order
 Cross-machine? → pulse → cross-conflicts → doctor --remote
-"What happened?" → daily --branch <name> --tldr`;
+"What happened?" → daily --branch <name> --tldr
+Need AI insight? → ai-ping → context → ask/advise/explain
+Dead branches? → abandon + list --status abandoned
+Stuck rebase? → rebase-helper
+Remote out of sync? → github-sync → sync-advisor → registry-sync
+Setting up? → welcome → config`;
 
 // ─── System Prompt Builder ──────────────────────────────────
 
