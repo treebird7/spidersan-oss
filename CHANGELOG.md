@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **AI Core** (Phase 0): Shared AI library in `src/lib/ai/` — types, LLM client, context builder, reasoner, event handler. Local-first with Gemma 4 26B on LM Studio; automatic fallback chain (LM Studio → Ollama → Copilot). Storage adapter pattern for registry access.
+- **AI CLI** (Phase 1+2): `spidersan context`, `ask`, `advise`, `explain`, `ai-ping` commands. Build full repo context, ask questions, get proactive advice, explain branches, test LLM connectivity. Supports `--json`, `--verbose`, `--repo`, `--provider` flags.
+- **AI MCP Tools** (Phase 3): 5 new MCP tools (`spidersan_context`, `spidersan_ask`, `spidersan_advise`, `spidersan_explain`, `spidersan_ping`) bringing total to 27. Structured JSON returns with commands, confidence, tokensUsed. Dynamic import bridge for repo-local AI core.
+- **PHC-Optimized Playbook**: 18-scenario command reference embedded in reasoner, optimized via prompt hill climbing (PHC) with Sonnet 4.6. Covers all spidersan workflows: init, conflicts, merge-order, queen dispatch, activity investigation, dependency chains, fleet monitoring, and more. Score: 0.972 (vs 0.895 baseline).
+
 ## [0.6.0] — 2026-04-04
 
 ### Removed

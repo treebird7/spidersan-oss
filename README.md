@@ -107,6 +107,39 @@ spidersan merge-order
 | `spidersan daily` | Show branch-relevant entries from daily collab logs |
 | `spidersan rebase-helper` | Detect and guide through local git rebase states |
 
+### 🧠 AI Commands (Gemma 4 / LM Studio)
+
+Ask spidersan questions about your repo state — powered by a local LLM with an embedded gitops playbook.
+
+| Command | Description |
+|---------|-------------|
+| `spidersan context` | Build full repo context (registry, conflicts, colony, git) |
+| `spidersan ask "<question>"` | Ask a question — get actionable gitops advice with commands |
+| `spidersan advise` | Get proactive recommendations based on current repo state |
+| `spidersan explain <branch>` | Explain what a branch does, its risk, and next steps |
+| `spidersan ai-ping` | Test LLM connectivity and latency |
+
+```bash
+# Get AI-powered advice
+spidersan ask "I have 3 branches touching auth.ts — what should I do?"
+
+# Proactive recommendations
+spidersan advise
+
+# Understand a mystery branch
+spidersan explain feat/strange-refactor
+
+# Flags
+spidersan context --json --verbose --repo ~/Dev/other-repo
+spidersan ask "merge strategy?" --provider copilot
+```
+
+**Features:**
+- 🏠 **Local-first**: Defaults to Gemma 4 26B on LM Studio (no API key needed)
+- 🔒 **Privacy**: Code context never leaves your machine unless you opt into remote providers
+- 📋 **18-scenario playbook**: PHC-optimized command reference covering all spidersan workflows
+- 🔧 **MCP integration**: All AI commands available as MCP tools (27 total)
+
 ### 🌐 Multi-Repo & Cloud Commands
 
 | Command | Description |
