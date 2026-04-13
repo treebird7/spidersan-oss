@@ -660,10 +660,11 @@ export const conflictsCommand = new Command('conflicts')
                             console.log('\n🔄 RE-CHECKING CONFLICTS...\n');
                             const { execFileSync } = await import('child_process');
                             try {
+                                const { getCLIPath } = await import('../lib/security.js');
                                 // Security: Use execFileSync with argument array
                                 const safeBranch = validateBranchName(targetBranch);
                                 const tierArg = String(parseInt(options.tier, 10) || 1);
-                                execFileSync('node', [process.argv[1], 'conflicts', '--branch', safeBranch, '--tier', tierArg], {
+                                execFileSync('node', [getCLIPath(), 'conflicts', '--branch', safeBranch, '--tier', tierArg], {
                                     encoding: 'utf-8',
                                     stdio: 'inherit'
                                 });

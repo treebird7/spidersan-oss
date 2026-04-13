@@ -9,6 +9,7 @@ import { execFileSync, spawn } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { loadConfig } from '../lib/config.js';
+import { getCLIPath } from '../lib/security.js';
 
 interface AutoWatchState {
     pid: number;
@@ -128,7 +129,7 @@ autoCommand
         const quiet = Boolean(options.quiet || autoConfig.quiet);
         const legacy = Boolean(options.legacy || autoConfig.legacy);
 
-        const script = process.argv[1];
+        const script = getCLIPath();
         if (!script) {
             console.error('❌ Could not resolve CLI script path.');
             process.exit(1);

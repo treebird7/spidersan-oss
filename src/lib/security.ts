@@ -1,4 +1,5 @@
-import { resolve, relative, isAbsolute } from 'path';
+import { resolve, relative, isAbsolute, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
 /**
  * Spidersan Security Utilities
@@ -180,4 +181,15 @@ export function escapeBlessed(text: string): string {
         return '';
     }
     return text.replace(/[{}]/g, (char) => char === '{' ? '{open}' : '{close}');
+}
+
+/**
+ * Safely resolves the CLI entry point path.
+ * Replaces insecure usage of process.argv[1] which can be manipulated.
+ */
+export function getCLIPath(): string {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+    const ext = __filename.endsWith('.ts') ? '.ts' : '.js';
+    return resolve(__dirname, '..', 'bin', `spidersan${ext}`);
 }
