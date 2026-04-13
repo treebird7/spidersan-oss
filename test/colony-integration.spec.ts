@@ -53,8 +53,11 @@ function makeClaimRow(opts: {
     return {
         id: opts.id ?? randomBytes(4).toString('hex'),
         type: 'work_claim',
+        status: 'in-progress',
         agent_key_id: opts.agent_key_id,
         agent_label: opts.agent_label ?? null,
+        task: opts.branch,
+        files: opts.files ?? [],
         payload: {
             branch: opts.branch,
             files: opts.files ?? [],
@@ -95,8 +98,14 @@ function mockFetch(
     return vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
         const url = input instanceof Request ? input.url : String(input);
         let body: unknown[];
-        if (url.includes('type=eq.work_claim')) {
-            body = claimRows;
+        if (url.includes('status=eq.in-progress')) {
+            // For Scenario C, if there's a release, we simulate that the claim row
+            // is no longer returned as in-progress from the view.
+            if (releaseRows.length > 0) {
+                body = [];
+            } else {
+                body = claimRows;
+            }
         } else if (url.includes('type=eq.work_release')) {
             body = releaseRows;
         } else {
@@ -220,7 +229,14 @@ describe('Colony-Spidersan integration', () => {
             vi.spyOn(global, 'fetch').mockRestore();
             vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
                 const url = input instanceof Request ? input.url : String(input);
-                const body = url.includes('type=eq.work_release') ? [] : claimRowsWithOverlap;
+                let body: unknown[];
+                if (url.includes('status=eq.in-progress')) {
+                    body = claimRowsWithOverlap;
+                } else if (url.includes('type=eq.work_release')) {
+                    body = [];
+                } else {
+                    body = [];
+                }
                 return new Response(JSON.stringify(body), {
                     status: 200,
                     headers: { 'Content-Type': 'application/json' },
