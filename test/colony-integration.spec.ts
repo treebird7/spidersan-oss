@@ -60,6 +60,8 @@ function makeClaimRow(opts: {
             files: opts.files ?? [],
             ...(opts.repo ? { repo: opts.repo } : {}),
         },
+        task: opts.branch,
+        files: opts.files ?? [],
         created_at: new Date().toISOString(),
         updated_at: opts.updated_at ?? new Date().toISOString(),
         is_stale: opts.is_stale ?? false,
@@ -95,10 +97,18 @@ function mockFetch(
     return vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
         const url = input instanceof Request ? input.url : String(input);
         let body: unknown[];
-        if (url.includes('type=eq.work_claim')) {
-            body = claimRows;
-        } else if (url.includes('type=eq.work_release')) {
-            body = releaseRows;
+        if (url.includes('status=eq.in-progress')) {
+            // Note: The logic in the tests was assuming the old work_claim/work_release model
+            // But the code in colony-subscriber.ts now queries colony_state?status=eq.in-progress
+            // If we are simulating a release, the branch shouldn't be in the in-progress results.
+            if (releaseRows.length > 0) {
+                 // Filter out claims that have a corresponding release in our mock data
+                 body = claimRows.filter(claim =>
+                     !releaseRows.some(release => release.payload.branch === claim.payload.branch)
+                 );
+            } else {
+                body = claimRows;
+            }
         } else {
             body = [];
         }
@@ -121,6 +131,7 @@ describe('Colony-Spidersan integration', () => {
         // Set fake Colony credentials so syncFromColony() doesn't short-circuit
         process.env.COLONY_SUPABASE_URL = 'https://fake.supabase.co';
         process.env.COLONY_SUPABASE_KEY = 'fake-key';
+        process.env.COLONY_SESSION_JWT = 'fake-jwt';
 
         // Use LocalStorage pointed at tempDir (no real Supabase branch storage)
         delete process.env.SUPABASE_URL;
@@ -220,7 +231,14 @@ describe('Colony-Spidersan integration', () => {
             vi.spyOn(global, 'fetch').mockRestore();
             vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
                 const url = input instanceof Request ? input.url : String(input);
-                const body = url.includes('type=eq.work_release') ? [] : claimRowsWithOverlap;
+                let body: unknown[];
+                if (url.includes('status=eq.in-progress')) {
+                    body = claimRowsWithOverlap;
+                } else if (url.includes('type=eq.work_release')) {
+                    body = [];
+                } else {
+                    body = [];
+                }
                 return new Response(JSON.stringify(body), {
                     status: 200,
                     headers: { 'Content-Type': 'application/json' },

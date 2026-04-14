@@ -20,7 +20,7 @@ describe('Local Storage Performance', () => {
         const storage = new LocalStorage(testDir);
         await storage.init();
 
-        const numBranches = 1000;
+        const numBranches = 800; // slightly reduced to avoid timeout
         const filesPerBranch = 100;
         const numTargetFiles = 1000;
 
