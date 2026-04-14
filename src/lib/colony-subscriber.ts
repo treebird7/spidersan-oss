@@ -7,6 +7,8 @@
  *   `is_stale` is already computed server-side.
  * - Credentials come from COLONY_SUPABASE_URL + COLONY_SUPABASE_KEY env vars
  *   (the MycToak Supabase project, separate from Spidersan's own project).
+ *   If env vars are absent, falls back to ~/.envoak/config.json + session files
+ *   automatically (so `envoak vault login` is sufficient — no env vars needed).
  * - Auth: COLONY_SESSION_JWT is required for RLS-scoped access to colony_state.
  *   Without it the query falls back to the anon key and will return 0 rows (RLS
  *   blocks unauthenticated reads of user-scoped signals).
@@ -22,6 +24,9 @@
  */
 
 import { getStorage } from '../storage/index.js';
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -69,13 +74,78 @@ export function resolveAgentName(agentKeyId: string, agentLabel?: string): strin
 
 // ─── Supabase REST helpers ────────────────────────────────────────────────────
 
+// ─── Envoak filesystem fallback ───────────────────────────────────────────────
+
+/** Read a JSON file safely; returns null on any error (missing, malformed, mid-write). */
+function readJsonSafe<T>(filePath: string): T | null {
+    try {
+        if (!existsSync(filePath)) return null;
+        return JSON.parse(readFileSync(filePath, 'utf-8')) as T;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Resolve colony credentials from envoak's local session files.
+ *
+ * Resolution order:
+ *   1. ~/.envoak/sessions/current.json → clientSessionId
+ *   2. ~/.envoak/sessions/<id>.json    → accessToken + expiresAt
+ *   3. Fallback: ~/.envoak/session.json (legacy single-session file)
+ *
+ * JWT is only used if not expired (or within 60s of expiry).
+ */
+function resolveEnvoakCredentials(): { url: string; anonKey: string; sessionJwt: string | null } | null {
+    const envoakDir = join(homedir(), '.envoak');
+
+    const config = readJsonSafe<{ url?: string; anonKey?: string }>(join(envoakDir, 'config.json'));
+    if (!config?.url || !config?.anonKey) return null;
+
+    const nowMs = Date.now();
+    const EXPIRY_BUFFER_MS = 60_000; // reject tokens within 60s of expiry
+
+    function extractJwt(sessionData: { accessToken?: string; expiresAt?: number } | null): string | null {
+        if (!sessionData?.accessToken) return null;
+        const exp = sessionData.expiresAt ?? 0;
+        if (exp && exp - nowMs < EXPIRY_BUFFER_MS) {
+            if (process.env.DEBUG_COLONY) {
+                console.warn('  [colony] envoak session JWT is expired or expiring soon — treating as offline');
+            }
+            return null;
+        }
+        return sessionData.accessToken;
+    }
+
+    // Try new per-session file via current.json pointer
+    const current = readJsonSafe<{ clientSessionId?: string }>(join(envoakDir, 'sessions', 'current.json'));
+    if (current?.clientSessionId) {
+        const sessFile = join(envoakDir, 'sessions', `${current.clientSessionId}.json`);
+        const jwt = extractJwt(readJsonSafe(sessFile));
+        if (process.env.DEBUG_COLONY) {
+            console.warn(`  [colony] envoak fallback: using sessions/${current.clientSessionId}.json (jwt=${jwt ? 'ok' : 'missing/expired'})`);
+        }
+        return { url: config.url, anonKey: config.anonKey, sessionJwt: jwt };
+    }
+
+    // Legacy single session.json
+    const jwt = extractJwt(readJsonSafe(join(envoakDir, 'session.json')));
+    if (process.env.DEBUG_COLONY) {
+        console.warn(`  [colony] envoak fallback: using legacy session.json (jwt=${jwt ? 'ok' : 'missing/expired'})`);
+    }
+    return { url: config.url, anonKey: config.anonKey, sessionJwt: jwt };
+}
+
 function getColonyCredentials(): { url: string; anonKey: string; sessionJwt: string | null } | null {
     const url = process.env.COLONY_SUPABASE_URL || process.env.SUPABASE_URL;
     const anonKey = process.env.COLONY_SUPABASE_KEY || process.env.SUPABASE_KEY;
-    if (!url || !anonKey) return null;
     // Session JWT is required for RLS — without it colony_state returns 0 rows
     const sessionJwt = process.env.COLONY_SESSION_JWT || null;
-    return { url, anonKey, sessionJwt };
+
+    if (url && anonKey) return { url, anonKey, sessionJwt };
+
+    // Fall back to envoak's local session files when env vars aren't set
+    return resolveEnvoakCredentials();
 }
 
 async function fetchColonySignals(
