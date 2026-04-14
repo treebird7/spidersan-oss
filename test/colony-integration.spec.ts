@@ -55,6 +55,8 @@ function makeClaimRow(opts: {
         type: 'work_claim',
         agent_key_id: opts.agent_key_id,
         agent_label: opts.agent_label ?? null,
+        task: opts.branch,
+        files: opts.files ?? [],
         payload: {
             branch: opts.branch,
             files: opts.files ?? [],
@@ -95,9 +97,9 @@ function mockFetch(
     return vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
         const url = input instanceof Request ? input.url : String(input);
         let body: unknown[];
-        if (url.includes('type=eq.work_claim')) {
+        if (url.includes('colony_state?status=eq.in-progress')) {
             body = claimRows;
-        } else if (url.includes('type=eq.work_release')) {
+        } else if (url.includes('colony_signals?type=eq.work_release')) {
             body = releaseRows;
         } else {
             body = [];
@@ -121,6 +123,7 @@ describe('Colony-Spidersan integration', () => {
         // Set fake Colony credentials so syncFromColony() doesn't short-circuit
         process.env.COLONY_SUPABASE_URL = 'https://fake.supabase.co';
         process.env.COLONY_SUPABASE_KEY = 'fake-key';
+        process.env.COLONY_SESSION_JWT = 'fake-jwt';
 
         // Use LocalStorage pointed at tempDir (no real Supabase branch storage)
         delete process.env.SUPABASE_URL;
@@ -145,6 +148,7 @@ describe('Colony-Spidersan integration', () => {
 
         delete process.env.COLONY_SUPABASE_URL;
         delete process.env.COLONY_SUPABASE_KEY;
+        delete process.env.COLONY_SESSION_JWT;
     });
 
     // ── Scenario A — Conflict detection ───────────────────────────────────────
@@ -220,7 +224,7 @@ describe('Colony-Spidersan integration', () => {
             vi.spyOn(global, 'fetch').mockRestore();
             vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
                 const url = input instanceof Request ? input.url : String(input);
-                const body = url.includes('type=eq.work_release') ? [] : claimRowsWithOverlap;
+                const body = url.includes('colony_state?status=eq.in-progress') ? claimRowsWithOverlap : [];
                 return new Response(JSON.stringify(body), {
                     status: 200,
                     headers: { 'Content-Type': 'application/json' },
@@ -320,20 +324,22 @@ describe('Colony-Spidersan integration', () => {
     // ── Scenario C — Work release ──────────────────────────────────────────────
 
     it('Scenario C: work_release signal removes the branch from the local registry after sync', async () => {
-        const claimRows = [
-            makeClaimRow({
-                agent_key_id: 'release-agent-uuid',
-                agent_label: 'codex',
-                branch: 'feature/to-be-released',
-                files: ['src/released.ts'],
-            }),
-        ];
+        // Simulate an earlier state where the claim existed
+        const { LocalStorage: PreLocalStorage } = await import('../src/storage/local.js');
+        const preStorage = new PreLocalStorage(tempDir);
+        await preStorage.init();
+        await preStorage.register({
+            name: 'feature/to-be-released',
+            files: ['src/app.ts'],
+            agent: 'codex',
+            status: 'active',
+            description: 'Colony claim by codex', // Required to be swept
+        });
 
-        const releaseRows = [
-            makeReleaseRow({ branch: 'feature/to-be-released', agent_key_id: 'release-agent-uuid' }),
-        ];
+        // Now simulate the fetch where the claim is NO LONGER present in colony_state
+        const claimRows: unknown[] = [];
 
-        mockFetch(claimRows, releaseRows);
+        mockFetch(claimRows, []);
 
         const { LocalStorage } = await import('../src/storage/local.js');
         const storage = new LocalStorage(tempDir);
