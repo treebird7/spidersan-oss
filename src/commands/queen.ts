@@ -407,7 +407,7 @@ const queenDissolveCommand = new Command('dissolve')
     });
 
 export const queenCommand = new Command('queen')
-    .description('Mode 3: Queen Spider — dispatch sub-spidersans for parallel ground jobs')
+    .description('🕷️ Parallel agent dispatch — fan-out work to multiple sub-spidersans at once (use `torrent` instead for sequential subtasks in order)')
     .addCommand(queenSpawnCommand)
     .addCommand(queenStatusCommand)
     .addCommand(queenDissolveCommand);
