@@ -1,0 +1,11 @@
+--- test/colony-integration.spec.ts
++++ test/colony-integration.spec.ts
+@@ -55,6 +55,8 @@
+         type: 'work_claim',
+         agent_key_id: opts.agent_key_id,
+         agent_label: opts.agent_label ?? null,
++        task: opts.branch, // Add top-level task property mapped to branch
++        files: opts.files ?? [], // Add top-level files property
+         payload: {
+             branch: opts.branch,
+             files: opts.files ?? [],

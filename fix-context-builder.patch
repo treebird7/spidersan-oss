@@ -1,0 +1,11 @@
+--- src/lib/ai/context-builder.ts
++++ src/lib/ai/context-builder.ts
+@@ -222,7 +222,7 @@
+
+ // ─── Activity Log (best-effort) ────────────────────────────
+
+-async function getRecentActivity(repoRoot: string): Promise<ContextSource<ActivityEntry[]>> {
++async function getRecentActivity(_repoRoot: string): Promise<ContextSource<ActivityEntry[]>> {
+   try {
+     const { readFileSync, existsSync } = await import('fs');
+     const { join } = await import('path');

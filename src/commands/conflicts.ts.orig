@@ -1,6 +1,6 @@
 /**
  * spidersan conflicts
- * 
+ *
  * Detect file conflicts between branches.
  * Supports tiered conflict blocking:
  *   TIER 1: Warning only (informational)
@@ -15,7 +15,7 @@ import { basename } from 'path';
 import { homedir } from 'os';
 import { getStorage } from '../storage/index.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
-import { validateBranchName } from '../lib/security.js';
+import { validateAgentId, validateBranchName } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
 import { logActivity } from '../lib/activity.js';
@@ -75,7 +75,7 @@ function getConflictTier(file: string, compiledHigh: RegExp[] = [], compiledMedi
         }
     }
 
-    // Check TIER 2 
+    // Check TIER 2
     const tier2 = [...COMPILED_TIER_2, ...compiledMedium];
     for (const pattern of tier2) {
         if (pattern.test(file)) {
@@ -137,10 +137,10 @@ async function wakeConflictingAgent(
     agentId: string,
     myBranch: string,
     theirBranch: string,
-    _conflictingFiles: string[]
+    conflictingFiles: string[]
 ): Promise<boolean> {
-    // const fileList = conflictingFiles.slice(0, 5).join(', ');
-    // const more = conflictingFiles.length > 5 ? ` (+${conflictingFiles.length - 5} more)` : '';
+    const fileList = conflictingFiles.slice(0, 5).join(', ');
+    const more = conflictingFiles.length > 5 ? ` (+${conflictingFiles.length - 5} more)` : '';
 
     // 1. Wake the agent via Hub
     try {

@@ -16,7 +16,7 @@ describe('Local Storage Performance', () => {
         }
     });
 
-    it('benchmarks array vs set lookup for findByFiles', { timeout: 60000 }, async () => {
+    it('benchmarks array vs set lookup for findByFiles', async () => {
         const storage = new LocalStorage(testDir);
         await storage.init();
 

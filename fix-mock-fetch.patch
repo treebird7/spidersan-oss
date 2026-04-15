@@ -1,0 +1,11 @@
+--- test/colony-integration.spec.ts
++++ test/colony-integration.spec.ts
+@@ -95,7 +95,7 @@
+     return vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
+         const url = input instanceof Request ? input.url : String(input);
+         let body: unknown[];
+-        if (url.includes('type=eq.work_claim')) {
++        if (url.includes('type=eq.work_claim') || url.includes('status=eq.in-progress')) {
+             body = claimRows;
+         } else if (url.includes('type=eq.work_release')) {
+             body = releaseRows;

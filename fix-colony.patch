@@ -1,0 +1,11 @@
+--- test/colony-integration.spec.ts
++++ test/colony-integration.spec.ts
+@@ -50,6 +50,7 @@
+     return {
+         id: opts.id || `sig-${Date.now()}-${Math.random()}`,
+         agent_key_id: opts.agent_key_id,
+         agent_label: opts.agent_label || null,
++        task: opts.branch, // Map branch to task property
+         payload: {
+             type: 'work_claim',
+             branch: opts.branch,

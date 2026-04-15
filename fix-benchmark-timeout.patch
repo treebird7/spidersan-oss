@@ -1,0 +1,10 @@
+--- tests/performance/local_storage_benchmark.test.ts
++++ tests/performance/local_storage_benchmark.test.ts
+@@ -16,7 +16,7 @@
+         rmSync(testDir, { recursive: true, force: true });
+     });
+
+-    it('benchmarks array vs set lookup for findByFiles', async () => {
++    it('benchmarks array vs set lookup for findByFiles', { timeout: 60000 }, async () => {
+         const storage = new LocalStorage(testDir);
+         await storage.init();

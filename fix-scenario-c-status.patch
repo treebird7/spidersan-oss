@@ -1,0 +1,10 @@
+--- test/colony-integration.spec.ts
++++ test/colony-integration.spec.ts
+@@ -340,6 +340,7 @@
+         await storage.register({
+             name: 'feature/to-be-released',
+             files: ['src/released.ts'],
++            status: 'active',
+             agent: 'codex',
+             description: 'Colony claim by codex'
+         });

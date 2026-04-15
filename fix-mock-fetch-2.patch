@@ -1,0 +1,27 @@
+--- test/colony-integration.spec.ts
++++ test/colony-integration.spec.ts
+@@ -179,13 +179,13 @@
+         const result = await syncFromColony();
+
+         expect(result.offline).toBe(false);
+-        expect(result.synced).toBe(2);
++        expect(result.synced).toBe(2);
+
+         // Both branches should be in the local registry
+         const branches = await storage.list();
+         const names = branches.map(b => b.name);
+         expect(names).toContain('feature/auth');
+-        expect(names).toContain('feature/session');
++        expect(names).toContain('feature/session');
+
+         // Conflict: both branches touch src/auth/session.ts (feature/session) and
+         // feature/auth touches src/auth/* — but the actual overlap is that
+@@ -222,7 +222,7 @@
+             vi.spyOn(global, 'fetch').mockRestore();
+             vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
+                 const url = input instanceof Request ? input.url : String(input);
+-                const body = url.includes('type=eq.work_release') ? [] : claimRowsWithOverlap;
++                const body = url.includes('type=eq.work_release') ? [] : (url.includes('type=eq.work_claim') || url.includes('status=eq.in-progress')) ? claimRowsWithOverlap : [];
+                 return new Response(JSON.stringify(body), {
+                     status: 200,
+                     headers: { 'Content-Type': 'application/json' },

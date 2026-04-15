@@ -1,0 +1,30 @@
+--- test/colony-integration.spec.ts
++++ test/colony-integration.spec.ts
+@@ -334,11 +334,8 @@
+             }),
+         ];
+
+-        const releaseRows = [
+-            makeReleaseRow({ branch: 'feature/to-be-released', agent_key_id: 'release-agent-uuid' }),
+-        ];
+-
+-        mockFetch(claimRows, releaseRows);
++        // The branch isn't in the in-progress view anymore, so the claim is just omitted
++        mockFetch([], []);
+
+         const { LocalStorage } = await import('../src/storage/local.js');
+         const storage = new LocalStorage(tempDir);
+@@ -348,6 +345,13 @@
+             getStorage: async () => storage,
+         }));
+         vi.resetModules();
++
++        // Pre-populate the registry with the branch so the sweep will find it and delete it
++        await storage.register({
++            name: 'feature/to-be-released',
++            files: ['src/released.ts'],
++            agent: 'codex',
++            description: 'Colony claim by codex'
++        });
+
+         const { syncFromColony } = await import('../src/lib/colony-subscriber.js');

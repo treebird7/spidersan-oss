@@ -1,0 +1,10 @@
+--- test/colony-integration.spec.ts
++++ test/colony-integration.spec.ts
+@@ -75,6 +75,7 @@
+         type: 'work_release',
+         agent_key_id: opts.agent_key_id ?? 'release-agent',
+         agent_label: null,
++        task: opts.branch, // Map branch to task property
+         payload: { branch: opts.branch },
+         created_at: new Date().toISOString(),
+         updated_at: new Date().toISOString(),
