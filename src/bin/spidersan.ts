@@ -43,6 +43,9 @@ import {
     adviseCommand,
     explainCommand,
     aiPingCommand,
+    aiSetupCommand,
+    aiTelemetryCommand,
+    checkOptOutCommand,
     loadEcosystemCommands,
     getEcosystemStatus,
 } from '../commands/index.js';
@@ -131,6 +134,9 @@ program.addCommand(askCommand);
 program.addCommand(adviseCommand);
 program.addCommand(explainCommand);
 program.addCommand(aiPingCommand);
+program.addCommand(aiSetupCommand);
+program.addCommand(aiTelemetryCommand);
+program.addCommand(checkOptOutCommand);
 
 async function main(): Promise<void> {
     const ecosystemCommands = await loadEcosystemCommands();

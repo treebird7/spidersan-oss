@@ -44,4 +44,4 @@ export { queenCommand } from './queen.js';
 
 // AI Core: Context, Ask, Advise, Explain
 export { contextCommand } from './context.js';
-export { askCommand, adviseCommand, explainCommand, aiPingCommand } from './ai.js';
+export { askCommand, adviseCommand, explainCommand, aiPingCommand, aiSetupCommand, aiTelemetryCommand, checkOptOutCommand } from './ai.js';
