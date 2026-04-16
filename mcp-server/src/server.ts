@@ -701,9 +701,20 @@ server.tool(
         files: z.array(z.string()).optional().describe('File paths to unlock (omit to unlock all by agent)'),
         agent: z.string().optional().describe('Agent releasing lock'),
         token: z.string().optional().describe('Lock token (alternative to agent)'),
-        force: z.boolean().describe('Force unlock (admin only)').optional().default(false),
+        force: z.boolean().describe('Force unlock — requires SPIDERSAN_ADMIN_TOKEN env var').optional().default(false),
+        adminToken: z.string().optional().describe('Admin token for force unlock'),
     },
-    async ({ files, agent, token, force = false }) => {
+    async ({ files, agent, token, force = false, adminToken }) => {
+        const expectedAdminToken = process.env['SPIDERSAN_ADMIN_TOKEN'];
+        if (force && (!expectedAdminToken || adminToken !== expectedAdminToken)) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: 'Force unlock requires a valid SPIDERSAN_ADMIN_TOKEN' }, null, 2)
+                }],
+                isError: true,
+            };
+        }
         const registry = await loadLockRegistry();
 
         if (!Array.isArray(registry.locks) || registry.locks.length === 0) {

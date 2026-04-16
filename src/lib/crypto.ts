@@ -129,7 +129,7 @@ export function saveKnownKey(agentId: string, publicKeyBase64: string): void {
     const safeAgentId = validateAgentId(agentId);
     const keys = loadKnownKeys();
     keys[safeAgentId] = publicKeyBase64;
-    writeFileSync(getPublicKeysPath(), JSON.stringify(keys, null, 2));
+    writeFileSync(getPublicKeysPath(), JSON.stringify(keys, null, 2), { mode: 0o600 });
 }
 
 /**

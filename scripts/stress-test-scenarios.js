@@ -6,7 +6,7 @@
  * Uses the storage factory (auto-detects Supabase when configured).
  */
 
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
@@ -20,7 +20,8 @@ const MIGRATIONS_DIR = join(process.cwd(), 'migrations');
  */
 function runSpidersan(args, silent = false) {
     try {
-        const result = execSync(`node dist/bin/spidersan.js ${args}`, {
+        const argList = args.split(/\s+/).filter(Boolean);
+        const result = execFileSync('node', ['dist/bin/spidersan.js', ...argList], {
             encoding: 'utf-8',
             cwd: process.cwd(),
         });

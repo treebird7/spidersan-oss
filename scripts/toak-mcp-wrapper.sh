@@ -3,7 +3,12 @@
 # cd to Toak dir so envoak can find config.enc
 cd "${HOME}/Dev/Toak"
 
-export ENVOAK_KEY="d7edd0aa19a983c449135310822a33cb4971f8b41122bd2d37785940304a0789"
+# SECURITY: ENVOAK_KEY must be provided via environment, not hardcoded.
+# The previous hardcoded key has been rotated. Set ENVOAK_KEY externally.
+if [ -z "$ENVOAK_KEY" ]; then
+  echo "ERROR: ENVOAK_KEY environment variable is not set." >&2
+  exit 1
+fi
 
 # Inject HUB_URL and other secrets from config.enc, then exec toak MCP server
 exec node "${HOME}/Dev/Envoak/dist/bin/envoak.js" inject \
