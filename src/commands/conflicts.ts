@@ -457,7 +457,8 @@ export const conflictsCommand = new Command('conflicts')
         for (const branch of allBranches) {
             if (branch.name === targetBranch || branch.status !== 'active') continue;
 
-            const overlappingFiles = branch.files.filter(f => !isExcludedPath(f) && targetFilesSet.has(f));
+            // Performance Optimization: Check O(1) targetFilesSet.has BEFORE O(M) isExcludedPath
+            const overlappingFiles = branch.files.filter(f => targetFilesSet.has(f) && !isExcludedPath(f));
             if (overlappingFiles.length > 0) {
                 // Get highest tier for this conflict
                 let maxTier: ConflictTier = { tier: 1, label: 'WARN', icon: '🟡', action: '' };
