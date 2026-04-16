@@ -53,6 +53,9 @@ function makeClaimRow(opts: {
     return {
         id: opts.id ?? randomBytes(4).toString('hex'),
         type: 'work_claim',
+        status: 'in-progress',
+        task: opts.branch,
+        files: opts.files ?? [],
         agent_key_id: opts.agent_key_id,
         agent_label: opts.agent_label ?? null,
         payload: {
@@ -71,6 +74,9 @@ function makeReleaseRow(opts: { branch: string; agent_key_id?: string }) {
     return {
         id: randomBytes(4).toString('hex'),
         type: 'work_release',
+        status: 'completed',
+        task: opts.branch,
+        files: [],
         agent_key_id: opts.agent_key_id ?? 'release-agent',
         agent_label: null,
         payload: { branch: opts.branch },
@@ -95,9 +101,9 @@ function mockFetch(
     return vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
         const url = input instanceof Request ? input.url : String(input);
         let body: unknown[];
-        if (url.includes('type=eq.work_claim')) {
+        if (url.includes('type=eq.work_claim') || url.includes('status=eq.in-progress')) {
             body = claimRows;
-        } else if (url.includes('type=eq.work_release')) {
+        } else if (url.includes('type=eq.work_release') || url.includes('status=eq.completed')) {
             body = releaseRows;
         } else {
             body = [];
@@ -121,6 +127,7 @@ describe('Colony-Spidersan integration', () => {
         // Set fake Colony credentials so syncFromColony() doesn't short-circuit
         process.env.COLONY_SUPABASE_URL = 'https://fake.supabase.co';
         process.env.COLONY_SUPABASE_KEY = 'fake-key';
+        process.env.COLONY_SESSION_JWT = 'fake-jwt';
 
         // Use LocalStorage pointed at tempDir (no real Supabase branch storage)
         delete process.env.SUPABASE_URL;
@@ -145,6 +152,7 @@ describe('Colony-Spidersan integration', () => {
 
         delete process.env.COLONY_SUPABASE_URL;
         delete process.env.COLONY_SUPABASE_KEY;
+        delete process.env.COLONY_SESSION_JWT;
     });
 
     // ── Scenario A — Conflict detection ───────────────────────────────────────
@@ -333,7 +341,8 @@ describe('Colony-Spidersan integration', () => {
             makeReleaseRow({ branch: 'feature/to-be-released', agent_key_id: 'release-agent-uuid' }),
         ];
 
-        mockFetch(claimRows, releaseRows);
+        // First, mock it to return the claim so it gets registered
+        mockFetch(claimRows, []);
 
         const { LocalStorage } = await import('../src/storage/local.js');
         const storage = new LocalStorage(tempDir);
@@ -342,9 +351,22 @@ describe('Colony-Spidersan integration', () => {
         vi.doMock('../src/storage/index.js', async () => ({
             getStorage: async () => storage,
         }));
+
+        let { syncFromColony } = await import('../src/lib/colony-subscriber.js');
+        await syncFromColony(); // Now registered
+
+        // Second, mock it to return the release (so in-progress is empty)
+        vi.restoreAllMocks();
+        mockFetch([], releaseRows);
+
         vi.resetModules();
 
-        const { syncFromColony } = await import('../src/lib/colony-subscriber.js');
+        vi.doMock('../src/storage/index.js', async () => ({
+            getStorage: async () => storage,
+        }));
+
+        const newMod = await import('../src/lib/colony-subscriber.js');
+        syncFromColony = newMod.syncFromColony;
         const result = await syncFromColony();
 
         expect(result.offline).toBe(false);
