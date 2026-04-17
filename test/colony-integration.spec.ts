@@ -60,6 +60,8 @@ function makeClaimRow(opts: {
             files: opts.files ?? [],
             ...(opts.repo ? { repo: opts.repo } : {}),
         },
+        task: opts.branch,
+        files: opts.files ?? [],
         created_at: new Date().toISOString(),
         updated_at: opts.updated_at ?? new Date().toISOString(),
         is_stale: opts.is_stale ?? false,
@@ -95,7 +97,7 @@ function mockFetch(
     return vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
         const url = input instanceof Request ? input.url : String(input);
         let body: unknown[];
-        if (url.includes('type=eq.work_claim')) {
+        if (url.includes('type=eq.work_claim') || url.includes('status=eq.in-progress')) {
             body = claimRows;
         } else if (url.includes('type=eq.work_release')) {
             body = releaseRows;
@@ -320,24 +322,24 @@ describe('Colony-Spidersan integration', () => {
     // ── Scenario C — Work release ──────────────────────────────────────────────
 
     it('Scenario C: work_release signal removes the branch from the local registry after sync', async () => {
-        const claimRows = [
-            makeClaimRow({
-                agent_key_id: 'release-agent-uuid',
-                agent_label: 'codex',
-                branch: 'feature/to-be-released',
-                files: ['src/released.ts'],
-            }),
-        ];
-
         const releaseRows = [
             makeReleaseRow({ branch: 'feature/to-be-released', agent_key_id: 'release-agent-uuid' }),
         ];
 
-        mockFetch(claimRows, releaseRows);
+        mockFetch([], releaseRows);
 
         const { LocalStorage } = await import('../src/storage/local.js');
         const storage = new LocalStorage(tempDir);
         await storage.init();
+
+        // Seed the local registry with the branch so we can see if it gets swept
+        await storage.register({
+            name: 'feature/to-be-released',
+            files: ['src/released.ts'],
+            agent: 'codex',
+            status: 'active',
+            description: 'Colony claim by codex',
+        });
 
         vi.doMock('../src/storage/index.js', async () => ({
             getStorage: async () => storage,

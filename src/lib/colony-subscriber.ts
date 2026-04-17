@@ -295,7 +295,13 @@ export async function syncFromColony(): Promise<SyncResult> {
                 const a = activeBranches[i];
                 const b = activeBranches[j];
                 const aFiles = new Set(a.files);
-                const overlapping = b.files.filter(f => aFiles.has(f));
+
+                const overlapping: string[] = [];
+                for (const f of b.files) {
+                    if (aFiles.has(f)) {
+                        overlapping.push(f);
+                    }
+                }
                 if (overlapping.length > 0) {
                     conflicts.push({
                         branch: a.name,

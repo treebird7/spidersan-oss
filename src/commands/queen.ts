@@ -25,7 +25,7 @@ import { Command } from 'commander';
 import { spawnSync } from 'child_process';
 import * as path from 'path';
 import * as os from 'os';
-import { writeFileSync, mkdtempSync, mkdirSync } from 'fs';
+import { writeFileSync, mkdtempSync } from 'fs';
 import { escapeShellString } from '../lib/security.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
