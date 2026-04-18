@@ -15,7 +15,7 @@ import { basename } from 'path';
 import { homedir } from 'os';
 import { getStorage } from '../storage/index.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
-import { validateAgentId, validateBranchName } from '../lib/security.js';
+import { validateAgentId, validateBranchName, getCLIPath } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
 import { logActivity } from '../lib/activity.js';
@@ -663,7 +663,7 @@ export const conflictsCommand = new Command('conflicts')
                                 // Security: Use execFileSync with argument array
                                 const safeBranch = validateBranchName(targetBranch);
                                 const tierArg = String(parseInt(options.tier, 10) || 1);
-                                execFileSync('node', [process.argv[1], 'conflicts', '--branch', safeBranch, '--tier', tierArg], {
+                                execFileSync(process.execPath, [getCLIPath(), 'conflicts', '--branch', safeBranch, '--tier', tierArg], {
                                     encoding: 'utf-8',
                                     stdio: 'inherit'
                                 });

@@ -282,7 +282,7 @@ export const aiSetupCommand = new Command('ai-setup')
       }
 
       const selected = menuItems[choice - 1]!;
-      let finalConfig: AiSetupConfig = {
+      const finalConfig: AiSetupConfig = {
         tier: selected.tier,
         byomUrl: selected.byomUrl,
         consentGiven: false,
