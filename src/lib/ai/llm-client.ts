@@ -40,7 +40,10 @@ async function chatOpenAICompatible(
   messages: LLMMessage[],
   apiKey?: string,
 ): Promise<LLMResponse> {
-  const url = `${config.baseUrl}/chat/completions`;
+  // Normalize: strip trailing /v1 so we always build the full path ourselves.
+  // Handles both http://host:port (env var form) and http://host:port/v1 (default form).
+  const base = config.baseUrl.replace(/\/v1\/?$/, '');
+  const url = `${base}/v1/chat/completions`;
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
 
