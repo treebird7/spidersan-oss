@@ -183,6 +183,7 @@ export function escapeBlessed(text: string): string {
     return text.replace(/[{}]/g, (char) => char === '{' ? '{open}' : '{close}');
 }
 
+
 /**
  * Resolves the CLI entry point path safely relative to the module.
  * Replaces the use of process.argv[1] which can be manipulated.
