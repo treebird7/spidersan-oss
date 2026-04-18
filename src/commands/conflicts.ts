@@ -15,7 +15,7 @@ import { basename } from 'path';
 import { homedir } from 'os';
 import { getStorage } from '../storage/index.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
-import { validateAgentId, validateBranchName, getCLIPath } from '../lib/security.js';
+import { validateBranchName } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
 import { logActivity } from '../lib/activity.js';
@@ -139,8 +139,8 @@ async function wakeConflictingAgent(
     theirBranch: string,
     conflictingFiles: string[]
 ): Promise<boolean> {
-    const fileList = conflictingFiles.slice(0, 5).join(', ');
-    const more = conflictingFiles.length > 5 ? ` (+${conflictingFiles.length - 5} more)` : '';
+    const _fileList = conflictingFiles.slice(0, 5).join(', ');
+    const _more = conflictingFiles.length > 5 ? ` (+${conflictingFiles.length - 5} more)` : '';
 
     // 1. Wake the agent via Hub
     try {
@@ -663,7 +663,7 @@ export const conflictsCommand = new Command('conflicts')
                                 // Security: Use execFileSync with argument array
                                 const safeBranch = validateBranchName(targetBranch);
                                 const tierArg = String(parseInt(options.tier, 10) || 1);
-                                execFileSync(process.execPath, [getCLIPath(), 'conflicts', '--branch', safeBranch, '--tier', tierArg], {
+                                execFileSync('node', [process.argv[1], 'conflicts', '--branch', safeBranch, '--tier', tierArg], {
                                     encoding: 'utf-8',
                                     stdio: 'inherit'
                                 });
