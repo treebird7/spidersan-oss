@@ -19,6 +19,7 @@ import {
   appendByomAudit,
 } from '../lib/ai/setup.js';
 import type { AiSetupConfig, AiTier, ProbeResult } from '../lib/ai/setup.js';
+import { logSession, promptOutcome } from '../lib/session-logger.js';
 
 function printResult(result: ReasoningResult): void {
   console.log('');
@@ -38,6 +39,7 @@ export const askCommand = new Command('ask')
     const question = questionParts.join(' ');
     console.log(chalk.dim('🕷️  Gathering context...'));
 
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
     try {
       const ctx = await buildContext({
         includeActivity: options.verbose ?? true,
@@ -51,9 +53,13 @@ export const askCommand = new Command('ask')
       );
 
       printResult(result);
+      const session_id = logSession('ask', ctx, result, { question });
+      await promptOutcome(session_id, rl);
     } catch (err) {
       console.error(`❌ ${(err as Error).message}`);
       process.exit(1);
+    } finally {
+      rl.close();
     }
   });
 
@@ -66,6 +72,7 @@ export const adviseCommand = new Command('advise')
   .action(async (options: { provider?: string; verbose?: boolean }) => {
     console.log(chalk.dim('🕷️  Gathering context...'));
 
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
     try {
       const ctx = await buildContext({
         includeActivity: true,
@@ -79,9 +86,13 @@ export const adviseCommand = new Command('advise')
       );
 
       printResult(result);
+      const session_id = logSession('advise', ctx, result);
+      await promptOutcome(session_id, rl);
     } catch (err) {
       console.error(`❌ ${(err as Error).message}`);
       process.exit(1);
+    } finally {
+      rl.close();
     }
   });
 
@@ -94,6 +105,7 @@ export const explainCommand = new Command('explain')
   .action(async (branch: string, options: { provider?: string }) => {
     console.log(chalk.dim(`🕷️  Investigating ${branch}...`));
 
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
     try {
       const ctx = await buildContext({ includeActivity: true });
 
@@ -104,9 +116,13 @@ export const explainCommand = new Command('explain')
       );
 
       printResult(result);
+      const session_id = logSession('explain', ctx, result, { branch });
+      await promptOutcome(session_id, rl);
     } catch (err) {
       console.error(`❌ ${(err as Error).message}`);
       process.exit(1);
+    } finally {
+      rl.close();
     }
   });
 
