@@ -139,6 +139,7 @@ spidersan ask "merge strategy?" --provider copilot
 - 🔒 **Privacy**: Code context never leaves your machine unless you opt into remote providers
 - 📋 **18-scenario playbook**: PHC-optimized command reference covering all spidersan workflows
 - 🔧 **MCP integration**: All AI commands available as MCP tools (27 total)
+- 🧠 **Training data**: Use `/spidersan-gold` skill to mine gold pairs for fine-tuning — see [spidersan-ai](https://github.com/treebird7/spidersan-ai)
 
 ### 🌐 Multi-Repo & Cloud Commands
 
