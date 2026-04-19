@@ -2,13 +2,20 @@
  * Spidersan AI Core — LLM Client
  *
  * Unified interface for LLM providers with automatic fallback chain:
- * LM Studio (Gemma 4) → GitHub Copilot (gpt-4o) → Ollama (offline)
+ * LM Studio (Gemma 4) → Ollama → Hosted API (api.spidersan.dev) → GitHub Copilot
+ *
+ * Tier routing (auto, no explicit provider):
+ *   Tier 1: localhost:1234 / :8082 (lmstudio)
+ *   Tier 2: localhost:11434 (ollama)
+ *   Tier 3: api.spidersan.dev (hosted) — requires API key
+ *   Remote: copilot — only with allowRemoteFallback or explicit config
  */
 
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { LLMConfig, LLMMessage, LLMProvider, LLMResponse } from './types.js';
 import { DEFAULT_LLM_CONFIGS } from './types.js';
+import { loadAiConfig } from './setup.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -113,7 +120,7 @@ async function chatOllama(config: LLMConfig, messages: LLMMessage[]): Promise<LL
   };
 }
 
-async function chatWithProvider(config: LLMConfig, messages: LLMMessage[]): Promise<LLMResponse> {
+async function chatWithProvider(config: LLMConfig, messages: LLMMessage[], apiKey?: string): Promise<LLMResponse> {
   switch (config.provider) {
     case 'lmstudio':
       return chatOpenAICompatible(config, messages);
@@ -123,6 +130,11 @@ async function chatWithProvider(config: LLMConfig, messages: LLMMessage[]): Prom
     }
     case 'ollama':
       return chatOllama(config, messages);
+    case 'hosted': {
+      const key = apiKey ?? config.apiKey;
+      if (!key) throw new Error('No API key for hosted tier. Run: spidersan ai-setup');
+      return chatOpenAICompatible(config, messages, key);
+    }
     default:
       throw new Error(`Unknown LLM provider: ${config.provider}`);
   }
@@ -130,12 +142,24 @@ async function chatWithProvider(config: LLMConfig, messages: LLMMessage[]): Prom
 
 // Local-first fallback: never send repo context to remote without opt-in
 const LOCAL_FALLBACK: LLMProvider[] = ['lmstudio', 'ollama'];
-const REMOTE_PROVIDERS: LLMProvider[] = ['copilot'];
+const REMOTE_PROVIDERS: LLMProvider[] = ['hosted', 'copilot'];
+
+/** Resolve the hosted API key from env var or persisted config. */
+async function resolveHostedApiKey(): Promise<string | undefined> {
+  const envKey = process.env['SPIDERSAN_API_KEY'];
+  if (envKey) return envKey;
+  const config = await loadAiConfig();
+  return config?.apiKey ?? undefined;
+}
 
 /**
  * Send a chat completion request with automatic fallback.
- * Tries local providers first (lmstudio → ollama).
- * Remote providers (copilot) only used if explicitly configured or opt-in.
+ *
+ * Priority order (auto-routing when no explicit provider set):
+ *   1. lmstudio (local)
+ *   2. ollama (local)
+ *   3. hosted (api.spidersan.dev) — only if API key available
+ *   4. copilot — only if allowRemoteFallback or explicitly configured
  */
 export async function chat(
   messages: LLMMessage[],
@@ -146,9 +170,12 @@ export async function chat(
   const isRemote = REMOTE_PROVIDERS.includes(config.provider);
   const errors: Array<{ provider: LLMProvider; error: string }> = [];
 
+  // Resolve hosted API key once (avoid repeated config reads in fallback loop)
+  const hostedApiKey = await resolveHostedApiKey();
+
   // Try configured provider first
   try {
-    return await chatWithProvider(config, messages);
+    return await chatWithProvider(config, messages, config.provider === 'hosted' ? hostedApiKey : undefined);
   } catch (err) {
     errors.push({ provider: config.provider, error: (err as Error).message });
   }
@@ -165,9 +192,21 @@ export async function chat(
     }
   }
 
-  // Remote fallback only if explicitly opted in or user configured a remote provider
+  // Remote fallback: hosted (if key available), then copilot (if opted in)
   if (allowRemoteFallback || isRemote) {
-    for (const fallback of REMOTE_PROVIDERS) {
+    // hosted — only if we have a key
+    if (config.provider !== 'hosted' && hostedApiKey) {
+      try {
+        const result = await chatWithProvider(DEFAULT_LLM_CONFIGS.hosted, messages, hostedApiKey);
+        result.provider = 'hosted';
+        return result;
+      } catch (err) {
+        errors.push({ provider: 'hosted', error: (err as Error).message });
+      }
+    }
+
+    // copilot
+    for (const fallback of ['copilot'] as LLMProvider[]) {
       if (fallback === config.provider) continue;
       try {
         const result = await chatWithProvider(DEFAULT_LLM_CONFIGS[fallback], messages);

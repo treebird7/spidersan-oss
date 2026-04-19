@@ -77,7 +77,7 @@ export interface SpiderContext {
 
 // ─── LLM Types ──────────────────────────────────────────────
 
-export type LLMProvider = 'lmstudio' | 'copilot' | 'ollama';
+export type LLMProvider = 'lmstudio' | 'copilot' | 'ollama' | 'hosted';
 
 export interface LLMConfig {
   provider: LLMProvider;
@@ -172,6 +172,13 @@ export const DEFAULT_LLM_CONFIGS: Record<LLMProvider, LLMConfig> = {
     provider: 'ollama',
     model: 'gemma3:4b',
     baseUrl: 'http://localhost:11434',
+    temperature: 0.4,
+    maxTokens: 800,
+  },
+  hosted: {
+    provider: 'hosted',
+    model: 'spidersan-v1',
+    baseUrl: 'https://api.spidersan.dev/v1',
     temperature: 0.4,
     maxTokens: 800,
   },

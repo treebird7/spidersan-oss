@@ -12,6 +12,7 @@ import { buildContext, reason, ping } from '../lib/ai/index.js';
 import type { LLMProvider, ReasoningResult } from '../lib/ai/index.js';
 import {
   probeLocalServers,
+  probeHostedTier,
   loadAiConfig,
   saveAiConfig,
   classifyUrl,
@@ -33,7 +34,7 @@ function printResult(result: ReasoningResult): void {
 export const askCommand = new Command('ask')
   .description('Ask spidersan a gitops question with full context')
   .argument('<question...>', 'Your question')
-  .option('--provider <provider>', 'LLM provider (lmstudio, copilot, ollama)')
+  .option('--provider <provider>', 'LLM provider (lmstudio, copilot, ollama, hosted)')
   .option('--verbose', 'Include activity log in context')
   .action(async (questionParts: string[], options: { provider?: string; verbose?: boolean }) => {
     const question = questionParts.join(' ');
@@ -67,7 +68,7 @@ export const askCommand = new Command('ask')
 
 export const adviseCommand = new Command('advise')
   .description('Get proactive gitops recommendations based on current state')
-  .option('--provider <provider>', 'LLM provider (lmstudio, copilot, ollama)')
+  .option('--provider <provider>', 'LLM provider (lmstudio, copilot, ollama, hosted)')
   .option('--verbose', 'Include activity log in context')
   .action(async (options: { provider?: string; verbose?: boolean }) => {
     console.log(chalk.dim('🕷️  Gathering context...'));
@@ -101,7 +102,7 @@ export const adviseCommand = new Command('advise')
 export const explainCommand = new Command('explain')
   .description('Explain a branch\'s purpose, owner, status, and conflicts')
   .argument('<branch>', 'Branch name to explain')
-  .option('--provider <provider>', 'LLM provider (lmstudio, copilot, ollama)')
+  .option('--provider <provider>', 'LLM provider (lmstudio, copilot, ollama, hosted)')
   .action(async (branch: string, options: { provider?: string }) => {
     console.log(chalk.dim(`🕷️  Investigating ${branch}...`));
 
@@ -130,7 +131,7 @@ export const explainCommand = new Command('explain')
 
 export const aiPingCommand = new Command('ai-ping')
   .description('Check LLM provider connectivity and latency')
-  .option('--provider <provider>', 'Test specific provider (lmstudio, copilot, ollama)')
+  .option('--provider <provider>', 'Test specific provider (lmstudio, copilot, ollama, hosted)')
   .action(async (options: { provider?: string }) => {
     console.log(chalk.dim('🕷️  Pinging LLM...'));
 
@@ -266,7 +267,7 @@ export const aiSetupCommand = new Command('ai-setup')
         });
       }
 
-      menuItems.push({ label: 'Hosted API — free tier, 50 calls/day', tier: 'free' });
+      menuItems.push({ label: 'Hosted API — free tier, 50 calls/day (requires API key from spidersan.dev)', tier: 'free' });
       menuItems.push({ label: 'Hosted API — Contributor tier (unlimited, share anonymized sessions)', tier: 'contributor' });
       menuItems.push({ label: 'Custom URL (BYOM)', tier: 'byom' });
 
@@ -344,7 +345,52 @@ export const aiSetupCommand = new Command('ai-setup')
         finalConfig.consentGiven = true;
       }
 
-      // Hosted free: show consent wizard first time
+      // Hosted free or contributor: collect and validate API key
+      if (finalConfig.tier === 'free' || finalConfig.tier === 'contributor') {
+        const existing = await loadAiConfig();
+        const existingKey = existing?.apiKey ?? process.env['SPIDERSAN_API_KEY'];
+
+        if (existingKey) {
+          console.log(chalk.dim('  API key already configured — validating...'));
+          const probe = await probeHostedTier(existingKey);
+          if (probe.responding) {
+            console.log(chalk.green('  ✓ Hosted API reachable'));
+            const modelHint = probe.models?.[0] ? ` (${probe.models[0]})` : '';
+            console.log(chalk.dim(`    ${probe.url}${modelHint}`));
+            finalConfig.apiKey = existingKey;
+          } else {
+            console.log(chalk.yellow('  ⚠  Existing API key validation failed — enter a new key or press Enter to skip'));
+            const rawKey = await prompt(rl, '  API key (from spidersan.dev/keys): ');
+            const trimmedKey = rawKey.trim();
+            if (trimmedKey) {
+              finalConfig.apiKey = trimmedKey;
+            }
+          }
+        } else {
+          console.log('');
+          console.log('  Get a free API key at: https://spidersan.dev/keys');
+          console.log('');
+          const rawKey = await prompt(rl, '  API key (press Enter to skip for now): ');
+          const trimmedKey = rawKey.trim();
+          if (trimmedKey) {
+            console.log(chalk.dim('  Validating...'));
+            const probe = await probeHostedTier(trimmedKey);
+            if (probe.responding) {
+              const modelHint = probe.models?.[0] ? ` · model: ${probe.models[0]}` : '';
+              console.log(chalk.green(`  ✓ Hosted API reachable${modelHint}`));
+              finalConfig.apiKey = trimmedKey;
+            } else {
+              console.log(chalk.yellow('  ⚠  Could not validate key (API unreachable or key invalid) — saved anyway'));
+              finalConfig.apiKey = trimmedKey;
+            }
+          } else {
+            console.log(chalk.dim('  Skipped — you can add it later with: spidersan ai-setup --tier free'));
+          }
+        }
+        finalConfig.consentGiven = finalConfig.tier === 'contributor' ? true : false;
+      }
+
+      // Hosted free: show consent wizard first time (override consentGiven set above)
       if (selected.tier === 'free') {
         finalConfig.consentGiven = false; // will prompt on first `ask` invocation
       }

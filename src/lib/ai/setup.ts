@@ -133,6 +133,41 @@ export async function probeLocalServers(timeoutMs = 800): Promise<ProbeResult[]>
   return results.map((r) => (r.status === 'fulfilled' ? r.value : null)).filter(Boolean) as ProbeResult[];
 }
 
+/** Probe the hosted API tier (api.spidersan.dev). Returns a ProbeResult. */
+export async function probeHostedTier(apiKey: string, timeoutMs = 2000): Promise<ProbeResult> {
+  const base = 'https://api.spidersan.dev/v1';
+  const url = `${base}/models`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
+    clearTimeout(timer);
+    if (res.status === 401) {
+      return { url: base, port: 443, label: 'Hosted API (api.spidersan.dev)', responding: false };
+    }
+    if (!res.ok) {
+      return { url: base, port: 443, label: 'Hosted API (api.spidersan.dev)', responding: false };
+    }
+    let models: string[] | undefined;
+    try {
+      const body = (await res.json()) as { data?: Array<{ id: string }> };
+      models = body.data?.map((m) => m.id).slice(0, 3);
+    } catch {
+      // non-fatal
+    }
+    return { url: base, port: 443, label: 'Hosted API (api.spidersan.dev)', responding: true, models };
+  } catch {
+    clearTimeout(timer);
+    return { url: base, port: 443, label: 'Hosted API (api.spidersan.dev)', responding: false };
+  }
+}
+
 // ─── BYOM URL classification ────────────────────────────────
 
 export type UrlClass = 'local' | 'lan' | 'external';
