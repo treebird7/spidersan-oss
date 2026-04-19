@@ -121,6 +121,7 @@ describe('Colony-Spidersan integration', () => {
         // Set fake Colony credentials so syncFromColony() doesn't short-circuit
         process.env.COLONY_SUPABASE_URL = 'https://fake.supabase.co';
         process.env.COLONY_SUPABASE_KEY = 'fake-key';
+        process.env.COLONY_SESSION_JWT = 'fake-jwt';
 
         // Use LocalStorage pointed at tempDir (no real Supabase branch storage)
         delete process.env.SUPABASE_URL;

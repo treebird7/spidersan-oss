@@ -15,7 +15,7 @@ import { basename } from 'path';
 import { homedir } from 'os';
 import { getStorage } from '../storage/index.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
-import { validateAgentId, validateBranchName } from '../lib/security.js';
+import { validateBranchName } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
 import { logActivity } from '../lib/activity.js';
@@ -137,11 +137,8 @@ async function wakeConflictingAgent(
     agentId: string,
     myBranch: string,
     theirBranch: string,
-    conflictingFiles: string[]
+    conflictingFiles: string[] // eslint-disable-line @typescript-eslint/no-unused-vars
 ): Promise<boolean> {
-    const fileList = conflictingFiles.slice(0, 5).join(', ');
-    const more = conflictingFiles.length > 5 ? ` (+${conflictingFiles.length - 5} more)` : '';
-
     // 1. Wake the agent via Hub
     try {
         const wakeResponse = await fetch(`${HUB_URL}/api/wake/${agentId}`, {
