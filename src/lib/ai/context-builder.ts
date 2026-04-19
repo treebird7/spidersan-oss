@@ -129,9 +129,12 @@ async function getRegistryContext(currentBranch: string): Promise<ContextSource<
     const conflicts: ConflictSummary[] = [];
 
     if (currentFiles.length > 0) {
+      // Performance Optimization: Convert current branch files to Set for O(1) lookup
+      const currentFilesSet = new Set(currentFiles);
+
       for (const other of allBranches) {
         if (other.name === currentBranch || other.status !== 'active') continue;
-        const overlapping = currentFiles.filter(f => other.files.includes(f));
+        const overlapping = other.files.filter(f => currentFilesSet.has(f));
         if (overlapping.length > 0) {
           const maxTier = Math.max(...overlapping.map(classifyTier)) as 1 | 2 | 3;
           conflicts.push({
