@@ -24,9 +24,13 @@ import { logSession, promptOutcome } from '../lib/session-logger.js';
 
 function printResult(result: ReasoningResult): void {
   console.log('');
+  if (result.confidenceScore < 0.7) {
+    console.log(chalk.yellow(`⚠  Low confidence (${(result.confidenceScore * 100).toFixed(0)}%) — review manually before acting`));
+    console.log('');
+  }
   console.log(result.advice);
   console.log('');
-  console.log(chalk.dim(`── ${result.provider}/${result.mode} · ${result.tokensUsed} tokens · confidence: ${result.confidence} ──`));
+  console.log(chalk.dim(`── ${result.provider}/${result.mode} · ${result.tokensUsed} tokens · confidence: ${result.confidence} (${(result.confidenceScore * 100).toFixed(0)}%) ──`));
 }
 
 // ─── spidersan ask ──────────────────────────────────────────

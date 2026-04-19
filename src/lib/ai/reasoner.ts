@@ -236,10 +236,25 @@ export async function reason(
     ? (hasConflicts ? 'high' : 'medium')
     : 'low';
 
+  // Numeric confidence score: try to extract from model response (P2A-1 structured output),
+  // fall back to heuristic mapping.
+  const CONFIDENCE_SCORES: Record<string, number> = { high: 0.9, medium: 0.7, low: 0.3 };
+  let confidenceScore = CONFIDENCE_SCORES[confidence]!;
+
+  // Try to parse numeric confidence from structured JSON response (P2A-1 model format)
+  const jsonMatch = response.content.match(/^\s*\{[\s\S]*?"confidence"\s*:\s*(0(?:\.\d+)?|1(?:\.0+)?)/m);
+  if (jsonMatch?.[1]) {
+    const parsed = parseFloat(jsonMatch[1]);
+    if (!isNaN(parsed) && parsed >= 0 && parsed <= 1) {
+      confidenceScore = parsed;
+    }
+  }
+
   return {
     advice: response.content,
     commands,
     confidence: confidence as 'high' | 'medium' | 'low',
+    confidenceScore,
     mode: request.mode,
     provider: response.provider,
     tokensUsed: response.promptTokens + response.completionTokens,

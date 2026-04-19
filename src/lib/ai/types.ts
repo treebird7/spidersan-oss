@@ -117,6 +117,8 @@ export interface ReasoningResult {
   advice: string;
   commands: string[];
   confidence: 'high' | 'medium' | 'low';
+  /** Numeric confidence score 0.0–1.0. Values below 0.7 trigger a "review manually" warning. */
+  confidenceScore: number;
   mode: ReasoningMode;
   provider: LLMProvider;
   tokensUsed: number;
