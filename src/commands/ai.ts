@@ -16,10 +16,9 @@ import {
   loadAiConfig,
   saveAiConfig,
   classifyUrl,
-  isLocalOrLan,
   appendByomAudit,
 } from '../lib/ai/setup.js';
-import type { AiSetupConfig, AiTier, ProbeResult } from '../lib/ai/setup.js';
+import type { AiSetupConfig, AiTier } from '../lib/ai/setup.js';
 import { logSession, promptOutcome } from '../lib/session-logger.js';
 
 function printResult(result: ReasoningResult): void {
@@ -303,7 +302,7 @@ export const aiSetupCommand = new Command('ai-setup')
       }
 
       const selected = menuItems[choice - 1]!;
-      let finalConfig: AiSetupConfig = {
+      const finalConfig: AiSetupConfig = {
         tier: selected.tier,
         byomUrl: selected.byomUrl,
         consentGiven: false,

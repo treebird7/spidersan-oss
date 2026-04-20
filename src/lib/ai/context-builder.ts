@@ -225,7 +225,7 @@ async function getColonySnapshot(): Promise<ContextSource<{
 
 // ─── Activity Log (best-effort) ────────────────────────────
 
-async function getRecentActivity(repoRoot: string): Promise<ContextSource<ActivityEntry[]>> {
+async function getRecentActivity(_repoRoot: string): Promise<ContextSource<ActivityEntry[]>> {
   try {
     const { readFileSync, existsSync } = await import('fs');
     const { join } = await import('path');
