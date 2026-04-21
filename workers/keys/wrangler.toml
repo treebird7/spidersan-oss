@@ -2,11 +2,9 @@ name = "spidersan-keys"
 main = "src/index.ts"
 compatibility_date = "2026-04-21"
 
-# Routes — uncomment once spidersan.dev zone is on this CF account
-# [[routes]]
-# pattern = "spidersan.dev/keys"
-# zone_name = "spidersan.dev"
-# Until then: accessible at https://spidersan-keys.spidersan.workers.dev
+[[routes]]
+pattern = "spidersan.treebird.uk/keys*"
+zone_name = "treebird.uk"
 
 # Shared KV with api-proxy — same namespace so keys issued here are validated there
 [[kv_namespaces]]
