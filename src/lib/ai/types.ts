@@ -155,6 +155,9 @@ export interface AIConfig {
   playbookPath?: string;
 }
 
+/** Canonical hosted API base URL — shared between types, setup probe, and llm-client. */
+export const HOSTED_API_BASE_URL = 'https://spidersan-api-proxy.spidersan.workers.dev/v1';
+
 export const DEFAULT_LLM_CONFIGS: Record<LLMProvider, LLMConfig> = {
   lmstudio: {
     provider: 'lmstudio',
@@ -180,7 +183,7 @@ export const DEFAULT_LLM_CONFIGS: Record<LLMProvider, LLMConfig> = {
   hosted: {
     provider: 'hosted',
     model: 'spidersan-v1',
-    baseUrl: 'https://api.spidersan.dev/v1',
+    baseUrl: HOSTED_API_BASE_URL,
     temperature: 0.4,
     maxTokens: 800,
   },

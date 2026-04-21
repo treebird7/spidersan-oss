@@ -20,6 +20,7 @@ import {
   appendByomAudit,
 } from '../lib/ai/setup.js';
 import type { AiSetupConfig, AiTier, ProbeResult } from '../lib/ai/setup.js';
+import { HOSTED_API_BASE_URL } from '../lib/ai/types.js';
 import { logSession, promptOutcome } from '../lib/session-logger.js';
 
 function printResult(result: ReasoningResult): void {
@@ -50,6 +51,8 @@ export const askCommand = new Command('ask')
         includeActivity: options.verbose ?? true,
         verbose: options.verbose,
       });
+
+      if (!options.provider) await maybeShowHostedNotice(rl);
 
       console.log(chalk.dim('🧠 Reasoning...'));
       const result = await reason(
@@ -83,6 +86,8 @@ export const adviseCommand = new Command('advise')
         includeActivity: true,
         verbose: options.verbose,
       });
+
+      if (!options.provider) await maybeShowHostedNotice(rl);
 
       console.log(chalk.dim('🧠 Analyzing...'));
       const result = await reason(
@@ -150,6 +155,44 @@ export const aiPingCommand = new Command('ai-ping')
       process.exit(1);
     }
   });
+
+// ─── Hosted first-use notice ─────────────────────────────────
+// Shown once when spidersan auto-routes to hosted tier (no --provider flag).
+// Not a consent gate — just a transparency notice. Marks consentGiven so it
+// doesn't repeat. Users who explicitly pass --provider hosted skip this.
+
+async function maybeShowHostedNotice(rl: ReturnType<typeof createInterface>): Promise<void> {
+  const config = await loadAiConfig();
+  if (!config || config.consentGiven) return;
+  if (config.tier !== 'free' && config.tier !== 'contributor') return;
+
+  console.log('');
+  console.log(chalk.dim('─────────────────────────────────────────────────'));
+  console.log(`  ${chalk.bold('spidersan hosted API')} — first request`);
+  console.log(chalk.dim('─────────────────────────────────────────────────'));
+  console.log('');
+  console.log('  Local model unavailable. Routing to hosted tier.');
+  console.log(`  Endpoint: ${HOSTED_API_BASE_URL.replace('/v1', '')}`);
+  console.log('  Tier:     ' + config.tier + (config.tier === 'free' ? ' (50 req/day)' : ' (unlimited)'));
+  console.log('');
+  console.log('  Your git context (branch names, file counts,');
+  console.log('  conflict tiers) is sent to this endpoint.');
+  console.log('  No code content or commit messages are sent.');
+  console.log('');
+
+  if (process.stdin.isTTY) {
+    await new Promise<void>((resolve) => rl.question('  Continue? [Y/n] ', (ans) => {
+      if (ans.trim().toLowerCase() === 'n') {
+        console.log(chalk.yellow('  Aborted. Run `spidersan ai-setup` to change tier.'));
+        process.exit(0);
+      }
+      resolve();
+    }));
+  }
+
+  await saveAiConfig({ ...config, consentGiven: true });
+  console.log('');
+}
 
 // ─── Helpers ────────────────────────────────────────────────
 

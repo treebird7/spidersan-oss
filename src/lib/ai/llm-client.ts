@@ -192,8 +192,14 @@ export async function chat(
     }
   }
 
-  // Remote fallback: hosted (if key available), then copilot (if opted in)
-  if (allowRemoteFallback || isRemote) {
+  // Remote fallback: hosted (if key available + tier allows), then copilot (if opted in)
+  //
+  // Tier routing: if the user configured free/contributor tier via ai-setup, hosted is
+  // always a valid fallback when local is unavailable — no explicit allowRemoteFallback needed.
+  const savedConfig = await loadAiConfig();
+  const tierAllowsHosted = savedConfig?.tier === 'free' || savedConfig?.tier === 'contributor';
+
+  if (allowRemoteFallback || isRemote || tierAllowsHosted) {
     // hosted — only if we have a key
     if (config.provider !== 'hosted' && hostedApiKey) {
       try {
@@ -205,15 +211,17 @@ export async function chat(
       }
     }
 
-    // copilot
-    for (const fallback of ['copilot'] as LLMProvider[]) {
-      if (fallback === config.provider) continue;
-      try {
-        const result = await chatWithProvider(DEFAULT_LLM_CONFIGS[fallback], messages);
-        result.provider = fallback;
-        return result;
-      } catch (err) {
-        errors.push({ provider: fallback, error: (err as Error).message });
+    // copilot — only with explicit allowRemoteFallback (never auto-routed)
+    if (allowRemoteFallback || isRemote) {
+      for (const fallback of ['copilot'] as LLMProvider[]) {
+        if (fallback === config.provider) continue;
+        try {
+          const result = await chatWithProvider(DEFAULT_LLM_CONFIGS[fallback], messages);
+          result.provider = fallback;
+          return result;
+        } catch (err) {
+          errors.push({ provider: fallback, error: (err as Error).message });
+        }
       }
     }
   }

@@ -9,6 +9,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { HOSTED_API_BASE_URL } from './types.js';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -96,6 +97,7 @@ export interface ProbeResult {
 }
 
 const LOCAL_PROBE_TARGETS: Array<{ port: number; label: string }> = [
+  { port: 8095, label: 'spidersan model (mlx_lm.server)' },
   { port: 8082, label: 'LM Studio (custom port)' },
   { port: 11434, label: 'Ollama' },
   { port: 1234, label: 'LM Studio (default)' },
@@ -133,10 +135,11 @@ export async function probeLocalServers(timeoutMs = 800): Promise<ProbeResult[]>
   return results.map((r) => (r.status === 'fulfilled' ? r.value : null)).filter(Boolean) as ProbeResult[];
 }
 
-/** Probe the hosted API tier (api.spidersan.dev). Returns a ProbeResult. */
+/** Probe the hosted API tier. Returns a ProbeResult. */
 export async function probeHostedTier(apiKey: string, timeoutMs = 2000): Promise<ProbeResult> {
-  const base = 'https://api.spidersan.dev/v1';
+  const base = HOSTED_API_BASE_URL;
   const url = `${base}/models`;
+  const label = 'Hosted API (spidersan-api-proxy)';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -149,10 +152,10 @@ export async function probeHostedTier(apiKey: string, timeoutMs = 2000): Promise
     });
     clearTimeout(timer);
     if (res.status === 401) {
-      return { url: base, port: 443, label: 'Hosted API (api.spidersan.dev)', responding: false };
+      return { url: base, port: 443, label, responding: false };
     }
     if (!res.ok) {
-      return { url: base, port: 443, label: 'Hosted API (api.spidersan.dev)', responding: false };
+      return { url: base, port: 443, label, responding: false };
     }
     let models: string[] | undefined;
     try {
@@ -161,10 +164,10 @@ export async function probeHostedTier(apiKey: string, timeoutMs = 2000): Promise
     } catch {
       // non-fatal
     }
-    return { url: base, port: 443, label: 'Hosted API (api.spidersan.dev)', responding: true, models };
+    return { url: base, port: 443, label, responding: true, models };
   } catch {
     clearTimeout(timer);
-    return { url: base, port: 443, label: 'Hosted API (api.spidersan.dev)', responding: false };
+    return { url: base, port: 443, label, responding: false };
   }
 }
 
