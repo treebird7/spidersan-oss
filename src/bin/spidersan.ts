@@ -30,6 +30,7 @@ import {
     registrySyncCommand,
     crossConflictsCommand,
     pulseCommand,
+    gitWatchCommand,
     torrentCommand,
     queenCommand,
     githubSyncCommand,
@@ -119,6 +120,7 @@ program.addCommand(welcomeCommand);
 program.addCommand(registrySyncCommand);
 program.addCommand(crossConflictsCommand);
 program.addCommand(pulseCommand);
+program.addCommand(gitWatchCommand);
 program.addCommand(torrentCommand);
 program.addCommand(queenCommand);
 program.addCommand(githubSyncCommand);
