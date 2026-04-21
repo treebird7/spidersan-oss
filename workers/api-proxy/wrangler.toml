@@ -2,30 +2,22 @@ name = "spidersan-api-proxy"
 main = "src/index.ts"
 compatibility_date = "2024-09-23"
 
-# Routes
-[[routes]]
-pattern = "api.spidersan.dev/*"
-zone_name = "spidersan.dev"
+# Routes — spidersan.dev not yet on this CF account
+# Uncomment once spidersan.dev zone is transferred/added:
+# [[routes]]
+# pattern = "api.spidersan.dev/*"
+# zone_name = "spidersan.dev"
+# Until then: Worker accessible at https://spidersan-api-proxy.spidersan.workers.dev
 
-# KV namespace binding — VALID_API_KEYS
-# Create with: wrangler kv:namespace create VALID_API_KEYS
-# Production: fill in real IDs
+# KV namespace — VALID_API_KEYS
+# Created 2026-04-21: wrangler kv namespace create VALID_API_KEYS
 [[kv_namespaces]]
 binding = "VALID_API_KEYS"
-id = "REPLACE_WITH_PRODUCTION_KV_ID"
-preview_id = "REPLACE_WITH_PREVIEW_KV_ID"
+id = "d05e42b679db41249eb9934a21cc2c78"
+preview_id = "d05e42b679db41249eb9934a21cc2c78"
 
-# Environment variables
-[vars]
-# Override in production secrets: wrangler secret put MODEL_BACKEND_URL
-MODEL_BACKEND_URL = "http://localhost:8080"
-
-[env.production]
-[[env.production.kv_namespaces]]
-binding = "VALID_API_KEYS"
-id = "REPLACE_WITH_PRODUCTION_KV_ID"
-
-[env.staging]
-[[env.staging.kv_namespaces]]
-binding = "VALID_API_KEYS"
-id = "REPLACE_WITH_PREVIEW_KV_ID"
+# Secrets (managed via: wrangler secret put <NAME>)
+#   MODEL_BACKEND_URL = https://spidersan-model.treebird.uk   (Cloudflare Tunnel → mlx_lm.server)
+#   MODEL_ID          = /path/to/fused-best-600               (rewritten into proxied requests)
+#
+# Local dev: wrangler dev --var MODEL_BACKEND_URL:http://localhost:8095
