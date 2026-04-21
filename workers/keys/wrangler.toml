@@ -1,0 +1,15 @@
+name = "spidersan-keys"
+main = "src/index.ts"
+compatibility_date = "2026-04-21"
+
+# Routes — uncomment once spidersan.dev zone is on this CF account
+# [[routes]]
+# pattern = "spidersan.dev/keys"
+# zone_name = "spidersan.dev"
+# Until then: accessible at https://spidersan-keys.spidersan.workers.dev
+
+# Shared KV with api-proxy — same namespace so keys issued here are validated there
+[[kv_namespaces]]
+binding = "VALID_API_KEYS"
+id = "d05e42b679db41249eb9934a21cc2c78"
+preview_id = "d05e42b679db41249eb9934a21cc2c78"
