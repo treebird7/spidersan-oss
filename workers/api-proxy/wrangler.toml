@@ -2,12 +2,11 @@ name = "spidersan-api-proxy"
 main = "src/index.ts"
 compatibility_date = "2024-09-23"
 
-# Routes — spidersan.dev not yet on this CF account
-# Uncomment once spidersan.dev zone is transferred/added:
-# [[routes]]
-# pattern = "api.spidersan.dev/*"
-# zone_name = "spidersan.dev"
-# Until then: Worker accessible at https://spidersan-api-proxy.spidersan.workers.dev
+[[routes]]
+pattern = "api-spidersan.treebird.uk/*"
+zone_name = "treebird.uk"
+# Note: api.spidersan.treebird.uk (two-label subdomain) not covered by *.treebird.uk wildcard cert.
+# api-spidersan.treebird.uk (one label) is covered. Switch to api.spidersan.dev once that zone is on CF.
 
 # KV namespace — VALID_API_KEYS
 # Created 2026-04-21: wrangler kv namespace create VALID_API_KEYS
