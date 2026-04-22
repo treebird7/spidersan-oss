@@ -83,7 +83,8 @@ function errorResponse(status: number, message: string, headers?: Record<string,
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    const path = url.pathname;
+    // Strip /api prefix when routed through spidersan.treebird.uk/api/*
+    const path = url.pathname.replace(/^\/api/, '') || '/';
 
     // Only allow supported paths
     if (!ALLOWED_PATHS.has(path)) {
