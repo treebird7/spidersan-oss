@@ -1,7 +1,0 @@
-const { execFileSync } = require('child_process');
-
-try {
-  execFileSync('gh', ['pr', 'view', '--', '123'], { stdio: 'inherit' });
-} catch (e) {
-  console.log("Failed", e.message);
-}
