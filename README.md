@@ -142,6 +142,33 @@ spidersan ask "merge strategy?" --provider copilot
 - 🔧 **MCP integration**: All AI commands available as MCP tools (27 total)
 - 🧠 **Training data**: Use `/spidersan-gold` skill to mine gold pairs for fine-tuning — see [spidersan-ai](https://github.com/treebird7/spidersan-ai)
 
+### 🤖 Remote Bot (Cross-Machine Git Operations)
+
+Trigger git operations on a remote machine from any agent — no SSH needed.
+
+```bash
+# Start the bot daemon (listens for /commands via smalltoak)
+envoak vault inject --key GIT_BOT_ENABLED -- spidersan bot
+
+# One-shot: process pending commands and exit (good for cron)
+spidersan bot --once
+
+# Manage watched repos
+spidersan bot add myrepo --path ~/Dev/myrepo --branch main --push src/
+spidersan bot repos
+spidersan bot remove myrepo
+```
+
+**How it works:** An agent on M2 wants to push `spidersan-ai` from M5. They send `/push spidersan-ai` via smalltoak. The bot running on M5 picks it up, executes `git push`, and replies with the result. Tier-based permissions gate which agents can trigger which operations.
+
+| Command | Description |
+|---------|-------------|
+| `spidersan bot` | Start remote git ops daemon (polls smalltoak) |
+| `spidersan bot --once` | Process pending commands once and exit |
+| `spidersan bot add` | Register a repo for bot management |
+| `spidersan bot repos` | List managed repos |
+| `spidersan bot remove` | Unregister a repo |
+
 ### 🌐 Multi-Repo & Cloud Commands
 
 | Command | Description |

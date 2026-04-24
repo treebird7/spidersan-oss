@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`spidersan bot`** — Message-driven remote git operations daemon via smalltoak. Polls for `/commands` and executes git actions (sync, pull, push, status, conflicts, log) on the local machine. Use case: trigger a push on a remote machine from another agent without SSH access. Tier-based agent permissions (coordinator / specialist / worker). Conflict guard: blocks push on TIER 2+ conflicts. Requires `SMALLTOAK_SERVER_URL` + `SMALLTOAK_TOKEN` via envoak vault inject.
+- **`KNOWN_SPIDERSAN_COMMANDS` parity test** (`tests/reasoner.validator.test.ts`) — Vitest test asserting the command validator Set stays in sync with both `SCENARIO_PLAYBOOK` command tokens and `src/commands/` filesystem. Prevents registry drift between the AI validator and shipped commands.
+
+### Fixed
+- **AI validator false-positive on flags** (`--help`, `--version`): added `!startsWith('-')` guard — flag-only invocations no longer flagged as unknown commands.
+- **AI validator output encoding**: sanitize model-generated command strings before terminal display — strips ANSI escape sequences and control characters, caps at 120 chars. Defense-in-depth on model→terminal path.
+- **SCENARIO 10 playbook label**: colony/hive operations were listed under `Commands:` causing the model and the validator to treat them as spidersan CLI subcommands. Relabelled to `Hive Operations (via envoak MCP, not spidersan CLI)`.
+- **Playbook colony → hive rename**: updated SCENARIO_PLAYBOOK to reflect envoak rename (`colony` → `hive`) in SCENARIO 10 title, operation labels, and decision tree guards.
+
+### Added
 - **AI Core** (Phase 0): Shared AI library in `src/lib/ai/` — types, LLM client, context builder, reasoner, event handler. Local-first with Gemma 4 26B on LM Studio; automatic fallback chain (LM Studio → Ollama → Copilot). Storage adapter pattern for registry access.
 - **AI CLI** (Phase 1+2): `spidersan context`, `ask`, `advise`, `explain`, `ai-ping` commands. Build full repo context, ask questions, get proactive advice, explain branches, test LLM connectivity. Supports `--json`, `--verbose`, `--repo`, `--provider` flags.
 - **AI MCP Tools** (Phase 3): 5 new MCP tools (`spidersan_context`, `spidersan_ask`, `spidersan_advise`, `spidersan_explain`, `spidersan_ping`) bringing total to 27. Structured JSON returns with commands, confidence, tokensUsed. Dynamic import bridge for repo-local AI core.
