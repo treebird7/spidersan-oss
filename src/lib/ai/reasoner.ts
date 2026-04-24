@@ -82,7 +82,7 @@ Commands: queen spawn --task "desc" → queen status → queen dissolve <id>
 Rule: Dissolve inactive queens to prevent resource leakage. Use \`queen status\` to monitor all active queens.
 
 ### SCENARIO 10: Colony Lifecycle
-Commands: colony enlist → signal --status in-progress → heartbeat → status → probe → accept → close → broadcast → broadcast-ack → broadcast-status → cns → gc
+Colony Operations (via envoak MCP, not spidersan CLI): colony enlist → colony signal --status in-progress → colony heartbeat → colony probe → colony accept → colony close → colony broadcast → colony broadcast-ack → colony broadcast-status → colony cns → colony gc
 Reminder: Use \`probe\` to verify colony readiness before proceeding to \`accept\`.
 
 ### SCENARIO 11: Cross-Machine Conflicts
@@ -245,7 +245,7 @@ export async function reason(
   const spidersanSubcommandPattern = /^(?:spidersan|npx spidersan)\s+(\S+)/;
   const unknownCommands = commands.filter(cmd => {
     const m = cmd.match(spidersanSubcommandPattern);
-    return m !== null && !KNOWN_SPIDERSAN_COMMANDS.has(m[1]!);
+    return m !== null && !m[1]!.startsWith('-') && !KNOWN_SPIDERSAN_COMMANDS.has(m[1]!);
   });
 
   // Estimate confidence from context quality
