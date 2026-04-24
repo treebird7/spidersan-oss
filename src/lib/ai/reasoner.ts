@@ -81,9 +81,9 @@ IMPORTANT: When asked to parallelize across multiple agents or sub-spidersans, A
 Commands: queen spawn --task "desc" → queen status → queen dissolve <id>
 Rule: Dissolve inactive queens to prevent resource leakage. Use \`queen status\` to monitor all active queens.
 
-### SCENARIO 10: Colony Lifecycle
-Commands: colony enlist → signal --status in-progress → heartbeat → status → probe → accept → close → broadcast → broadcast-ack → broadcast-status → cns → gc
-Reminder: Use \`probe\` to verify colony readiness before proceeding to \`accept\`.
+### SCENARIO 10: Hive Lifecycle
+Hive Operations (via envoak MCP, not spidersan CLI): hive enlist → hive signal --status in-progress → hive heartbeat → hive probe → hive accept → hive close → hive broadcast → hive broadcast-ack → hive broadcast-status → hive cns → hive gc
+Reminder: Use \`probe\` to verify hive readiness before proceeding to \`accept\`.
 
 ### SCENARIO 11: Cross-Machine Conflicts
 Commands: pulse → cross-conflicts → cross-conflicts --local → doctor --remote
@@ -103,7 +103,7 @@ Decision: Use \`ai-ping\` to verify AI readiness. Use \`advise\` for proactive r
 
 ### SCENARIO 13B: Suspicious / Unknown Branch Investigation
 Situation: A branch with an unknown owner, suspicious name (e.g. shadow/, unknown-agent), or no clear origin.
-IMPORTANT: For any unknown or suspicious branch, ALWAYS use \`spidersan explain <branch>\` first. Do NOT jump to \`rescue\` or mention \`queen\` or \`colony\` in this context. \`explain\` is the dedicated command for branch investigation. After \`explain\`, use \`rescue\` only if code needs salvaging.
+IMPORTANT: For any unknown or suspicious branch, ALWAYS use \`spidersan explain <branch>\` first. Do NOT jump to \`rescue\` or mention \`queen\` or \`hive\` in this context. \`explain\` is the dedicated command for branch investigation. After \`explain\`, use \`rescue\` only if code needs salvaging.
 Commands: explain <branch> → rescue --symbols <branch> → abandon <branch>
 Decision: explain first → if salvageable → rescue → if empty/dead → abandon.
 
@@ -136,7 +136,7 @@ Decision: Use \`dashboard\` for TUI overview. Use \`doctor --remote\` for repo s
 
 ### Decision Tree
 Starting new work? → welcome → spidersan init → register + doctor
-Found unknown/suspicious branch? → explain <branch> (NOT rescue, NOT queen, NOT colony)
+Found unknown/suspicious branch? → explain <branch> (NOT rescue, NOT queen, NOT hive)
 About to merge? → conflicts → ready-check → depends --show → merge-order
 Branches piling up? → stale → cleanup → sync
 Parallelizing across agents? → queen spawn → queen status (NOT torrent decompose)
@@ -245,7 +245,7 @@ export async function reason(
   const spidersanSubcommandPattern = /^(?:spidersan|npx spidersan)\s+(\S+)/;
   const unknownCommands = commands.filter(cmd => {
     const m = cmd.match(spidersanSubcommandPattern);
-    return m !== null && !KNOWN_SPIDERSAN_COMMANDS.has(m[1]!);
+    return m !== null && !m[1]!.startsWith('-') && !KNOWN_SPIDERSAN_COMMANDS.has(m[1]!);
   });
 
   // Estimate confidence from context quality
