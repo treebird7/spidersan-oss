@@ -30,6 +30,7 @@ import {
     registrySyncCommand,
     crossConflictsCommand,
     pulseCommand,
+    gitWatchCommand,
     torrentCommand,
     queenCommand,
     botCommand,
@@ -39,6 +40,14 @@ import {
     rebaseHelperCommand,
     logCommand,
     dailyCommand,
+    contextCommand,
+    askCommand,
+    adviseCommand,
+    explainCommand,
+    aiPingCommand,
+    aiSetupCommand,
+    aiTelemetryCommand,
+    checkOptOutCommand,
     loadEcosystemCommands,
     getEcosystemStatus,
 } from '../commands/index.js';
@@ -112,6 +121,7 @@ program.addCommand(welcomeCommand);
 program.addCommand(registrySyncCommand);
 program.addCommand(crossConflictsCommand);
 program.addCommand(pulseCommand);
+program.addCommand(gitWatchCommand);
 program.addCommand(torrentCommand);
 program.addCommand(queenCommand);
 program.addCommand(botCommand);
@@ -121,6 +131,16 @@ program.addCommand(dashboardCommand);
 program.addCommand(rebaseHelperCommand);
 logCommand(program);
 dailyCommand(program);
+
+// AI Core commands
+program.addCommand(contextCommand);
+program.addCommand(askCommand);
+program.addCommand(adviseCommand);
+program.addCommand(explainCommand);
+program.addCommand(aiPingCommand);
+program.addCommand(aiSetupCommand);
+program.addCommand(aiTelemetryCommand);
+program.addCommand(checkOptOutCommand);
 
 async function main(): Promise<void> {
     const ecosystemCommands = await loadEcosystemCommands();

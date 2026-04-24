@@ -150,6 +150,10 @@ repos/
 license-keys.json
 *.key
 scripts/license-keys.json
+scripts/generate-license.mjs
+
+# Encrypted config files (secrets)
+config.enc
 prompt.md
 todo
 embeddings.json

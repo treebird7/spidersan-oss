@@ -5,6 +5,7 @@
 
 import blessed from 'blessed';
 import { getStorage } from '../storage/index.js';
+import { escapeBlessed } from '../lib/security.js';
 
 export class SpidersanTUI {
     private screen: blessed.Widgets.Screen;
@@ -106,11 +107,12 @@ export class SpidersanTUI {
 
             for (const branch of branches) {
                 const status = branch.status === 'active' ? '🟢' : '🔴';
-                content += `${status} {bold}${branch.name}{/bold}\n`;
-                content += `   Agent: ${branch.agent || 'unknown'}\n`;
+                const safeName = escapeBlessed(branch.name);
+                content += `${status} {bold}${safeName}{/bold}\n`;
+                content += `   Agent: ${escapeBlessed(branch.agent || 'unknown')}\n`;
                 const files = branch.files?.slice(0, 3) || [];
                 if (files.length > 0) {
-                    content += `   Files: ${files.join(', ')}\n`;
+                    content += `   Files: ${escapeBlessed(files.join(', '))}\n`;
                 }
                 content += '\n';
             }

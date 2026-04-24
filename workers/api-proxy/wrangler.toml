@@ -1,0 +1,20 @@
+name = "spidersan-api-proxy"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+
+[[routes]]
+pattern = "spidersan.treebird.uk/api/*"
+zone_name = "treebird.uk"
+
+# KV namespace — VALID_API_KEYS
+# Created 2026-04-21: wrangler kv namespace create VALID_API_KEYS
+[[kv_namespaces]]
+binding = "VALID_API_KEYS"
+id = "d05e42b679db41249eb9934a21cc2c78"
+preview_id = "d05e42b679db41249eb9934a21cc2c78"
+
+# Secrets (managed via: wrangler secret put <NAME>)
+#   MODEL_BACKEND_URL = https://spidersan-model.treebird.uk   (Cloudflare Tunnel → mlx_lm.server)
+#   MODEL_ID          = /path/to/fused-best-600               (rewritten into proxied requests)
+#
+# Local dev: wrangler dev --var MODEL_BACKEND_URL:http://localhost:8095

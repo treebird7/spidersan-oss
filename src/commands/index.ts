@@ -20,6 +20,7 @@ export { rebaseHelperCommand } from './rebase-helper.js';
 export { registrySyncCommand } from './registry-sync.js';
 export { crossConflictsCommand } from './cross-conflicts.js';
 export { pulseCommand } from './pulse.js';
+export { gitWatchCommand } from './git-watch.js';
 
 export { loadEcosystemCommands, getEcosystemStatus } from './ecosystem-loader.js';
 
@@ -44,3 +45,7 @@ export { queenCommand } from './queen.js';
 
 // Bot: message-driven git ops via smalltoak
 export { botCommand } from './bot.js';
+
+// AI Core: Context, Ask, Advise, Explain
+export { contextCommand } from './context.js';
+export { askCommand, adviseCommand, explainCommand, aiPingCommand, aiSetupCommand, aiTelemetryCommand, checkOptOutCommand } from './ai.js';

@@ -2,54 +2,15 @@
  * spidersan stale
  * 
  * Show branches that haven't been updated recently.
- * With --notify flag: sends notifications to branch owners via mycmail and .pending_task.md updates.
+ * With --notify flag: sends notifications to branch owners via .pending_task.md updates.
  */
 
 import { Command } from 'commander';
 import { getStorage } from '../storage/index.js';
 import type { Branch } from '../storage/adapter.js';
-import { spawnSync } from 'child_process';
 import { existsSync, readFileSync, appendFileSync } from 'fs';
 import { resolve } from 'path';
 import { validateAgentId, validateBranchName } from '../lib/security.js';
-
-/**
- * Send notification to agent via mycmail
- * ⚡ Bolt: Batched notifications to avoid N+1 slow spawnSync calls
- */
-export function notifyAgentViaMycmail(agentId: string, branches: { name: string; daysOld: number }[]): boolean {
-    if (branches.length === 0) return true;
-
-    try {
-        // Security: Validate inputs
-        validateAgentId(agentId);
-        for (const b of branches) {
-            validateBranchName(b.name);
-        }
-
-        const subject = branches.length === 1
-            ? `⚠️ Stale branch: ${branches[0].name}`
-            : `⚠️ ${branches.length} Stale branches`;
-
-        const branchList = branches.map(b => `- "${b.name}" (${b.daysOld} days inactive)`).join('\n');
-        const message = `You have ${branches.length} stale branch(es):\n\n${branchList}\n\nActions:\n- Run: spidersan cleanup\n- Or resume work and push updates`;
-        
-        const result = spawnSync('mycmail', [
-            'send',
-            agentId,
-            subject,
-            '--message',
-            message
-        ], {
-            encoding: 'utf-8',
-            env: { ...process.env, MYCELIUMAIL_AGENT_ID: 'spidersan' }
-        });
-
-        return result.status === 0;
-    } catch {
-        return false;
-    }
-}
 
 /**
  * Update agent's .pending_task.md file
@@ -160,7 +121,6 @@ export const staleCommand = new Command('stale')
         if (options.notify) {
             console.log(`\n📨 Sending notifications...`);
             
-            let mycmailSuccess = 0;
             let fileSuccess = 0;
 
             for (const [agent, branches] of byAgent) {
@@ -172,11 +132,6 @@ export const staleCommand = new Command('stale')
                     daysOld: Math.floor((Date.now() - new Date(branch.registeredAt).getTime()) / 86400000)
                 }));
 
-                // Try mycmail notification
-                if (notifyAgentViaMycmail(agent, branchData)) {
-                    mycmailSuccess += branches.length;
-                }
-
                 // Try .pending_task.md update
                 if (updatePendingTaskFile(agent, branchData)) {
                     fileSuccess += branches.length;
@@ -184,7 +139,6 @@ export const staleCommand = new Command('stale')
             }
 
             console.log(`✅ Notifications sent:`);
-            console.log(`   - Mycmail: ${mycmailSuccess}/${stale.length}`);
             console.log(`   - File updates: ${fileSuccess}/${stale.length}`);
         }
 

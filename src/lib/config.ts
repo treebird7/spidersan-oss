@@ -245,7 +245,7 @@ export async function loadConfig(basePath: string = process.cwd()): Promise<Spid
 export function deepMerge(target: any, source: any): any {
     const result = { ...target };
 
-    for (const key in source) {
+    for (const key of Object.keys(source)) {
         // Security: Prevent prototype pollution
         if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
             throw new Error(`Invalid config key: ${key}`);
@@ -263,8 +263,18 @@ export function deepMerge(target: any, source: any): any {
     return result;
 }
 
+function safeRegExp(pattern: string, flags?: string): RegExp | null {
+    try {
+        return new RegExp(pattern, flags);
+    } catch {
+        return null;
+    }
+}
+
 export function getWipPatterns(config: SpidersanConfig): RegExp[] {
-    return config.readyCheck.wipPatterns.map(p => new RegExp(`\\b${p}\\b`, 'i'));
+    return config.readyCheck.wipPatterns
+        .map(p => safeRegExp(`\\b${p}\\b`, 'i'))
+        .filter((r): r is RegExp => r !== null);
 }
 
 export function getExcludePatterns(config: SpidersanConfig): string[] {
@@ -272,9 +282,13 @@ export function getExcludePatterns(config: SpidersanConfig): string[] {
 }
 
 export function getHighSeverityPatterns(config: SpidersanConfig): RegExp[] {
-    return config.conflicts.highSeverityPatterns.map(p => new RegExp(p));
+    return config.conflicts.highSeverityPatterns
+        .map(p => safeRegExp(p))
+        .filter((r): r is RegExp => r !== null);
 }
 
 export function getMediumSeverityPatterns(config: SpidersanConfig): RegExp[] {
-    return config.conflicts.mediumSeverityPatterns.map(p => new RegExp(p));
+    return config.conflicts.mediumSeverityPatterns
+        .map(p => safeRegExp(p))
+        .filter((r): r is RegExp => r !== null);
 }

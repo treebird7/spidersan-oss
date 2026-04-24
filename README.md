@@ -19,7 +19,7 @@
 
 ## 🎯 The Problem
 
-**A multi coders or agents and multi branch work can result in a merging nightmare**
+Multi-agent teams working across branches inevitably collide — overlapping files, unclear merge order, rogue abandoned branches. The bigger the fleet, the worse the chaos.
 
 ## 🕷️ The Solution
 
@@ -106,6 +106,41 @@ spidersan merge-order
 | `spidersan log` | Show branch operation history (local activity log) |
 | `spidersan daily` | Show branch-relevant entries from daily collab logs |
 | `spidersan rebase-helper` | Detect and guide through local git rebase states |
+| `spidersan git-watch` | Subscribe to GitHub webhook events — cross-machine push/delete notifications |
+
+### 🧠 AI Commands (Gemma 4 / LM Studio)
+
+Ask spidersan questions about your repo state — powered by a local LLM with an embedded gitops playbook.
+
+| Command | Description |
+|---------|-------------|
+| `spidersan context` | Build full repo context (registry, conflicts, colony, git) |
+| `spidersan ask "<question>"` | Ask a question — get actionable gitops advice with commands |
+| `spidersan advise` | Get proactive recommendations based on current repo state |
+| `spidersan explain <branch>` | Explain what a branch does, its risk, and next steps |
+| `spidersan ai-ping` | Test LLM connectivity and latency |
+
+```bash
+# Get AI-powered advice
+spidersan ask "I have 3 branches touching auth.ts — what should I do?"
+
+# Proactive recommendations
+spidersan advise
+
+# Understand a mystery branch
+spidersan explain feat/strange-refactor
+
+# Flags
+spidersan context --json --verbose --repo ~/Dev/other-repo
+spidersan ask "merge strategy?" --provider copilot
+```
+
+**Features:**
+- 🏠 **Local-first**: Defaults to Gemma 4 26B on LM Studio (no API key needed)
+- 🔒 **Privacy**: Code context never leaves your machine unless you opt into remote providers
+- 📋 **18-scenario playbook**: PHC-optimized command reference covering all spidersan workflows
+- 🔧 **MCP integration**: All AI commands available as MCP tools (27 total)
+- 🧠 **Training data**: Use `/spidersan-gold` skill to mine gold pairs for fine-tuning — see [spidersan-ai](https://github.com/treebird7/spidersan-ai)
 
 ### 🌐 Multi-Repo & Cloud Commands
 
@@ -194,7 +229,7 @@ spidersan auto status
 spidersan auto stop
 ```
 
-### 🤖 GitHub Actions Auto-Register (NEW!)
+### 🤖 GitHub Actions Auto-Register
 
 **Zero-effort branch registration via GitHub workflow**
 

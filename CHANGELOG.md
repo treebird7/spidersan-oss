@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **AI Core** (Phase 0): Shared AI library in `src/lib/ai/` — types, LLM client, context builder, reasoner, event handler. Local-first with Gemma 4 26B on LM Studio; automatic fallback chain (LM Studio → Ollama → Copilot). Storage adapter pattern for registry access.
+- **AI CLI** (Phase 1+2): `spidersan context`, `ask`, `advise`, `explain`, `ai-ping` commands. Build full repo context, ask questions, get proactive advice, explain branches, test LLM connectivity. Supports `--json`, `--verbose`, `--repo`, `--provider` flags.
+- **AI MCP Tools** (Phase 3): 5 new MCP tools (`spidersan_context`, `spidersan_ask`, `spidersan_advise`, `spidersan_explain`, `spidersan_ping`) bringing total to 27. Structured JSON returns with commands, confidence, tokensUsed. Dynamic import bridge for repo-local AI core.
+- **PHC-Optimized Playbook**: 18-scenario command reference embedded in reasoner, optimized via prompt hill climbing (PHC) with Sonnet 4.6. Covers all spidersan workflows: init, conflicts, merge-order, queen dispatch, activity investigation, dependency chains, fleet monitoring, and more. Score: 0.972 (vs 0.895 baseline).
+
+
+
+### Added
+- **`git-watch` command** — GitHub webhook subscriber daemon for cross-machine git-change notifications. Polls `spidersan_git_events` table (treebird-runtime Supabase) via PostgREST REST API using a monotonic `seq` cursor persisted to `~/.spidersan/git-watch-cursor.json`. Raw fetch pattern (no `@supabase/supabase-js` dependency).
+  - `push` events → warn agent to run `spidersan pulse`, log to `activity.jsonl` + `git-events-pending.jsonl`
+  - `delete` events → mark registry branch `abandoned`, archive full entry to `~/.spidersan/archive.jsonl`
+  - `pull_request` / `create` events → log only
+  - `--once` flag for cron/CI catch-up mode (fetch missed events since last cursor, then exit)
+  - `--interval <ms>`, `--repos <colon-separated-paths>`, `--json`, `--quiet` flags
+  - P1: polling-only. Realtime WebSocket subscription is P2.
+- **`spidersan-webhook` Deno edge function** (treebird-internal) — receives GitHub org-level webhook events, validates HMAC-SHA256 signature, idempotently inserts into `spidersan_git_events`. Deployed to treebird-runtime (`ruvwundetxnzesrbkdzr`). Unknown/ping event types silently acked with `{skipped: true}`.
+- **`spidersan_git_events` migration** — compact event envelope table with `seq BIGINT GENERATED ALWAYS AS IDENTITY`, `delivery_id TEXT UNIQUE` (idempotency key), RLS (authenticated read, service_role write only).
+
+## [0.6.0] — 2026-04-04
+
+### Removed
+- **Mycmail messaging layer** — removed 5 source files + 3 test files (~1,600 lines). Mycmail has been superseded by Toak for agent messaging and Colony for coordination. Spidersan's core (registry, conflicts, merge-order, watcher) is unaffected. Specifically removed: `message-adapter.ts`, `mycmail-adapter.ts`, `git-messages.ts`, `local-messages.ts`, `message-factory.ts`, mycmail notification from `conflicts` and `stale` commands, and mycmail health check from `doctor`.
+
 ### Fixed
 - **RLS: spider_registries write policies now apply to anon+authenticated** — `CREATE POLICY` with no `TO` clause silently defaults to `service_role` in PostgreSQL; INSERT/UPDATE/DELETE policies dropped and recreated with explicit `TO anon, authenticated`. `registry-sync --push` was blocked by `42501` for all non-service-role clients. Both migration files (`20260219_spider_registries.sql`, `PASTE_THIS.sql`) patched with explicit role grants.
 

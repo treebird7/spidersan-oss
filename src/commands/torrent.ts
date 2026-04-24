@@ -81,7 +81,7 @@ async function checkForConflicts(branchName: string): Promise<{ branch: string; 
 
 // Main torrent command with subcommands
 export const torrentCommand = new Command('torrent')
-    .description('🔄 Task Torrenting - manage branches for parallel task execution');
+    .description('🔄 Sequential task decomposition — break a task into ordered subtasks with branches (use `queen` instead to fan-out work to parallel agents simultaneously)');
 
 // Subcommand: torrent create <task-id>
 torrentCommand

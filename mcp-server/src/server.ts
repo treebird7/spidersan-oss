@@ -12,6 +12,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 
 import * as storage from './lib/storage.js';
+import * as aiBridge from './lib/ai-bridge.js';
 // License check removed for OSS version
 import { existsSync, realpathSync, mkdirSync } from 'fs';
 import { readFile, writeFile } from 'fs/promises';
@@ -700,9 +701,20 @@ server.tool(
         files: z.array(z.string()).optional().describe('File paths to unlock (omit to unlock all by agent)'),
         agent: z.string().optional().describe('Agent releasing lock'),
         token: z.string().optional().describe('Lock token (alternative to agent)'),
-        force: z.boolean().describe('Force unlock (admin only)').optional().default(false),
+        force: z.boolean().describe('Force unlock — requires SPIDERSAN_ADMIN_TOKEN env var').optional().default(false),
+        adminToken: z.string().optional().describe('Admin token for force unlock'),
     },
-    async ({ files, agent, token, force = false }) => {
+    async ({ files, agent, token, force = false, adminToken }) => {
+        const expectedAdminToken = process.env['SPIDERSAN_ADMIN_TOKEN'];
+        if (force && (!expectedAdminToken || adminToken !== expectedAdminToken)) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({ success: false, error: 'Force unlock requires a valid SPIDERSAN_ADMIN_TOKEN' }, null, 2)
+                }],
+                isError: true,
+            };
+        }
         const registry = await loadLockRegistry();
 
         if (!Array.isArray(registry.locks) || registry.locks.length === 0) {
@@ -1865,6 +1877,161 @@ server.tool(
     }
 );
 
+// ─── AI Core Tools ──────────────────────────────────────────────
+
+// Tool: spidersan_context
+server.tool(
+    'spidersan_context',
+    'Gather full context about the current repo: registry state, branch conflicts, git status, colony health. Returns structured JSON for analysis.',
+    {
+        repo: z.string().optional().describe('Repository path (default: current directory)'),
+    },
+    async ({ repo }) => {
+        try {
+            const repoRoot = repo ? getRepoRootForDir(repo) : undefined;
+            const ctx = await aiBridge.buildContext(repoRoot);
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify(ctx, null, 2),
+                }],
+            };
+        } catch (error) {
+            return {
+                content: [{ type: 'text', text: JSON.stringify({ error: getExecErrorMessage(error) }) }],
+                isError: true,
+            };
+        }
+    }
+);
+
+// Tool: spidersan_ask
+server.tool(
+    'spidersan_ask',
+    'Ask the Spidersan AI a question about the current repo state. Uses LLM reasoning with full context (registry, conflicts, colony, git status) and knowledge of all spidersan commands.',
+    {
+        question: z.string().describe('Your question about the repo, branches, conflicts, or workflow'),
+        repo: z.string().optional().describe('Repository path (default: current directory)'),
+        provider: z.enum(['lmstudio', 'ollama', 'copilot']).optional().describe('LLM provider (default: lmstudio)'),
+    },
+    async ({ question, repo, provider }) => {
+        try {
+            const repoRoot = repo ? getRepoRootForDir(repo) : undefined;
+            const result = await aiBridge.ask(question, repoRoot, provider);
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        advice: result.advice,
+                        commands: result.commands,
+                        confidence: result.confidence,
+                        provider: result.provider,
+                        tokensUsed: result.tokensUsed,
+                    }, null, 2),
+                }],
+            };
+        } catch (error) {
+            return {
+                content: [{ type: 'text', text: JSON.stringify({ error: getExecErrorMessage(error) }) }],
+                isError: true,
+            };
+        }
+    }
+);
+
+// Tool: spidersan_advise
+server.tool(
+    'spidersan_advise',
+    'Get proactive AI recommendations for the current repo. Analyzes registry, conflicts, stale branches, colony status, and dirty files to suggest next actions with specific spidersan commands.',
+    {
+        repo: z.string().optional().describe('Repository path (default: current directory)'),
+        provider: z.enum(['lmstudio', 'ollama', 'copilot']).optional().describe('LLM provider (default: lmstudio)'),
+    },
+    async ({ repo, provider }) => {
+        try {
+            const repoRoot = repo ? getRepoRootForDir(repo) : undefined;
+            const result = await aiBridge.advise(repoRoot, provider);
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        advice: result.advice,
+                        commands: result.commands,
+                        confidence: result.confidence,
+                        provider: result.provider,
+                        tokensUsed: result.tokensUsed,
+                    }, null, 2),
+                }],
+            };
+        } catch (error) {
+            return {
+                content: [{ type: 'text', text: JSON.stringify({ error: getExecErrorMessage(error) }) }],
+                isError: true,
+            };
+        }
+    }
+);
+
+// Tool: spidersan_explain
+server.tool(
+    'spidersan_explain',
+    'Get a detailed AI explanation of a specific branch: its purpose, conflict risk, merge readiness, and recommended actions.',
+    {
+        branch: z.string().describe('Branch name to explain'),
+        repo: z.string().optional().describe('Repository path (default: current directory)'),
+        provider: z.enum(['lmstudio', 'ollama', 'copilot']).optional().describe('LLM provider (default: lmstudio)'),
+    },
+    async ({ branch, repo, provider }) => {
+        try {
+            const repoRoot = repo ? getRepoRootForDir(repo) : undefined;
+            const result = await aiBridge.explain(branch, repoRoot, provider);
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        branch,
+                        advice: result.advice,
+                        commands: result.commands,
+                        confidence: result.confidence,
+                        provider: result.provider,
+                        tokensUsed: result.tokensUsed,
+                    }, null, 2),
+                }],
+            };
+        } catch (error) {
+            return {
+                content: [{ type: 'text', text: JSON.stringify({ error: getExecErrorMessage(error) }) }],
+                isError: true,
+            };
+        }
+    }
+);
+
+// Tool: spidersan_ping
+server.tool(
+    'spidersan_ping',
+    'Health check the LLM connection. Returns provider, model, and latency.',
+    {
+        provider: z.enum(['lmstudio', 'ollama', 'copilot']).optional().describe('LLM provider to test (default: lmstudio)'),
+    },
+    async ({ provider }) => {
+        try {
+            const result = await aiBridge.pingLLM(provider);
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify(result, null, 2),
+                }],
+            };
+        } catch (error) {
+            return {
+                content: [{ type: 'text', text: JSON.stringify({ error: getExecErrorMessage(error) }) }],
+                isError: true,
+            };
+        }
+    }
+);
+
 // Tool: list_tools (for version discovery)
 server.tool(
     'list_tools',
@@ -1893,6 +2060,11 @@ server.tool(
             { name: 'get_branch_info', desc: 'Get detailed info about a branch', args: 'branch?' },
             { name: 'start_watch', desc: 'Start background file watcher daemon', args: 'agent?, dir?, hub?, quiet?' },
             { name: 'stop_watch', desc: 'Stop the background file watcher', args: 'none' },
+            { name: 'spidersan_context', desc: '🧠 AI: Gather full repo context (registry, conflicts, colony, git)', args: 'repo?' },
+            { name: 'spidersan_ask', desc: '🧠 AI: Ask a question about the repo with LLM reasoning', args: 'question, repo?, provider?' },
+            { name: 'spidersan_advise', desc: '🧠 AI: Get proactive recommendations for next actions', args: 'repo?, provider?' },
+            { name: 'spidersan_explain', desc: '🧠 AI: Explain a branch\'s status and merge readiness', args: 'branch, repo?, provider?' },
+            { name: 'spidersan_ping', desc: '🧠 AI: Health check the LLM connection', args: 'provider?' },
             { name: 'list_tools', desc: 'This command - list available tools', args: 'none' },
         ];
 

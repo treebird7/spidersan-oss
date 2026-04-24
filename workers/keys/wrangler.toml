@@ -1,0 +1,13 @@
+name = "spidersan-keys"
+main = "src/index.ts"
+compatibility_date = "2026-04-21"
+
+[[routes]]
+pattern = "spidersan.treebird.uk/keys*"
+zone_name = "treebird.uk"
+
+# Shared KV with api-proxy — same namespace so keys issued here are validated there
+[[kv_namespaces]]
+binding = "VALID_API_KEYS"
+id = "d05e42b679db41249eb9934a21cc2c78"
+preview_id = "d05e42b679db41249eb9934a21cc2c78"
