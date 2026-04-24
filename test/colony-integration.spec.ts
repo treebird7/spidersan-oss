@@ -130,6 +130,7 @@ describe('Colony-Spidersan integration', () => {
         // Set fake Colony credentials so syncFromColony() doesn't short-circuit
         process.env.COLONY_SUPABASE_URL = 'https://fake.supabase.co';
         process.env.COLONY_SUPABASE_KEY = 'fake-key';
+        process.env.COLONY_SESSION_JWT = 'fake-jwt';
 
         // Use LocalStorage pointed at tempDir (no real Supabase branch storage)
         delete process.env.SUPABASE_URL;
@@ -154,6 +155,7 @@ describe('Colony-Spidersan integration', () => {
 
         delete process.env.COLONY_SUPABASE_URL;
         delete process.env.COLONY_SUPABASE_KEY;
+        delete process.env.COLONY_SESSION_JWT;
     });
 
     // ── Scenario A — Conflict detection ───────────────────────────────────────
