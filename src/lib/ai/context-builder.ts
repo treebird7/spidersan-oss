@@ -129,9 +129,12 @@ async function getRegistryContext(currentBranch: string): Promise<ContextSource<
     const conflicts: ConflictSummary[] = [];
 
     if (currentFiles.length > 0) {
+      // ⚡ Bolt: Use a Set for O(1) lookups instead of Array.includes for O(N) to improve conflict detection speed
+      // when checking many files against many active branches.
+      const currentFilesSet = new Set(currentFiles);
       for (const other of allBranches) {
         if (other.name === currentBranch || other.status !== 'active') continue;
-        const overlapping = currentFiles.filter(f => other.files.includes(f));
+        const overlapping = other.files.filter(f => currentFilesSet.has(f));
         if (overlapping.length > 0) {
           const maxTier = Math.max(...overlapping.map(classifyTier)) as 1 | 2 | 3;
           conflicts.push({
