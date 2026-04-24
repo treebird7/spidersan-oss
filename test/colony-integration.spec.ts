@@ -53,6 +53,9 @@ function makeClaimRow(opts: {
     return {
         id: opts.id ?? randomBytes(4).toString('hex'),
         type: 'work_claim',
+        status: 'in-progress',
+        task: opts.branch,
+        files: opts.files ?? [],
         agent_key_id: opts.agent_key_id,
         agent_label: opts.agent_label ?? null,
         payload: {
@@ -71,6 +74,8 @@ function makeReleaseRow(opts: { branch: string; agent_key_id?: string }) {
     return {
         id: randomBytes(4).toString('hex'),
         type: 'work_release',
+        status: 'completed',
+        task: opts.branch,
         agent_key_id: opts.agent_key_id ?? 'release-agent',
         agent_label: null,
         payload: { branch: opts.branch },
@@ -95,9 +100,14 @@ function mockFetch(
     return vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
         const url = input instanceof Request ? input.url : String(input);
         let body: unknown[];
-        if (url.includes('type=eq.work_claim')) {
-            body = claimRows;
-        } else if (url.includes('type=eq.work_release')) {
+        if (url.includes('status=eq.in-progress')) {
+            // For Scenario C to test branch deletion, if there's a release, the branch should not be in in-progress
+            if (releaseRows.length > 0 && claimRows.length > 0 && releaseRows[0] && (releaseRows[0] as any).task === (claimRows[0] as any).task) {
+                body = [];
+            } else {
+                body = claimRows;
+            }
+        } else if (url.includes('status=eq.completed') || url.includes('type=eq.work_release')) {
             body = releaseRows;
         } else {
             body = [];
