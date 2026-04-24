@@ -1,0 +1,11 @@
+--- src/lib/ai/reasoner.ts
++++ src/lib/ai/reasoner.ts
+@@ -21,7 +21,7 @@
+   'abandon', 'advise', 'ai-ping', 'ai-setup', 'ai-telemetry', 'ask', 'auto',
+   'check-opt-out', 'cleanup', 'collab', 'config', 'conflicts', 'context',
+   'cross-conflicts', 'daily', 'dashboard', 'depends', 'doctor', 'explain',
+-  'git-watch', 'github-sync', 'init', 'list', 'log', 'merge-order', 'merged',
++  'git-watch', 'github-sync', 'init', 'list', 'log', 'merge-order', 'merged', 'bot',
+   'pulse', 'queen', 'ready-check', 'rebase-helper', 'register', 'registry-sync',
+   'rescue', 'stale', 'sync', 'sync-advisor', 'torrent', 'watch', 'welcome',
+ ]);

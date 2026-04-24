@@ -1,0 +1,11 @@
+--- src/lib/ai/context-builder.ts
++++ src/lib/ai/context-builder.ts
+@@ -8,7 +8,7 @@
+
+ import { execFile } from 'child_process';
+ import { promisify } from 'util';
+-import { compilePatterns } from '../regex-utils.js';
++import { compilePatterns } from '../regex-utils.js';
+ import { getStorage } from '../../storage/factory.js';
+ import type { Branch } from '../../storage/adapter.js';
+ import type {
