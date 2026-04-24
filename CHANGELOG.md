@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-04-24
+
 ### Added
 - **`spidersan bot`** — Message-driven remote git operations daemon via smalltoak. Polls for `/commands` and executes git actions (sync, pull, push, status, conflicts, log) on the local machine. Use case: trigger a push on a remote machine from another agent without SSH access. Tier-based agent permissions (coordinator / specialist / worker). Conflict guard: blocks push on TIER 2+ conflicts. Requires `SMALLTOAK_SERVER_URL` + `SMALLTOAK_TOKEN` via envoak vault inject.
 - **`KNOWN_SPIDERSAN_COMMANDS` parity test** (`tests/reasoner.validator.test.ts`) — Vitest test asserting the command validator Set stays in sync with both `SCENARIO_PLAYBOOK` command tokens and `src/commands/` filesystem. Prevents registry drift between the AI validator and shipped commands.
