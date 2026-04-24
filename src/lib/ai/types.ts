@@ -116,6 +116,8 @@ export interface ReasoningRequest {
 export interface ReasoningResult {
   advice: string;
   commands: string[];
+  /** Commands suggested by the model that are not in the known spidersan CLI. Empty = all validated. */
+  unknownCommands: string[];
   confidence: 'high' | 'medium' | 'low';
   /** Numeric confidence score 0.0–1.0. Values below 0.7 trigger a "review manually" warning. */
   confidenceScore: number;

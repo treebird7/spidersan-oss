@@ -15,6 +15,18 @@ import type {
   SpiderContext,
 } from './types.js';
 
+// ─── Known Command Registry ──────────────────────────────────
+// Derived from src/commands/* + spidersan --help. Used to flag model hallucinations at output time.
+// Update when new commands ship.
+const KNOWN_SPIDERSAN_COMMANDS = new Set([
+  'abandon', 'advise', 'ai-ping', 'ai-setup', 'ai-telemetry', 'ask', 'auto',
+  'check-opt-out', 'cleanup', 'collab', 'config', 'conflicts', 'context',
+  'cross-conflicts', 'daily', 'dashboard', 'depends', 'doctor', 'explain',
+  'git-watch', 'github-sync', 'init', 'list', 'log', 'merge-order', 'merged',
+  'pulse', 'queen', 'ready-check', 'rebase-helper', 'register', 'registry-sync',
+  'rescue', 'stale', 'sync', 'sync-advisor', 'torrent', 'watch', 'welcome',
+]);
+
 // ─── Embedded Scenario Playbook ─────────────────────────────
 // Optimized via PHC: Sonnet 4.6 proposer + Gemma 4 executor (score: 0.9718)
 // Source: promptclimb/prompt_sonnet_spidersan.md
@@ -229,6 +241,13 @@ export async function reason(
   const commandPattern = /^\s*(?:spidersan|git|envoak|toak|npx spidersan)\s+.+/gm;
   const commands = (response.content.match(commandPattern) ?? []).map(c => c.trim());
 
+  // Validate spidersan sub-commands against the known registry
+  const spidersanSubcommandPattern = /^(?:spidersan|npx spidersan)\s+(\S+)/;
+  const unknownCommands = commands.filter(cmd => {
+    const m = cmd.match(spidersanSubcommandPattern);
+    return m !== null && !KNOWN_SPIDERSAN_COMMANDS.has(m[1]!);
+  });
+
   // Estimate confidence from context quality
   const hasConflicts = request.context.conflicts.tier3 > 0 || request.context.conflicts.tier2 > 0;
   const hasRegistry = request.context.registry.active > 0;
@@ -253,6 +272,7 @@ export async function reason(
   return {
     advice: response.content,
     commands,
+    unknownCommands,
     confidence: confidence as 'high' | 'medium' | 'low',
     confidenceScore,
     mode: request.mode,

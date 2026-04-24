@@ -31,6 +31,10 @@ function printResult(result: ReasoningResult): void {
   }
   console.log(result.advice);
   console.log('');
+  if (result.unknownCommands.length > 0) {
+    console.log(chalk.yellow(`⚠  unrecognized command(s) — may be hallucinated: ${result.unknownCommands.join(', ')}`));
+    console.log('');
+  }
   console.log(chalk.dim(`── ${result.provider}/${result.mode} · ${result.tokensUsed} tokens · confidence: ${result.confidence} (${(result.confidenceScore * 100).toFixed(0)}%) ──`));
 }
 
