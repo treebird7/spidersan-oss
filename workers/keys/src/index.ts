@@ -183,8 +183,8 @@ function renderLandingPage(error?: string): string {
       <span class="limit-label">no credit card</span>
     </div>
     <div class="limit-item">
-      <span class="limit-value">SmolLM2</span>
-      <span class="limit-label">360M fine-tuned</span>
+      <span class="limit-value">spidersan-llm</span>
+      <span class="limit-label">fine-tuned</span>
     </div>
   </div>
   <form method="POST" action="/keys">
