@@ -163,8 +163,6 @@ function saveHwm(id: number): void {
 
 // ── Git executors ───────────────────────────────────────────────────────────
 
-// TODO: implement — the self-improve loop fills these in
-
 function executePull(cfg: RepoConfig, branch?: string): string {
   try {
     const b = branch || cfg.branch;
