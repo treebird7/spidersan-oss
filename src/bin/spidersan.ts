@@ -33,6 +33,7 @@ import {
     gitWatchCommand,
     torrentCommand,
     queenCommand,
+    botCommand,
     githubSyncCommand,
     syncAdvisorCommand,
     dashboardCommand,
@@ -123,6 +124,7 @@ program.addCommand(pulseCommand);
 program.addCommand(gitWatchCommand);
 program.addCommand(torrentCommand);
 program.addCommand(queenCommand);
+program.addCommand(botCommand);
 program.addCommand(githubSyncCommand);
 program.addCommand(syncAdvisorCommand());
 program.addCommand(dashboardCommand);

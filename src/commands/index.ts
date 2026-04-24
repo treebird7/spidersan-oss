@@ -43,6 +43,9 @@ export { torrentCommand } from './torrent.js';
 // Mode 3: Queen Spider
 export { queenCommand } from './queen.js';
 
+// Bot: message-driven git ops via smalltoak
+export { botCommand } from './bot.js';
+
 // AI Core: Context, Ask, Advise, Explain
 export { contextCommand } from './context.js';
 export { askCommand, adviseCommand, explainCommand, aiPingCommand, aiSetupCommand, aiTelemetryCommand, checkOptOutCommand } from './ai.js';
