@@ -32,6 +32,7 @@ function printResult(result: ReasoningResult): void {
   console.log('');
   if (result.unknownCommands.length > 0) {
     // Sanitize before display: model output may contain ANSI escapes or control chars.
+    // eslint-disable-next-line no-control-regex
     const sanitize = (s: string) => s.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').replace(/[^\x20-\x7e]/g, '?').slice(0, 120);
     const safeCommands = result.unknownCommands.map(sanitize).join(', ');
     console.log(chalk.yellow(`⚠  unrecognized command(s) — may be hallucinated: ${safeCommands}`));

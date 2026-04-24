@@ -33,7 +33,7 @@ const SYNC_INTERVAL = 90_000;
 const RATE_LIMIT = 10_000; // ms per repo
 
 const VALID_COMMANDS = new Set(['sync', 'pull', 'push', 'status', 'conflicts', 'log']);
-const BRANCH_RE = /^[\w/.\-]+$/;
+const BRANCH_RE = /^[\w/.-]+$/;
 
 // ── Tiers ───────────────────────────────────────────────────────────────────
 
