@@ -1,0 +1,44 @@
+--- src/lib/ai/event-handler.ts
++++ src/lib/ai/event-handler.ts
+@@ -8,6 +8,7 @@
+
+ import { reason } from './reasoner.js';
+ import { buildContext } from './context-builder.js';
++import { compilePatterns } from '../regex-utils.js';
+ import type { Advice, EventPayload, SpiderContext } from './types.js';
+
+ // ─── Tier Detection (shared with context-builder) ───────────
+@@ -23,9 +24,12 @@
+   /index\.(ts|js)$/, /config\.(ts|js)$/,
+ ];
+
++const COMPILED_TIER_3 = compilePatterns(TIER_3_PATTERNS);
++const COMPILED_TIER_2 = compilePatterns(TIER_2_PATTERNS);
++
+ function classifyTier(file: string): 1 | 2 | 3 {
+-  for (const p of TIER_3_PATTERNS) if (p.test(file)) return 3;
+-  for (const p of TIER_2_PATTERNS) if (p.test(file)) return 2;
++  for (const p of COMPILED_TIER_3) if (p.test(file)) return 3;
++  for (const p of COMPILED_TIER_2) if (p.test(file)) return 2;
+   return 1;
+ }
+
+@@ -37,14 +41,16 @@
+   if (!event.files || event.files.length === 0) return null;
+
+   // Find overlapping files with registered branches
++  // ⚡ Bolt: Use a Set for O(1) lookups instead of Array.includes for O(N) to improve conflict detection speed
++  const eventFilesSet = new Set(event.files);
+   const overlaps: Array<{ branch: string; file: string; tier: 1 | 2 | 3 }> = [];
+
+   for (const branch of context.registry.branches) {
+     if (branch.name === event.branch) continue;
+     if (branch.status !== 'active') continue;
+
+-    for (const file of event.files) {
+-      if (branch.files.includes(file)) {
++    for (const file of branch.files) {
++      if (eventFilesSet.has(file)) {
+         overlaps.push({ branch: branch.name, file, tier: classifyTier(file) });
+       }
+     }

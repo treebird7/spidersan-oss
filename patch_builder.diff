@@ -1,0 +1,24 @@
+--- src/lib/ai/context-builder.ts
++++ src/lib/ai/context-builder.ts
+@@ -8,6 +8,7 @@
+
+ import { execFile } from 'child_process';
+ import { promisify } from 'util';
++import { compilePatterns } from '../regex-utils.js';
+ import { getStorage } from '../../storage/factory.js';
+ import type { Branch } from '../../storage/adapter.js';
+ import type {
+@@ -46,9 +47,12 @@
+   /index\.(ts|js)$/, /config\.(ts|js)$/,
+ ];
+
++const COMPILED_TIER_3 = compilePatterns(TIER_3_PATTERNS);
++const COMPILED_TIER_2 = compilePatterns(TIER_2_PATTERNS);
++
+ function classifyTier(file: string): 1 | 2 | 3 {
+-  for (const p of TIER_3_PATTERNS) if (p.test(file)) return 3;
+-  for (const p of TIER_2_PATTERNS) if (p.test(file)) return 2;
++  for (const p of COMPILED_TIER_3) if (p.test(file)) return 3;
++  for (const p of COMPILED_TIER_2) if (p.test(file)) return 2;
+   return 1;
+ }
