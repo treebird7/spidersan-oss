@@ -137,7 +137,7 @@ async function wakeConflictingAgent(
     agentId: string,
     myBranch: string,
     theirBranch: string,
-    conflictingFiles: string[]
+    _conflictingFiles: string[]
 ): Promise<boolean> {
     // const fileList = conflictingFiles.slice(0, 5).join(', ');
     // const more = conflictingFiles.length > 5 ? ` (+${conflictingFiles.length - 5} more)` : '';

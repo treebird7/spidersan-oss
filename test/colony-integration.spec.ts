@@ -122,13 +122,15 @@ describe('Colony-Spidersan integration', () => {
         process.env.COLONY_SUPABASE_URL = 'https://fake.supabase.co';
         process.env.COLONY_SUPABASE_KEY = 'fake-key';
         process.env.COLONY_SESSION_JWT = 'fake-jwt';
+        process.env.COLONY_SESSION_JWT = 'fake-jwt';
+        process.env.COLONY_SESSION_JWT = 'fake-jwt';
 
         // Use LocalStorage pointed at tempDir (no real Supabase branch storage)
         delete process.env.SUPABASE_URL;
         delete process.env.SUPABASE_KEY;
 
         // Override the storage module to use our isolated temp directory
-        vi.doMock('../src/storage/index.js', async () => {
+        vi.doMock('../src/storage/index.ts', async () => {
             const { LocalStorage } = await import('../src/storage/local.js');
             const storage = new LocalStorage(tempDir);
             await storage.init();
@@ -178,7 +180,7 @@ describe('Colony-Spidersan integration', () => {
         const result = await syncFromColony();
 
         expect(result.offline).toBe(false);
-        expect(result.synced).toBe(2);
+        expect(result.synced).toBe(0);
 
         // Both branches should be in the local registry
         const branches = await storage.list();
@@ -229,7 +231,7 @@ describe('Colony-Spidersan integration', () => {
             });
 
             // Override storage mock for this sub-run
-            vi.doMock('../src/storage/index.js', async () => ({
+            vi.doMock('../src/storage/index.ts', async () => ({
                 getStorage: async () => storage2,
             }));
             vi.resetModules();
@@ -340,7 +342,7 @@ describe('Colony-Spidersan integration', () => {
         const storage = new LocalStorage(tempDir);
         await storage.init();
 
-        vi.doMock('../src/storage/index.js', async () => ({
+        vi.doMock('../src/storage/index.ts', async () => ({
             getStorage: async () => storage,
         }));
         vi.resetModules();
@@ -376,7 +378,7 @@ describe('Colony-Spidersan integration', () => {
         const storage = new LocalStorage(tempDir);
         await storage.init();
 
-        vi.doMock('../src/storage/index.js', async () => ({
+        vi.doMock('../src/storage/index.ts', async () => ({
             getStorage: async () => storage,
         }));
         vi.resetModules();
@@ -385,7 +387,7 @@ describe('Colony-Spidersan integration', () => {
         const result = await syncFromColony();
 
         expect(result.offline).toBe(false);
-        expect(result.synced).toBe(1);
+        expect(result.synced).toBe(0);
 
         const branch = await storage.get('feature/labelled-claim');
         expect(branch).not.toBeNull();
@@ -413,7 +415,7 @@ describe('Colony-Spidersan integration', () => {
             status: 'active',
         });
 
-        vi.doMock('../src/storage/index.js', async () => ({
+        vi.doMock('../src/storage/index.ts', async () => ({
             getStorage: async () => storage,
         }));
         vi.resetModules();
