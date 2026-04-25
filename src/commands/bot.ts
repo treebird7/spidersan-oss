@@ -116,6 +116,7 @@ function parseCommand(text: string, repos: Record<string, RepoConfig>):
 
 // ── Smalltoak transport ─────────────────────────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function stRead(to?: string, last?: number): Promise<any[]> {
   if (!SMALLTOAK_URL) return [];
   const params = new URLSearchParams();
@@ -127,6 +128,7 @@ async function stRead(to?: string, last?: number): Promise<any[]> {
   try {
     const resp = await fetch(`${SMALLTOAK_URL}/messages${qs}`, { headers });
     if (!resp.ok) return [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return await resp.json() as any[];
   } catch {
     return [];
@@ -168,6 +170,7 @@ function executePull(cfg: RepoConfig, branch?: string): string {
     const b = branch || cfg.branch;
     const r = execFileSync('git', ['pull', '--ff-only', 'origin', b], { cwd: cfg.path, encoding: 'utf-8', timeout: 60000 });
     return r.trim().substring(0, 500);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (err: any) {
     return err.message;
   }
@@ -188,6 +191,7 @@ function executePush(cfg: RepoConfig): string {
     execFileSync('git', ['commit', '-m', 'spidersan bot auto-push'], { cwd: cfg.path, encoding: 'utf-8' });
     const r = execFileSync('git', ['push'], { cwd: cfg.path, encoding: 'utf-8', timeout: 60000 });
     return r.trim().substring(0, 500) || 'Pushed';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (err: any) {
     return err.message;
   }
@@ -206,8 +210,10 @@ function checkConflictsBefore(cfg: RepoConfig): string | null {
   try {
     const result = execFileSync('spidersan', ['conflicts', '--json'], { cwd: cfg.path, encoding: 'utf-8', timeout: 10000 });
     const data = JSON.parse(result);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const blocking = (data.conflicts || []).filter((c: any) => c.tier >= 2 || c.tier === 'BLOCK' || c.tier === 'PAUSE');
     if (blocking.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const labels = blocking.map((c: any) => `${c.tierInfo?.label || 'T' + c.tier}: ${(c.files || [c.branch]).join(', ')}`);
       return `BLOCKED: ${blocking.length} conflict(s) (tier 2+) — ${labels.join('; ')}`;
     }
@@ -229,6 +235,7 @@ function executeStatus(cfg: RepoConfig): string {
     const status = execFileSync('git', ['status', '--porcelain'], { cwd: cfg.path, encoding: 'utf-8' });
     const branch = execFileSync('git', ['branch', '--show-current'], { cwd: cfg.path, encoding: 'utf-8' });
     return `${status.trim()}\nBranch: ${branch.trim()}`.substring(0, 500);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (err: any) {
     return err.message;
   }
@@ -239,6 +246,7 @@ function executeLog(cfg: RepoConfig, n = 10): string {
     const limitedN = Math.min(n, 50);
     const r = execFileSync('git', ['log', '--oneline', `-${limitedN}`], { cwd: cfg.path, encoding: 'utf-8' });
     return r.trim().substring(0, 500);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (err: any) {
     return err.message;
   }
@@ -248,6 +256,7 @@ function executeConflicts(cfg: RepoConfig): string {
   try {
     const r = execFileSync('spidersan', ['conflicts'], { cwd: cfg.path, encoding: 'utf-8', timeout: 60000 });
     return r.trim().substring(0, 500);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (err: any) {
     if (err.code === 'ENOENT') return 'spidersan command not found';
     return err.message;
@@ -294,6 +303,7 @@ export const botCommand = new Command('bot')
           '--description', `git-bot auto-sync: ${name} (${cfg.branch})`
         ], { cwd: cfg.path, encoding: 'utf-8', timeout: 10000 });
         console.log(`[bot] registered ${name} (${cfg.branch}) — files: ${cfg.autoPush.join(', ')}`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         console.log(`[bot] register ${name} skipped: ${err.message.split('\n')[0]}`);
       }
@@ -308,6 +318,7 @@ export const botCommand = new Command('bot')
       conflicts: (cfg) => executeConflicts(cfg),
     };
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async function processMessage(msg: any): Promise<void> {
       const sender = msg.from || 'unknown';
       const parsed = parseCommand(msg.text || '', config.repos);
@@ -330,6 +341,7 @@ export const botCommand = new Command('bot')
       try {
         const result = executors[cmd](config.repos[repo], args);
         await stPost(`/${cmd} ${repo}: ${result.substring(0, 500)}`, sender, msg.id);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         await stPost(`/${cmd} ${repo}: Error: ${err.message}`, sender, msg.id);
       }
@@ -348,6 +360,7 @@ export const botCommand = new Command('bot')
             const result = executeSync(cfg);
             const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
             console.log(`[${ts}] auto-sync ${name}: ${result.substring(0, 100)}`);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           } catch (err: any) {
             console.log(`[auto-sync] ${name} failed: ${err.message}`);
           }
@@ -358,12 +371,14 @@ export const botCommand = new Command('bot')
       // Poll for commands
       try {
         const msgs = await stRead(AGENT_NAME, 50);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const newMsgs = msgs.filter((m: any) => (m.id || 0) > hwm).sort((a: any, b: any) => a.id - b.id);
         for (const msg of newMsgs) {
           await processMessage(msg);
           hwm = msg.id;
           saveHwm(hwm);
         }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         console.log(`[poll] error: ${err.message}`);
       }
