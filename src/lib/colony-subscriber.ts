@@ -290,11 +290,15 @@ export async function syncFromColony(): Promise<SyncResult> {
         const activeBranches = postSweepBranches.filter(b => b.status === 'active');
         const conflicts: ConflictReport[] = [];
 
+        // ⚡ Bolt: Convert branch files to Sets once instead of re-creating Sets inside the nested loop
+        const activeBranchesFilesSets = activeBranches.map(b => new Set(b.files));
+
         for (let i = 0; i < activeBranches.length; i++) {
+            const a = activeBranches[i];
+            const aFiles = activeBranchesFilesSets[i];
+
             for (let j = i + 1; j < activeBranches.length; j++) {
-                const a = activeBranches[i];
                 const b = activeBranches[j];
-                const aFiles = new Set(a.files);
                 const overlapping = b.files.filter(f => aFiles.has(f));
                 if (overlapping.length > 0) {
                     conflicts.push({
