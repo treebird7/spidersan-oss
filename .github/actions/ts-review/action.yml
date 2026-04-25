@@ -1,0 +1,255 @@
+name: ts-review
+description: >
+  Run security-scoped TypeScript review (spawn hygiene, env isolation, input validation,
+  error discipline) against changed TS files. Posts findings to job summary and optionally
+  to a PR comment and the ts-tree review log.
+
+inputs:
+  files:
+    description: >
+      Newline-separated list of .ts files to scan.
+      Leave empty to auto-detect from the push diff (github.event.before..github.sha).
+    required: false
+    default: ''
+  post-pr-comment:
+    description: Post findings as a PR comment (requires GITHUB_TOKEN in env)
+    required: false
+    default: 'true'
+  treebird-token:
+    description: >
+      PAT with write access to treebird7/treebird for committing findings to ts-tree log.
+      Leave empty to skip the log commit step.
+    required: false
+    default: ''
+  repo-name:
+    description: Name of the calling repo (used in ts-tree log entry header)
+    required: false
+    default: ${{ github.repository }}
+
+outputs:
+  error-count:
+    description: Number of ❌ error findings
+    value: ${{ steps.scan.outputs.error_count }}
+  warning-count:
+    description: Number of ⚠️ warning findings
+    value: ${{ steps.scan.outputs.warning_count }}
+  findings-json:
+    description: Full findings JSON
+    value: ${{ steps.scan.outputs.findings_json }}
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Detect changed TS files
+      id: files
+      shell: bash
+      env:
+        INPUT_FILES: ${{ inputs.files }}
+        BEFORE_SHA: ${{ github.event.before }}
+        AFTER_SHA: ${{ github.sha }}
+      run: |
+        if [[ -n "$INPUT_FILES" ]]; then
+          echo "$INPUT_FILES" > /tmp/ts_files.txt
+        elif [[ "$BEFORE_SHA" == "0000000000000000000000000000000000000000" || -z "$BEFORE_SHA" ]]; then
+          # First push to branch — diff against main
+          git diff --name-only origin/main..."$AFTER_SHA" -- '*.ts' 2>/dev/null \
+            | grep -v '\.d\.ts$' | grep -v 'node_modules' > /tmp/ts_files.txt || true
+        else
+          git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" -- '*.ts' 2>/dev/null \
+            | grep -v '\.d\.ts$' | grep -v 'node_modules' > /tmp/ts_files.txt || true
+        fi
+        count=$(grep -c . /tmp/ts_files.txt 2>/dev/null || echo 0)
+        echo "count=$count" >> "$GITHUB_OUTPUT"
+        echo "Found $count TS file(s) to scan:"
+        cat /tmp/ts_files.txt || true
+
+    - name: Run ts-review scanner
+      id: scan
+      if: steps.files.outputs.count != '0'
+      shell: bash
+      run: |
+        SCAN_SCRIPT="${{ github.action_path }}/scan.mjs"
+        # Use stdin to avoid arg-list-too-long and spaces-in-filenames issues
+        node "$SCAN_SCRIPT" < /tmp/ts_files.txt > /tmp/ts_findings.json || true
+
+        ERROR_COUNT=$(node -e "const r=require('/tmp/ts_findings.json'); process.stdout.write(String(r.errCount))")
+        WARN_COUNT=$(node -e "const r=require('/tmp/ts_findings.json'); process.stdout.write(String(r.warnCount))")
+
+        echo "error_count=$ERROR_COUNT" >> "$GITHUB_OUTPUT"
+        echo "warning_count=$WARN_COUNT" >> "$GITHUB_OUTPUT"
+        # Compact JSON for output
+        echo "findings_json=$(node -e "const fs=require('fs'); process.stdout.write(JSON.stringify(JSON.parse(fs.readFileSync('/tmp/ts_findings.json','utf8'))))")" >> "$GITHUB_OUTPUT"
+
+    - name: Emit findings to Job Summary
+      if: steps.files.outputs.count != '0'
+      shell: bash
+      run: |
+        node - << 'EOF'
+        const fs = require('fs');
+        const report = JSON.parse(fs.readFileSync('/tmp/ts_findings.json', 'utf8'));
+        const SEV_ICON = { error: '❌', warning: '⚠️', info: 'ℹ️' };
+        const lines = [];
+        lines.push('## 🕷️ ts-review findings');
+        lines.push('');
+        lines.push(`Scanned **${report.scanned}** file(s) | ❌ ${report.errCount} error(s) | ⚠️ ${report.warnCount} warning(s)`);
+        lines.push('');
+        if (report.findings.length === 0) {
+          lines.push('✅ No security findings.');
+        } else {
+          lines.push('| Sev | Check | File | Line | Finding |');
+          lines.push('|-----|-------|------|------|---------|');
+          for (const f of report.findings) {
+            const icon = SEV_ICON[f.sev] ?? f.sev;
+            const short = f.file.replace(/^.*?src\//, 'src/');
+            lines.push(`| ${icon} | \`${f.check}\` | \`${short}\` | ${f.line} | ${f.message} |`);
+          }
+          lines.push('');
+          lines.push('<details><summary>Context snippets</summary>');
+          lines.push('');
+          for (const f of report.findings) {
+            lines.push(`**${f.file}:${f.line}** (\`${f.check}\`):`);
+            lines.push('```ts');
+            lines.push(f.context);
+            lines.push('```');
+          }
+          lines.push('</details>');
+        }
+        fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+        EOF
+
+    - name: Detect open PR for this branch
+      id: pr
+      if: inputs.post-pr-comment == 'true' && steps.files.outputs.count != '0'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ env.GITHUB_TOKEN }}
+        GH_REF: ${{ github.ref_name }}
+      run: |
+        PR_NUMBER=$(gh pr list --head "$GH_REF" --json number --jq '.[0].number' 2>/dev/null || echo "")
+        echo "pr_number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+        if [[ -n "$PR_NUMBER" ]]; then
+          echo "Found PR #$PR_NUMBER for branch $GH_REF"
+        else
+          echo "No open PR found for branch $GH_REF — skipping PR comment"
+        fi
+
+    - name: Post PR comment
+      if: >
+        inputs.post-pr-comment == 'true' &&
+        steps.files.outputs.count != '0' &&
+        steps.pr.outputs.pr_number != ''
+      shell: bash
+      env:
+        GH_TOKEN: ${{ env.GITHUB_TOKEN }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+      run: |
+        node - << 'EOF'
+        const fs = require('fs');
+        const { execFileSync } = require('child_process');
+        const report = JSON.parse(fs.readFileSync('/tmp/ts_findings.json', 'utf8'));
+        const SEV_ICON = { error: '❌', warning: '⚠️', info: 'ℹ️' };
+        const prNumber = process.env.PR_NUMBER;
+        const repo = process.env.GITHUB_REPOSITORY;
+
+        const lines = [];
+        lines.push('<!-- ts-review-bot -->');
+        lines.push('## 🕷️ ts-review');
+        lines.push('');
+        lines.push(`Scanned **${report.scanned}** file(s) | ❌ ${report.errCount} error(s) | ⚠️ ${report.warnCount} warning(s)`);
+        if (report.findings.length === 0) {
+          lines.push('');
+          lines.push('✅ All checks clean.');
+        } else {
+          lines.push('');
+          lines.push('| Sev | Check | File | Line | Finding |');
+          lines.push('|-----|-------|------|------|---------|');
+          for (const f of report.findings) {
+            const icon = SEV_ICON[f.sev] ?? f.sev;
+            const short = f.file.replace(/^.*?src\//, 'src/');
+            lines.push(`| ${icon} | \`${f.check}\` | \`${short}\` | ${f.line} | ${f.message} |`);
+          }
+        }
+        const body = lines.join('\n');
+
+        // Delete previous ts-review comment if present
+        try {
+          const raw = execFileSync('gh', ['api', `repos/${repo}/issues/${prNumber}/comments`,
+            '--jq', '[.[] | select(.body | startswith("<!-- ts-review-bot -->"))]'],
+            { encoding: 'utf8' });
+          const comments = JSON.parse(raw);
+          for (const c of comments) {
+            execFileSync('gh', ['api', `repos/${repo}/issues/comments/${c.id}`, '-X', 'DELETE']);
+          }
+        } catch {}
+
+        execFileSync('gh', ['pr', 'comment', prNumber, '--body', body], { stdio: 'inherit' });
+        EOF
+
+    - name: Commit findings to ts-tree log
+      if: >
+        inputs.treebird-token != '' &&
+        steps.files.outputs.count != '0' &&
+        (steps.scan.outputs.error_count != '0' || steps.scan.outputs.warning_count != '0')
+      shell: bash
+      env:
+        TREEBIRD_TOKEN: ${{ inputs.treebird-token }}
+        REPO_NAME: ${{ inputs.repo-name }}
+        GITHUB_SHA_SHORT: ${{ github.sha }}
+      run: |
+        node - << 'EOF'
+        const fs = require('fs');
+        const { execFileSync } = require('child_process');
+        const { join } = require('path');
+        const os = require('os');
+
+        const report = JSON.parse(fs.readFileSync('/tmp/ts_findings.json', 'utf8'));
+        if (report.findings.length === 0) process.exit(0);
+
+        const token = process.env.TREEBIRD_TOKEN;
+        const repoName = process.env.REPO_NAME;
+        const sha = (process.env.GITHUB_SHA_SHORT || '').slice(0, 7);
+        const today = new Date().toISOString().slice(0, 10);
+        const SEV_ICON = { error: '❌', warning: '⚠️', info: 'ℹ️' };
+
+        const tmpDir = join(os.tmpdir(), 'ts-tree-commit');
+        execFileSync('git', [
+          'clone', '--depth', '1',
+          `https://x-access-token:${token}@github.com/treebird7/treebird.git`,
+          tmpDir
+        ], { stdio: 'inherit' });
+
+        const logPath = join(tmpDir, 'ts-tree', 'reviews', 'ts-review-log.md');
+        const existing = fs.readFileSync(logPath, 'utf8');
+
+        const rows = report.findings.map(f =>
+          `| ${SEV_ICON[f.sev] ?? f.sev} | ${f.check} | ${f.message.slice(0, 60)} | ${f.file.split('/').slice(-1)[0]}:${f.line} |`
+        ).join('\n');
+
+        const entry = `\n## ${today} — ${repoName} (${sha}) — ❌ ${report.errCount} | ⚠️ ${report.warnCount}\n\n| Sev | Check | Finding | File |\n|-----|-------|---------|------|\n${rows}\n\nContext: CI scan on push. ${report.scanned} file(s) scanned, ${report.skipped} skipped (no security surface).\n\n---`;
+
+        const insertAt = existing.indexOf('\n---\n') + 5;
+        const updated = existing.slice(0, insertAt) + entry + existing.slice(insertAt);
+        fs.writeFileSync(logPath, updated);
+
+        execFileSync('git', ['-C', tmpDir, 'config', 'user.email', 'ci@treebird.dev']);
+        execFileSync('git', ['-C', tmpDir, 'config', 'user.name', 'ts-review-bot']);
+        execFileSync('git', ['-C', tmpDir, 'add', 'ts-tree/reviews/ts-review-log.md']);
+        execFileSync('git', ['-C', tmpDir, 'commit', '-m',
+          `ci(ts-review): ${repoName} ${sha} — ${report.errCount} err ${report.warnCount} warn\n\nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
+        ]);
+        execFileSync('git', ['-C', tmpDir, 'push'], { stdio: 'inherit' });
+        console.log('ts-tree log updated.');
+        EOF
+
+    - name: Fail on errors
+      if: steps.files.outputs.count != '0' && steps.scan.outputs.error_count != '0'
+      shell: bash
+      run: |
+        echo "❌ ts-review found ${{ steps.scan.outputs.error_count }} error(s). Fix before merging."
+        exit 1

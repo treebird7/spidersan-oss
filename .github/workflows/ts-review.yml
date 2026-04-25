@@ -11,8 +11,20 @@ on:
 
 jobs:
   ts-review:
-    uses: treebird7/treebird/.github/workflows/ts-review.yml@main
-    with:
-      repo-name: treebird7/spidersan-oss
-    secrets:
-      TREEBIRD_TOKEN: ${{ secrets.TREEBIRD_TOKEN }}
+    name: ts-review
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Run ts-review
+        uses: ./.github/actions/ts-review
+        with:
+          post-pr-comment: true
+          repo-name: treebird7/spidersan-oss
+          treebird-token: ${{ secrets.TREEBIRD_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
