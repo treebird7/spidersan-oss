@@ -63,7 +63,7 @@ runs:
           git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" -- '*.ts' 2>/dev/null \
             | grep -v '\.d\.ts$' | grep -v 'node_modules' > /tmp/ts_files.txt || true
         fi
-        count=$(grep -c . /tmp/ts_files.txt 2>/dev/null || echo 0)
+        count=$(wc -l < /tmp/ts_files.txt 2>/dev/null | tr -d ' ') || count=0
         echo "count=$count" >> "$GITHUB_OUTPUT"
         echo "Found $count TS file(s) to scan:"
         cat /tmp/ts_files.txt || true
