@@ -19,11 +19,17 @@
  * for ecosystem-aware severity decisions. The pending log is the handoff point.
  */
 
-import { execFileSync } from 'child_process';
+import { execFileSync, execFile } from 'child_process';
+import { promisify } from 'util';
 import { existsSync, readFileSync, writeFileSync, appendFileSync, readdirSync, statSync } from 'fs';
 import { join, resolve } from 'path';
 import { homedir } from 'os';
 import { getStorage } from '../storage/index.js';
+import { handleEvent } from './ai/event-handler.js';
+import type { EventPayload } from './ai/types.js';
+import { logActivity } from './activity.js';
+
+const execFileAsync = promisify(execFile);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -236,6 +242,23 @@ async function detectTreePairs(event: GitEvent, log: (m: string) => void): Promi
     }
 }
 
+// ─── AI file enrichment ───────────────────────────────────────────────────────
+
+const NULL_SHA = '0000000000000000000000000000000000000000';
+
+async function enrichFilesFromGit(repoPath: string, beforeSha: string | null, afterSha: string | null): Promise<string[]> {
+    if (!beforeSha || !afterSha || beforeSha === NULL_SHA) return [];
+    try {
+        const { stdout } = await execFileAsync('git', ['diff', '--name-only', `${beforeSha}...${afterSha}`], {
+            cwd: repoPath,
+            timeout: 10000,
+        });
+        return stdout.trim().split('\n').filter(Boolean);
+    } catch {
+        return [];
+    }
+}
+
 // ─── Event handlers ───────────────────────────────────────────────────────────
 
 async function handlePush(event: GitEvent, localPaths: string[], log: (m: string) => void): Promise<void> {
@@ -263,11 +286,55 @@ async function handlePush(event: GitEvent, localPaths: string[], log: (m: string
         await detectTreePairs(event, log);
     }
 
-    // Notify per registered local path
+    // Phase C: AI advice — computed once per event (not per local path)
+    const aiRepoPath = localPaths[0];
+    const files = aiRepoPath
+        ? await enrichFilesFromGit(aiRepoPath, event.before_sha, event.after_sha)
+        : [];
+
+    const payload: EventPayload = {
+        type: 'push',
+        repo: event.repo,
+        branch,
+        files,
+        metadata: { after_sha: event.after_sha, sender: who },
+    };
+
+    try {
+        const advice = await handleEvent(payload, { repoRoot: aiRepoPath });
+        if (advice.tier >= 2) {
+            logActivity({
+                repo: event.repo,
+                branch,
+                agent: who !== 'unknown' ? who : undefined,
+                event: 'conflict_detected',
+                details: {
+                    source: 'git-watch-ai',
+                    tier: advice.tier,
+                    action: advice.action,
+                    message: advice.message,
+                    commands: advice.commands,
+                    after_sha: event.after_sha,
+                    files_checked: files.length,
+                },
+            });
+            log(`🕷  AI [T${advice.tier}/${advice.action}] ${event.repo}/${branch}: ${advice.message.slice(0, 120)}`);
+            // Best-effort hive signal — async, non-blocking
+            execFile('envoak', [
+                'hive', 'signal',
+                '--status', 'needs-context',
+                '--task', `TIER ${advice.tier} conflict: ${event.repo}/${branch} — ${advice.message.slice(0, 120)}`,
+            ], { timeout: 10000 }, () => { /* ignore result */ });
+        }
+    } catch {
+        // AI layer failure is non-fatal — daemon continues
+    }
+
+    // Per-path queue: placeholder for Phase C2 per-path operations (e.g. auto-fetch)
     for (const p of localPaths) {
         enqueue(p, async () => {
-            // No auto-fetch. Log only at P1.
-            // P2: route through spidersan-smol AI layer here.
+            // P3: per-path operations (auto-fetch, local conflict check, etc.)
+            void p;
         });
     }
 }

@@ -84,9 +84,11 @@ function checkDeterministicConflicts(
  * Handle an event (push, PR, colony signal, branch register).
  * First runs deterministic conflict check (fast, no LLM).
  * Only escalates to LLM for TIER 2+ or complex scenarios.
+ *
+ * @param opts.repoRoot - Local repo path for context building. Defaults to process.cwd().
  */
-export async function handleEvent(event: EventPayload): Promise<Advice> {
-  const context = await buildContext({ includeActivity: true });
+export async function handleEvent(event: EventPayload, opts: { repoRoot?: string } = {}): Promise<Advice> {
+  const context = await buildContext({ includeActivity: true, repoRoot: opts.repoRoot });
 
   // Fast path: deterministic conflict check
   const deterministicAdvice = checkDeterministicConflicts(event, context);
