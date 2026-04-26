@@ -423,6 +423,9 @@ async function handleDelete(event: GitEvent, localPaths: string[], log: (m: stri
     const who = event.sender_login ?? 'unknown';
     log(`🗑  branch deleted remotely: ${event.repo}/${branch} by ${who} — archiving in local registries`);
 
+    // Only fire the conflict notification once even if multiple local paths exist
+    let notified = false;
+
     for (const p of localPaths) {
         enqueue(p, async () => {
             try {
@@ -430,6 +433,30 @@ async function handleDelete(event: GitEvent, localPaths: string[], log: (m: stri
                 const allBranches = await storage.list();
                 const entry = allBranches.find(b => b.name === branch);
                 if (!entry) return;
+
+                // Notify if the deleted branch had active file registrations — means
+                // conflict detection was tracking it and other branches may share files.
+                if (!notified && entry.status === 'active' && entry.files && entry.files.length > 0) {
+                    notified = true;
+                    log(`⚠  deleted branch ${branch} had ${entry.files.length} registered file(s) — potential conflict impact`);
+                    logActivity({
+                        repo: event.repo,
+                        branch,
+                        agent: who !== 'unknown' ? who : undefined,
+                        event: 'conflict_detected',
+                        details: {
+                            trigger: 'branch_deleted_with_active_registrations',
+                            files: entry.files,
+                            deleted_by: who,
+                        },
+                    });
+                    execFile('envoak', [
+                        'hive', 'signal',
+                        '--status', 'awaiting-review',
+                        '--task', `deleted branch ${branch} had active conflict registrations (${entry.files.length} files) in ${event.repo}`,
+                        '--files', entry.files.slice(0, 5).join(','),
+                    ], () => {});
+                }
 
                 // Archive first, then remove from active registry
                 appendLog(ARCHIVE_LOG, {
