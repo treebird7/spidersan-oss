@@ -194,10 +194,14 @@ const TREE_ACTION_HINTS: Record<string, string> = {
 async function detectTreePairs(event: GitEvent, log: (m: string) => void): Promise<void> {
     if (!event.before_sha || !event.after_sha) return;
     const url = `https://api.github.com/repos/${event.repo}/compare/${event.before_sha}...${event.after_sha}`;
+    const githubToken = process.env.GITHUB_TOKEN;
+    const headers: Record<string, string> = {
+        'Accept':     'application/vnd.github.v3+json',
+        'User-Agent': 'spidersan-git-watch',
+    };
+    if (githubToken) headers['Authorization'] = `Bearer ${githubToken}`;
     try {
-        const res = await fetch(url, {
-            headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'spidersan-git-watch' },
-        });
+        const res = await fetch(url, { headers });
         if (!res.ok) return;
 
         const data = await res.json() as { files?: Array<{ filename: string; status: string }> };
