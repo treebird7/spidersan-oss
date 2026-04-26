@@ -36,7 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `--interval <ms>`, `--repos <colon-separated-paths>`, `--json`, `--quiet` flags
   - P1: polling-only. Realtime WebSocket subscription is P2.
 - **`spidersan-webhook` Deno edge function** (treebird-internal) — receives GitHub org-level webhook events, validates HMAC-SHA256 signature, idempotently inserts into `spidersan_git_events`. Deployed to treebird-runtime (`ruvwundetxnzesrbkdzr`). Unknown/ping event types silently acked with `{skipped: true}`.
-- **`spidersan_git_events` migration** — compact event envelope table with `seq BIGINT GENERATED ALWAYS AS IDENTITY`, `delivery_id TEXT UNIQUE` (idempotency key), RLS (authenticated read, service_role write only).
+- **`spidersan_git_events` migration** — compact event envelope table with `seq BIGINT GENERATED ALWAYS AS IDENTITY`, `delivery_id TEXT UNIQUE` (idempotency key), RLS (authenticated + anon read, service_role write only). Anon read policy added to support daemon polling without a session JWT.
+- **macOS LaunchAgent support** — `git-watch` daemon designed to run under `launchctl` with `KeepAlive: true`. Logs to `/tmp/spidersan-git-watch.log`. Requires `SUPABASE_URL` + `SUPABASE_KEY` env vars in the plist `EnvironmentVariables` block.
+- **GitHub org webhook wired** — treebird7 org webhook active pointing to `spidersan-webhook` edge function on treebird-runtime. Covers 4 event types: push, pull_request, create, delete.
 
 ## [0.6.0] — 2026-04-04
 

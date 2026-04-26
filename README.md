@@ -256,6 +256,73 @@ spidersan auto status
 spidersan auto stop
 ```
 
+### 🔔 git-watch — GitHub Webhook Notifications
+
+Cross-machine push/delete notifications via a GitHub org webhook → Supabase edge function → `spidersan_git_events` table. Each machine runs a polling daemon that reacts to events: auto-abandons deleted branches in the registry, warns to `spidersan pulse` on pushes.
+
+**Infrastructure (one-time setup):**
+
+1. **Deploy edge function** to your Supabase runtime project:
+   ```bash
+   supabase functions deploy spidersan-webhook --no-verify-jwt --project-ref <runtime-ref>
+   ```
+
+2. **Set edge function secret** (`SPIDERSAN_WEBHOOK_SECRET`) via the Supabase dashboard or CLI.
+
+3. **Apply the migration** (`supabase/migrations/20260421000000_spidersan_git_events.sql`) to your runtime project.
+
+4. **Create a GitHub org webhook:**
+   - URL: `https://<runtime-ref>.supabase.co/functions/v1/spidersan-webhook`
+   - Content type: `application/json`
+   - Secret: your `SPIDERSAN_WEBHOOK_SECRET` value
+   - Events: **Pushes**, **Pull requests**, **Branch or tag creation**, **Branch or tag deletion**
+
+**Running the daemon on each machine:**
+
+```bash
+# One-shot catch-up (useful for cron / CI)
+SUPABASE_URL=https://<runtime-ref>.supabase.co \
+SUPABASE_KEY=<anon-key> \
+spidersan git-watch --once
+
+# Persistent daemon (poll every 30s)
+SUPABASE_URL=https://<runtime-ref>.supabase.co \
+SUPABASE_KEY=<anon-key> \
+spidersan git-watch --interval 30000
+```
+
+**macOS LaunchAgent (keep-alive daemon):**
+
+```xml
+<!-- ~/Library/LaunchAgents/com.treebird.spidersan-git-watch.plist -->
+<key>ProgramArguments</key>
+<array>
+  <string>/usr/local/bin/node</string>
+  <string>/path/to/spidersan-oss/dist/bin/spidersan.js</string>
+  <string>git-watch</string>
+  <string>--interval</string>
+  <string>30000</string>
+</array>
+<key>EnvironmentVariables</key>
+<dict>
+  <key>SUPABASE_URL</key><string>https://<runtime-ref>.supabase.co</string>
+  <key>SUPABASE_KEY</key><string><anon-key></string>
+</dict>
+```
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.treebird.spidersan-git-watch.plist
+tail -f /tmp/spidersan-git-watch.log
+```
+
+**What each event does:**
+
+| Event | Action |
+|-------|--------|
+| `push` | Logs to `activity.jsonl`, warns to run `spidersan pulse` |
+| `delete` | Marks branch `abandoned` in registry, archives to `~/.spidersan/archive.jsonl` |
+| `pull_request` / `create` | Logged only |
+
 ### 🤖 GitHub Actions Auto-Register
 
 **Zero-effort branch registration via GitHub workflow**
