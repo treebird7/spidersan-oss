@@ -177,6 +177,61 @@ function enqueue(repoPath: string, task: () => Promise<void>): void {
     queues.set(repoPath, next);
 }
 
+// ─── Tree-pair detection ──────────────────────────────────────────────────────
+
+const TREE_PAIR_RE = /^(sql-tree|ts-tree)\/pairs\/[^/]+\.json$/;
+
+const TREE_ACTION_HINTS: Record<string, string> = {
+    'sql-tree': 'mycsan /sql-review validate',
+    'ts-tree':  'ts-review validate',
+};
+
+/**
+ * When a push lands on treebird7/treebird, compare before..after via GitHub API
+ * and detect newly added gold-pair JSON files. Emits a targeted pending entry
+ * per tree so the validation cue is specific and actionable.
+ */
+async function detectTreePairs(event: GitEvent, log: (m: string) => void): Promise<void> {
+    if (!event.before_sha || !event.after_sha) return;
+    const url = `https://api.github.com/repos/${event.repo}/compare/${event.before_sha}...${event.after_sha}`;
+    try {
+        const res = await fetch(url, {
+            headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'spidersan-git-watch' },
+        });
+        if (!res.ok) return;
+
+        const data = await res.json() as { files?: Array<{ filename: string; status: string }> };
+        const newPairs = (data.files ?? []).filter(f => f.status === 'added' && TREE_PAIR_RE.test(f.filename));
+        if (!newPairs.length) return;
+
+        // Group by tree (sql-tree / ts-tree)
+        const grouped: Record<string, string[]> = {};
+        for (const f of newPairs) {
+            const tree = f.filename.split('/')[0];
+            (grouped[tree] ??= []).push(f.filename);
+        }
+
+        for (const [tree, files] of Object.entries(grouped)) {
+            const hint = TREE_ACTION_HINTS[tree] ?? `review ${tree}/pairs/`;
+            log(`🌱  ${files.length} new pair(s) in ${tree} — validate: \`${hint}\``);
+            appendLog(PENDING_LOG, {
+                type:         'tree_pairs_ready',
+                tree,
+                files,
+                count:        files.length,
+                repo:         event.repo,
+                branch:       event.branch,
+                after_sha:    event.after_sha?.slice(0, 7),
+                received_at:  event.received_at,
+                ts:           new Date().toISOString(),
+                action_hint:  hint,
+            });
+        }
+    } catch {
+        // non-fatal — GitHub API might be rate-limited or unreachable
+    }
+}
+
 // ─── Event handlers ───────────────────────────────────────────────────────────
 
 async function handlePush(event: GitEvent, localPaths: string[], log: (m: string) => void): Promise<void> {
@@ -198,6 +253,11 @@ async function handlePush(event: GitEvent, localPaths: string[], log: (m: string
     };
     appendLog(ACTIVITY_LOG, { ...entry, source: 'git-watch' });
     appendLog(PENDING_LOG, entry);
+
+    // Detect newly committed gold pairs in sql-tree / ts-tree
+    if (event.repo === 'treebird7/treebird') {
+        await detectTreePairs(event, log);
+    }
 
     // Notify per registered local path
     for (const p of localPaths) {
