@@ -55,6 +55,7 @@ export interface GitWatchOptions {
     onEvent?: (event: GitEvent) => void;
     logger?: (msg: string) => void;
     quiet?: boolean;
+    disableRealtime?: boolean;   // opt-out of WebSocket subscription (polling only)
 }
 
 export interface GitWatchHandle {
@@ -698,17 +699,137 @@ async function catchUp(
     writeCursor(data[data.length - 1].seq);
 }
 
+// ─── Supabase Realtime (Phoenix channels over native WebSocket) ───────────────
+
+interface RealtimeHandle {
+    stop: () => void;
+}
+
+/**
+ * Opens a Supabase Realtime WebSocket subscription to spidersan_git_events.
+ * Uses Node 24's native globalThis.WebSocket — no extra dependencies.
+ * Returns null if WebSocket is unavailable (graceful downgrade to polling).
+ */
+function startRealtimeSubscription(
+    cfg: SupabaseConfig,
+    repoMap: Map<string, string[]>,
+    opts: GitWatchOptions,
+    highWaterMark: { seq: number },
+    log: (m: string) => void,
+): RealtimeHandle | null {
+    // Feature-detect native WebSocket (Node 21.3+)
+    const WS = (globalThis as Record<string, unknown>).WebSocket as
+        (new (url: string) => WebSocket) | undefined;
+    if (!WS) return null;
+
+    // Rebind so TypeScript keeps it non-nullable inside nested closures
+    const WSClass = WS;
+
+    const project = cfg.url.replace('https://', '').split('.')[0];
+    const wsUrl = `wss://${project}.supabase.co/realtime/v1/websocket?apikey=${cfg.key}&vsn=1.0.0`;
+
+    let ws: WebSocket | null = null;
+    let stopped = false;
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let backoffMs = 1000;
+    let refCounter = 1;
+
+    function connect(): void {
+        if (stopped) return;
+        ws = new WSClass(wsUrl);
+
+        ws.onopen = () => {
+            backoffMs = 1000;
+            log('realtime: WebSocket active');
+
+            // Join the postgres_changes channel
+            ws!.send(JSON.stringify({
+                topic: 'realtime:public:spidersan_git_events',
+                event: 'phx_join',
+                payload: {
+                    config: {
+                        broadcast: { ack: false },
+                        presence: { key: '' },
+                        postgres_changes: [
+                            { event: 'INSERT', schema: 'public', table: 'spidersan_git_events' },
+                        ],
+                    },
+                    access_token: cfg.jwt ?? cfg.key,
+                },
+                ref: String(refCounter++),
+            }));
+
+            // Heartbeat every 25s
+            heartbeatTimer = setInterval(() => {
+                if (ws?.readyState === 1 /* OPEN */) {
+                    ws.send(JSON.stringify({
+                        topic: 'phoenix',
+                        event: 'heartbeat',
+                        payload: {},
+                        ref: String(refCounter++),
+                    }));
+                }
+            }, 25_000);
+        };
+
+        ws.onmessage = (ev) => {
+            let msg: Record<string, unknown>;
+            try { msg = JSON.parse(ev.data as string); } catch { return; }
+
+            // Supabase sends postgres_changes events
+            if (msg.event !== 'postgres_changes') return;
+            const data = (msg.payload as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+            if (!data || data.type !== 'INSERT') return;
+
+            const record = data.record as GitEvent | undefined;
+            if (!record || typeof record.seq !== 'number') return;
+
+            // Dedup with shared high-water mark
+            if (record.seq <= highWaterMark.seq) return;
+            highWaterMark.seq = record.seq;
+            writeCursor(record.seq);
+
+            dispatchEvent(record, repoMap, opts).catch(() => { /* non-fatal */ });
+        };
+
+        ws.onerror = () => { /* onclose will handle reconnect */ };
+
+        ws.onclose = () => {
+            if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+            if (stopped) return;
+            log(`realtime: disconnected — reconnecting in ${backoffMs / 1000}s`);
+            reconnectTimer = setTimeout(() => {
+                // Catch up on events missed during disconnect, then reconnect
+                getConfig() && catchUp(cfg, repoMap, opts).catch(() => {}).finally(connect);
+            }, backoffMs);
+            backoffMs = Math.min(backoffMs * 2, 30_000);
+        };
+    }
+
+    connect();
+
+    return {
+        stop: () => {
+            stopped = true;
+            if (heartbeatTimer) clearInterval(heartbeatTimer);
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            ws?.close();
+        },
+    };
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Start the git-events polling daemon.
+ * Start the git-events daemon in hybrid mode:
+ *  - Supabase Realtime WebSocket for < 1s delivery (when available)
+ *  - 5-min safety-sweep poll to catch events missed during disconnects
  * Returns a handle with a stop() method.
- *
- * P1: polling-only. Realtime subscription is a P2 enhancement (requires
- * adding @supabase/supabase-js or a native WebSocket implementation).
  */
 export async function startGitWatch(opts: GitWatchOptions = {}): Promise<GitWatchHandle> {
     const log = opts.logger ?? (opts.quiet ? () => {} : (m: string) => console.log(`[git-watch] ${m}`));
+    // Safety-sweep interval: 5 min when realtime is active, otherwise use configured interval
     const pollMs = opts.pollIntervalMs ?? 60_000;
 
     const cfg = getConfig();
@@ -721,19 +842,33 @@ export async function startGitWatch(opts: GitWatchOptions = {}): Promise<GitWatc
     const repoMap = buildRepoMap(opts.repoPaths ?? []);
     log(`Watching ${repoMap.size} repo(s): ${[...repoMap.keys()].join(', ')}`);
 
+    // Shared high-water mark (monotonic seq dedup between realtime + poll paths)
+    const highWaterMark = { seq: readCursor() };
+
     // Catch-up on startup
     await catchUp(cfg, repoMap, opts);
     await consumePendingTreePairs(log);
 
-    // Poll periodically
+    // Start Realtime WebSocket (unless explicitly disabled)
+    let realtimeHandle: RealtimeHandle | null = null;
+    if (!opts.disableRealtime) {
+        realtimeHandle = startRealtimeSubscription(cfg, repoMap, opts, highWaterMark, log);
+        if (!realtimeHandle) {
+            log('realtime: WebSocket unavailable — polling only');
+        }
+    }
+
+    // Safety-sweep poll (5 min when realtime active, else use configured interval)
+    const sweepMs = realtimeHandle ? Math.max(pollMs, 5 * 60_000) : pollMs;
     const pollTimer = setInterval(async () => {
         await catchUp(cfg, repoMap, opts);
         await consumePendingTreePairs(log);
-    }, pollMs);
+    }, sweepMs);
 
     return {
         stop: () => {
             clearInterval(pollTimer);
+            realtimeHandle?.stop();
         },
     };
 }

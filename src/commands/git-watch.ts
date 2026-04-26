@@ -29,6 +29,7 @@ export const gitWatchCommand = new Command('git-watch')
     .option('--interval <ms>', 'Polling interval in ms for catch-up (default: 60000)', '60000')
     .option('--repos <paths>', 'Colon-separated local repo paths to watch (default: auto-detect from ~/Dev)')
     .option('--json', 'Machine-readable log output')
+    .option('--no-realtime', 'Disable WebSocket subscription (polling only)')
     .option('--quiet', 'Suppress output')
     .action(async (options) => {
         const pollIntervalMs = parseInt(options.interval, 10);
@@ -54,6 +55,7 @@ export const gitWatchCommand = new Command('git-watch')
                 repoPaths,
                 logger,
                 quiet: options.quiet,
+                disableRealtime: options.realtime === false,
             });
 
             if (!options.quiet) {
