@@ -268,6 +268,20 @@ async function handlePush(event: GitEvent, localPaths: string[], log: (m: string
 
     log(`⚠  git push: ${event.repo} ${branch} by ${who} (${shortSha}) — run \`spidersan pulse\` to check conflicts`);
 
+    // Notify fleet when main is updated — all machines see this in hive status / pulse
+    const isDefaultBranch = branch === 'main' || branch === 'master';
+    if (isDefaultBranch) {
+        const commitCount = (event as any).commits?.length ?? 1;
+        const summary = `${commitCount} commit${commitCount !== 1 ? 's' : ''} pushed to ${event.repo}/${branch} by ${who} (${shortSha})`;
+        execFile('envoak', [
+            'hive', 'signal',
+            '--status', 'idle',
+            '--task', `main updated: ${event.repo}`,
+            '--summary', summary,
+        ], { timeout: 10000 }, () => { /* best-effort, non-blocking */ });
+        log(`📡 hive signal emitted: ${summary}`);
+    }
+
     const entry = {
         type: 'git_push',
         repo: event.repo,
