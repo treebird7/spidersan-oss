@@ -345,6 +345,42 @@ async function handlePR(event: GitEvent, _localPaths: string[], log: (m: string)
     const who = event.sender_login ?? 'unknown';
     log(`ℹ  PR ${action}: ${event.repo} ${branch} by ${who}`);
     appendLog(ACTIVITY_LOG, { type: 'pull_request', action, repo: event.repo, branch, sender: who, received_at: event.received_at, ts: new Date().toISOString(), source: 'git-watch' });
+
+    // Phase C2: AI merge-readiness advice
+    const payload: EventPayload = {
+        type: 'pull_request',
+        repo: event.repo,
+        branch,
+        metadata: { action, sender: who },
+    };
+    try {
+        const advice = await handleEvent(payload);
+        if (advice.tier >= 2) {
+            logActivity({
+                repo: event.repo,
+                branch,
+                agent: who !== 'unknown' ? who : undefined,
+                event: 'conflict_detected',
+                details: {
+                    source: 'git-watch-ai',
+                    trigger: 'pull_request',
+                    pr_action: action,
+                    tier: advice.tier,
+                    action: advice.action,
+                    message: advice.message,
+                    commands: advice.commands,
+                },
+            });
+            log(`🕷  AI [T${advice.tier}/${advice.action}] PR ${event.repo}/${branch}: ${advice.message.slice(0, 120)}`);
+            execFile('envoak', [
+                'hive', 'signal',
+                '--status', 'needs-context',
+                '--task', `TIER ${advice.tier} PR conflict: ${event.repo}/${branch} — ${advice.message.slice(0, 120)}`,
+            ], { timeout: 10000 }, () => { /* ignore result */ });
+        }
+    } catch {
+        // AI layer failure is non-fatal
+    }
 }
 
 async function handleCreate(event: GitEvent, _localPaths: string[], log: (m: string) => void): Promise<void> {
