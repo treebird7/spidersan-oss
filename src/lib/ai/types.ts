@@ -158,7 +158,7 @@ export interface AIConfig {
 }
 
 /** Canonical hosted API base URL — shared between types, setup probe, and llm-client. */
-export const HOSTED_API_BASE_URL = 'https://spidersan-api-proxy.spidersan.workers.dev/v1';
+export const HOSTED_API_BASE_URL = 'https://api.spidersan.net/v1';
 
 export const DEFAULT_LLM_CONFIGS: Record<LLMProvider, LLMConfig> = {
   lmstudio: {

@@ -2,12 +2,12 @@
  * Spidersan AI Core — LLM Client
  *
  * Unified interface for LLM providers with automatic fallback chain:
- * LM Studio (Gemma 4) → Ollama → Hosted API (api.spidersan.dev) → GitHub Copilot
+ * LM Studio (Gemma 4) → Ollama → Hosted API (api.spidersan.net) → GitHub Copilot
  *
  * Tier routing (auto, no explicit provider):
  *   Tier 1: localhost:1234 / :8082 (lmstudio)
  *   Tier 2: localhost:11434 (ollama)
- *   Tier 3: api.spidersan.dev (hosted) — requires API key
+ *   Tier 3: api.spidersan.net (hosted) — requires API key
  *   Remote: copilot — only with allowRemoteFallback or explicit config
  */
 
@@ -158,7 +158,7 @@ async function resolveHostedApiKey(): Promise<string | undefined> {
  * Priority order (auto-routing when no explicit provider set):
  *   1. lmstudio (local)
  *   2. ollama (local)
- *   3. hosted (api.spidersan.dev) — only if API key available
+ *   3. hosted (api.spidersan.net) — only if API key available
  *   4. copilot — only if allowRemoteFallback or explicitly configured
  */
 export async function chat(
