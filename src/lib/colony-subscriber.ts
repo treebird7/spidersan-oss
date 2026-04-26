@@ -288,13 +288,14 @@ export async function syncFromColony(): Promise<SyncResult> {
         // ── 4. Detect conflicts in the updated registry ───────────────────────
         const postSweepBranches = await storage.list();
         const activeBranches = postSweepBranches.filter(b => b.status === 'active');
+        const activeBranchesFilesSets = activeBranches.map(b => new Set(b.files));
         const conflicts: ConflictReport[] = [];
 
         for (let i = 0; i < activeBranches.length; i++) {
+            const aFiles = activeBranchesFilesSets[i];
+            const a = activeBranches[i];
             for (let j = i + 1; j < activeBranches.length; j++) {
-                const a = activeBranches[i];
                 const b = activeBranches[j];
-                const aFiles = new Set(a.files);
                 const overlapping = b.files.filter(f => aFiles.has(f));
                 if (overlapping.length > 0) {
                     conflicts.push({
