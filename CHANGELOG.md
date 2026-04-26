@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Phase C — AI routing in `git-watch`**: `handlePush()` now routes real push events through the full AI stack (`handleEvent()` → deterministic conflict check → optional LLM escalation). TIER 2+ events write to `activity.jsonl` via `logActivity()` and emit a hive signal. `enrichFilesFromGit()` helper extracts changed files via `git diff --name-only` (guards NULL_SHA for new-branch pushes).
+- **Phase C2 — PR handler AI routing**: `handlePR()` routes `pull_request` events through the same TIER 2+ pipeline (no file enrichment — PRs carry no SHAs).
+- **Phase C2 — branch stub registration on create**: `handleCreate()` calls `storage.register()` with a stub entry (`files=[]`, `status=active`) when a new remote branch is detected — gives conflict detection immediate branch awareness before any files are pushed. Idempotent (skips if already registered).
+- **Phase C2 — conflict notification on delete**: `handleDelete()` checks if the deleted branch had active file registrations before archiving. If so, emits a `conflict_detected` activity event and a hive `awaiting-review` signal — alerts the fleet that sibling branches may still share those files.
+
 ## [0.8.0] — 2026-04-24
 
 ### Added

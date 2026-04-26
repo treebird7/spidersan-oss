@@ -106,7 +106,7 @@ spidersan merge-order
 | `spidersan log` | Show branch operation history (local activity log) |
 | `spidersan daily` | Show branch-relevant entries from daily collab logs |
 | `spidersan rebase-helper` | Detect and guide through local git rebase states |
-| `spidersan git-watch` | Subscribe to GitHub webhook events — cross-machine push/delete notifications |
+| `spidersan git-watch` | Subscribe to GitHub webhook events — cross-machine push/PR/create/delete with AI conflict routing |
 
 ### 🧠 AI Commands (Gemma 4 / LM Studio)
 
