@@ -389,6 +389,32 @@ async function handleCreate(event: GitEvent, _localPaths: string[], log: (m: str
     const who = event.sender_login ?? 'unknown';
     log(`ℹ  branch created: ${event.repo}/${branch} by ${who}`);
     appendLog(ACTIVITY_LOG, { type: 'branch_created', repo: event.repo, branch, sender: who, received_at: event.received_at, ts: new Date().toISOString(), source: 'git-watch' });
+
+    // Phase C2: register branch stub so AI conflict detection knows it exists
+    // before any files are pushed. Files start empty; enriched on first push.
+    try {
+        const storage = await getStorage();
+        const existing = await storage.get(branch);
+        if (!existing) {
+            await storage.register({
+                name: branch,
+                files: [],
+                status: 'active',
+                agent: who !== 'unknown' ? who : undefined,
+                description: `auto-registered by git-watch on remote create (${event.repo})`,
+            });
+            log(`   registered branch stub: ${branch}`);
+            logActivity({
+                repo: event.repo,
+                branch,
+                agent: who !== 'unknown' ? who : undefined,
+                event: 'register',
+                details: { source: 'git-watch-auto', trigger: 'remote_branch_create' },
+            });
+        }
+    } catch {
+        // Storage write is best-effort — log failure is non-fatal
+    }
 }
 
 async function handleDelete(event: GitEvent, localPaths: string[], log: (m: string) => void): Promise<void> {
