@@ -8,10 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Phase C — AI routing in `git-watch`**: `handlePush()` now routes real push events through the full AI stack (`handleEvent()` → deterministic conflict check → optional LLM escalation). TIER 2+ events write to `activity.jsonl` via `logActivity()` and emit a hive signal. `enrichFilesFromGit()` helper extracts changed files via `git diff --name-only` (guards NULL_SHA for new-branch pushes).
-- **Phase C2 — PR handler AI routing**: `handlePR()` routes `pull_request` events through the same TIER 2+ pipeline (no file enrichment — PRs carry no SHAs).
-- **Phase C2 — branch stub registration on create**: `handleCreate()` calls `storage.register()` with a stub entry (`files=[]`, `status=active`) when a new remote branch is detected — gives conflict detection immediate branch awareness before any files are pushed. Idempotent (skips if already registered).
-- **Phase C2 — conflict notification on delete**: `handleDelete()` checks if the deleted branch had active file registrations before archiving. If so, emits a `conflict_detected` activity event and a hive `awaiting-review` signal — alerts the fleet that sibling branches may still share those files.
+- **`detectTreePairs`** — `git-watch` daemon now detects newly added gold pairs in `sql-tree/pairs/` and `ts-tree/pairs/` on every push to `treebird7/treebird`. Emits a `tree_pairs_ready` event to `~/.spidersan/git-events-pending.jsonl` with the tree name, count, and validate cue (`mycsan /sql-review validate` or `ts-review validate`).
+- **GITHUB_TOKEN support in `detectTreePairs`** — uses `process.env.GITHUB_TOKEN` to authenticate the GitHub compare API, required for private repos. Companion fix in `launchd/git-watch-runner.sh` bakes the token directly into the `bash -c` string so it survives envoak's process boundary.
+
+### Fixed
+- **launchd GITHUB_TOKEN propagation** (`launchd/git-watch-runner.sh`): LaunchAgent child processes do not inherit parent shell env. Changed runner to expand `GITHUB_TOKEN` at script-eval time and embed it inside the `envoak vault inject … bash -c '...'` string. Prevents silent no-op on private-repo compare API calls.
 
 ## [0.8.0] — 2026-04-24
 

@@ -319,7 +319,7 @@ tail -f /tmp/spidersan-git-watch.log
 
 | Event | Action |
 |-------|--------|
-| `push` | Logs to `activity.jsonl`, warns to run `spidersan pulse` |
+| `push` | Logs to `activity.jsonl`, warns to run `spidersan pulse`. Detects new gold pairs in `sql-tree/pairs/` and `ts-tree/pairs/` — emits `🌱 tree_pairs_ready` cue to `~/.spidersan/git-events-pending.jsonl` |
 | `delete` | Marks branch `abandoned` in registry, archives to `~/.spidersan/archive.jsonl` |
 | `pull_request` / `create` | Logged only |
 
