@@ -21,7 +21,7 @@
 
 import { execFileSync, execFile } from 'child_process';
 import { promisify } from 'util';
-import { existsSync, readFileSync, writeFileSync, appendFileSync, readdirSync, statSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, appendFileSync, readdirSync, statSync, renameSync } from 'fs';
 import { join, resolve } from 'path';
 import { homedir } from 'os';
 import { getStorage } from '../storage/index.js';
@@ -67,6 +67,8 @@ const SPIDERSAN_DIR     = join(homedir(), '.spidersan');
 const CURSOR_FILE       = join(SPIDERSAN_DIR, 'git-watch-cursor.json');
 const ACTIVITY_LOG      = join(SPIDERSAN_DIR, 'activity.jsonl');
 const PENDING_LOG       = join(SPIDERSAN_DIR, 'git-events-pending.jsonl');
+const PENDING_CONSUMED_LOG = join(SPIDERSAN_DIR, 'git-events-consumed.jsonl');
+const PENDING_TEMP      = join(SPIDERSAN_DIR, 'git-events-pending.jsonl.tmp');
 const ARCHIVE_LOG       = join(SPIDERSAN_DIR, 'archive.jsonl');
 
 // ─── Cursor persistence ───────────────────────────────────────────────────────
@@ -242,7 +244,132 @@ async function detectTreePairs(event: GitEvent, log: (m: string) => void): Promi
     }
 }
 
-// ─── AI file enrichment ───────────────────────────────────────────────────────
+// ─── Pending tree-pairs consumer ──────────────────────────────────────────────
+
+/** Deterministic ID for a tree_pairs_ready entry — used for idempotent consumption. */
+function makeEntryId(entry: Record<string, unknown>): string {
+    const tree  = typeof entry.tree === 'string'     ? entry.tree     : 'unknown';
+    const sha   = typeof entry.after_sha === 'string' ? entry.after_sha : 'unknown';
+    const repo  = typeof entry.repo === 'string'     ? entry.repo     : 'unknown';
+    const files = Array.isArray(entry.files)          ? (entry.files as string[]).join('|') : '';
+    return `${repo}:${sha}:${tree}:${files}`;
+}
+
+/** Read already-consumed entry IDs from the consumed log. */
+function readConsumedIds(): Set<string> {
+    try {
+        if (!existsSync(PENDING_CONSUMED_LOG)) return new Set();
+        const lines = readFileSync(PENDING_CONSUMED_LOG, 'utf8').split('\n').filter(Boolean);
+        const ids = new Set<string>();
+        for (const line of lines) {
+            try {
+                const entry = JSON.parse(line) as Record<string, unknown>;
+                if (typeof entry._id === 'string') ids.add(entry._id);
+            } catch { /* skip malformed */ }
+        }
+        return ids;
+    } catch {
+        return new Set();
+    }
+}
+
+let isConsuming = false; // single-flight guard
+
+/**
+ * Read pending.jsonl, emit a hive handoff signal for each unconsumed
+ * tree_pairs_ready entry, then atomically rewrite the file without them.
+ *
+ * Only successfully dispatched entries are removed — on failure the entry
+ * stays in pending for the next poll cycle. Uses a deterministic ID so
+ * restarts are idempotent.
+ */
+async function consumePendingTreePairs(log: (m: string) => void): Promise<void> {
+    if (isConsuming) return;
+    isConsuming = true;
+    try {
+        if (!existsSync(PENDING_LOG)) return;
+
+        let rawLines: string[];
+        try {
+            rawLines = readFileSync(PENDING_LOG, 'utf8').split('\n').filter(Boolean);
+        } catch {
+            return;
+        }
+
+        const consumedIds = readConsumedIds();
+        const remaining: string[]   = []; // non-tree_pairs_ready lines → kept
+        const toConsume: Array<{ entry: Record<string, unknown>; id: string; raw: string }> = [];
+
+        for (const line of rawLines) {
+            try {
+                const entry = JSON.parse(line) as Record<string, unknown>;
+                if (entry.type === 'tree_pairs_ready') {
+                    const id = makeEntryId(entry);
+                    if (!consumedIds.has(id)) {
+                        toConsume.push({ entry, id, raw: line });
+                    }
+                    // Already-consumed entries are dropped from pending silently
+                } else {
+                    remaining.push(line);
+                }
+            } catch {
+                remaining.push(line); // preserve malformed lines verbatim
+            }
+        }
+
+        if (toConsume.length === 0) return;
+
+        log(`🔁 consuming ${toConsume.length} pending tree_pairs_ready event(s)`);
+
+        const succeeded: Array<{ entry: Record<string, unknown>; id: string }> = [];
+        const failed:    string[] = []; // raw lines to keep in pending
+
+        for (const { entry, id, raw } of toConsume) {
+            const task  = typeof entry.action_hint === 'string' ? entry.action_hint : `review ${entry.tree}/pairs/`;
+            const files = Array.isArray(entry.files) ? (entry.files as string[]) : [];
+            const summary = `spidersan auto-dispatch: ${entry.tree} pair(s) ready — ${entry.repo}@${entry.after_sha} — ${task}`;
+
+            const args = [
+                'hive', 'signal',
+                '--status',  'awaiting-review',
+                '--task',    task,
+                '--handoff', 'review',
+                '--summary', summary,
+            ];
+            if (files.length > 0) args.push('--files', files.join(','));
+
+            log(`📡 hive handoff → ${task} (${files.length} file(s))`);
+            try {
+                await execFileAsync('envoak', args, { timeout: 15000 });
+                succeeded.push({ entry, id });
+                log(`✅ dispatched ${id}`);
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                log(`⚠  hive signal failed for ${id}: ${msg} — retaining in pending`);
+                failed.push(raw);
+            }
+        }
+
+        if (succeeded.length === 0) return;
+
+        // Record successful dispatches in consumed log
+        for (const { entry, id } of succeeded) {
+            appendLog(PENDING_CONSUMED_LOG, { ...entry, _id: id, consumed_at: new Date().toISOString() });
+        }
+
+        // Atomic rewrite: remaining non-consumed lines + any failed tree_pairs lines
+        const finalLines = [...remaining, ...failed];
+        try {
+            writeFileSync(PENDING_TEMP, finalLines.length > 0 ? finalLines.join('\n') + '\n' : '');
+            renameSync(PENDING_TEMP, PENDING_LOG);
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            log(`⚠  failed to rewrite pending log: ${msg}`);
+        }
+    } finally {
+        isConsuming = false;
+    }
+}
 
 const NULL_SHA = '0000000000000000000000000000000000000000';
 
@@ -596,10 +723,12 @@ export async function startGitWatch(opts: GitWatchOptions = {}): Promise<GitWatc
 
     // Catch-up on startup
     await catchUp(cfg, repoMap, opts);
+    await consumePendingTreePairs(log);
 
     // Poll periodically
     const pollTimer = setInterval(async () => {
         await catchUp(cfg, repoMap, opts);
+        await consumePendingTreePairs(log);
     }, pollMs);
 
     return {
@@ -618,5 +747,7 @@ export async function catchUpOnce(opts: GitWatchOptions = {}): Promise<void> {
     if (!cfg) throw new Error('git-watch: SUPABASE_URL and (SUPABASE_KEY or COLONY_SESSION_JWT) are required');
 
     const repoMap = buildRepoMap(opts.repoPaths ?? []);
+    const log = opts.logger ?? (opts.quiet ? () => {} : (m: string) => console.log(`[git-watch] ${m}`));
     await catchUp(cfg, repoMap, opts);
+    await consumePendingTreePairs(log);
 }
