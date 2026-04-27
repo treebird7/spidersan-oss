@@ -326,24 +326,39 @@ torrentCommand
             return;
         }
 
-        // Build conflict graph
+        // Build conflict graph using O(N * M) inverted index
         const conflictGraph = new Map<string, string[]>();
 
-        // Performance Optimization: Convert branch files to Sets once
-        const branchFilesSets = new Map<string, Set<string>>();
+        // Map files to the branches that modify them
+        const fileToBranches = new Map<string, string[]>();
         for (const branch of taskBranches) {
-            branchFilesSets.set(branch.name, new Set(branch.files));
+            for (const file of branch.files) {
+                let list = fileToBranches.get(file);
+                if (!list) {
+                    list = [];
+                    fileToBranches.set(file, list);
+                }
+                list.push(branch.name);
+            }
         }
 
+        // Build the graph by finding branches that share files
         for (const branch of taskBranches) {
-            const conflicts: string[] = [];
-            const filesSet = branchFilesSets.get(branch.name)!;
-            for (const other of taskBranches) {
-                if (branch.name === other.name) continue;
-                const overlap = other.files.some(f => filesSet.has(f));
-                if (overlap) conflicts.push(other.name);
+            const conflictSet = new Set<string>();
+
+            for (const file of branch.files) {
+                const list = fileToBranches.get(file);
+                if (list) {
+                    for (let i = 0; i < list.length; i++) {
+                        const otherBranch = list[i];
+                        if (otherBranch !== branch.name) {
+                            conflictSet.add(otherBranch);
+                        }
+                    }
+                }
             }
-            conflictGraph.set(branch.name, conflicts);
+
+            conflictGraph.set(branch.name, Array.from(conflictSet));
         }
 
         // Sort: completed first, then by fewest conflicts

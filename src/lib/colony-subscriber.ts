@@ -290,18 +290,61 @@ export async function syncFromColony(): Promise<SyncResult> {
         const activeBranches = postSweepBranches.filter(b => b.status === 'active');
         const conflicts: ConflictReport[] = [];
 
-        for (let i = 0; i < activeBranches.length; i++) {
-            for (let j = i + 1; j < activeBranches.length; j++) {
-                const a = activeBranches[i];
-                const b = activeBranches[j];
-                const aFiles = new Set(a.files);
-                const overlapping = b.files.filter(f => aFiles.has(f));
-                if (overlapping.length > 0) {
+        // ⚡ Bolt: Optimize from O(N^2) to O(N) using an inverted index (file -> branches)
+        const fileToBranches = new Map<string, typeof activeBranches>();
+        for (const branch of activeBranches) {
+            for (const file of branch.files) {
+                let list = fileToBranches.get(file);
+                if (!list) {
+                    list = [];
+                    fileToBranches.set(file, list);
+                }
+                list.push(branch);
+            }
+        }
+
+        const seenConflicts = new Set<string>();
+
+        for (const branch of activeBranches) {
+            // Track overlaps for this branch to avoid duplicates
+            const overlaps = new Map<string, { other: typeof activeBranches[0], files: Set<string> }>();
+
+            for (const file of branch.files) {
+                const list = fileToBranches.get(file);
+                if (list) {
+                    for (const other of list) {
+                        if (other.name !== branch.name) {
+                            // Ensure deterministic pair ordering: a.name < b.name
+                            const [aName, bName] = branch.name < other.name ? [branch.name, other.name] : [other.name, branch.name];
+                            const pairKey = `${aName}::${bName}`;
+
+                            if (!seenConflicts.has(pairKey)) {
+                                let overlapData = overlaps.get(other.name);
+                                if (!overlapData) {
+                                    overlapData = { other, files: new Set<string>() };
+                                    overlaps.set(other.name, overlapData);
+                                }
+                                overlapData.files.add(file);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Convert map to ConflictReports
+            for (const [otherName, data] of overlaps) {
+                const [aName, bName] = branch.name < otherName ? [branch.name, otherName] : [otherName, branch.name];
+                const pairKey = `${aName}::${bName}`;
+
+                if (!seenConflicts.has(pairKey)) {
+                    seenConflicts.add(pairKey);
+
+                    // The 'a' branch is the current branch to maintain original object references
                     conflicts.push({
-                        branch: a.name,
-                        conflictsWith: b.name,
-                        files: overlapping,
-                        agent: a.agent,
+                        branch: branch.name,
+                        conflictsWith: otherName,
+                        files: Array.from(data.files),
+                        agent: branch.agent,
                     });
                 }
             }
