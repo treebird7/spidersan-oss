@@ -7,7 +7,7 @@ describe('Local Storage Performance', () => {
     let testDir: string;
 
     beforeEach(() => {
-        testDir = path.join(process.cwd(), '.test-storage-' + Date.now());
+        testDir = fs.mkdtempSync(path.join(process.cwd(), '.test-storage-'));
     });
 
     afterEach(() => {

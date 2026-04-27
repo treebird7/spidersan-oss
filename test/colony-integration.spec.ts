@@ -21,7 +21,7 @@ import {
     vi,
     type MockInstance,
 } from 'vitest';
-import { mkdirSync, rmSync, existsSync } from 'fs';
+import { mkdtempSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomBytes } from 'crypto';
@@ -29,10 +29,7 @@ import { randomBytes } from 'crypto';
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 
 function createTempDir(): string {
-    const id = randomBytes(4).toString('hex');
-    const dir = join(tmpdir(), `spidersan-colony-test-${Date.now()}-${id}`);
-    mkdirSync(dir, { recursive: true });
-    return dir;
+    return mkdtempSync(join(tmpdir(), 'spidersan-colony-test-'));
 }
 
 function cleanupTempDir(dir: string): void {
