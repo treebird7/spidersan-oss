@@ -6,6 +6,7 @@
  */
 
 import { execFileSync } from 'child_process';
+import { validateBranchName, validatePRNumber } from './security.js';
 
 export interface GitHubRepoConfig {
     owner: string;
@@ -113,9 +114,10 @@ export async function listBranches(config: GitHubRepoConfig): Promise<GitHubBran
  */
 export async function getCommitInfo(config: GitHubRepoConfig, branch: string): Promise<GitHubCommitInfo | null> {
     try {
+        const safeBranch = validateBranchName(branch);
         const output = execFileSync('gh', [
             'api',
-            `repos/${config.owner}/${config.repo}/commits/${branch}`,
+            `repos/${config.owner}/${config.repo}/commits/${safeBranch}`,
             '--jq',
             '{sha: .sha, date: .commit.author.date, author: .commit.author.name, message: .commit.message}',
         ], { encoding: 'utf-8' });
@@ -165,10 +167,11 @@ export async function listPullRequests(config: GitHubRepoConfig): Promise<GitHub
  */
 export async function getCIStatus(config: GitHubRepoConfig, branch: string): Promise<GitHubCIStatus | null> {
     try {
+        const safeBranch = validateBranchName(branch);
         const output = execFileSync('gh', [
             'run', 'list',
             '--repo', `${config.owner}/${config.repo}`,
-            '--branch', branch,
+            '--branch', safeBranch,
             '--limit', '1',
             '--json', 'status,conclusion,url,databaseId,createdAt',
         ], { encoding: 'utf-8' });
@@ -196,9 +199,11 @@ export async function getCIStatus(config: GitHubRepoConfig, branch: string): Pro
  */
 export async function getAheadBehind(config: GitHubRepoConfig, branch: string, baseBranch = 'main'): Promise<AheadBehind> {
     try {
+        const safeBranch = validateBranchName(branch);
+        const safeBaseBranch = validateBranchName(baseBranch);
         const output = execFileSync('gh', [
             'api',
-            `repos/${config.owner}/${config.repo}/compare/${baseBranch}...${branch}`,
+            `repos/${config.owner}/${config.repo}/compare/${safeBaseBranch}...${safeBranch}`,
             '--jq',
             '{ahead: .ahead_by, behind: .behind_by}',
         ], { encoding: 'utf-8' });
@@ -218,20 +223,19 @@ export async function getAheadBehind(config: GitHubRepoConfig, branch: string, b
  * Requires `gh` CLI to be authenticated and run from inside the repository directory.
  */
 export async function getPRDetails(prNumber: number): Promise<GitHubPRDetails> {
-    if (!Number.isInteger(prNumber) || prNumber <= 0) {
-        throw new Error(`Invalid PR number: ${prNumber}`);
-    }
+    const safePrNumber = validatePRNumber(prNumber);
 
     // Get PR metadata (head branch, title, number)
     let prOutput: string;
     try {
         prOutput = execFileSync('gh', [
-            'pr', 'view', String(prNumber),
+            'pr', 'view',
             '--json', 'headRefName,title,number',
+            '--', String(safePrNumber)
         ], { encoding: 'utf-8' });
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`Failed to fetch PR #${prNumber} metadata: ${msg}`);
+        throw new Error(`Failed to fetch PR #${safePrNumber} metadata: ${msg}`);
     }
 
     const prData = JSON.parse(prOutput) as { headRefName: string; title: string; number: number };
@@ -240,8 +244,9 @@ export async function getPRDetails(prNumber: number): Promise<GitHubPRDetails> {
     let diffOutput: string;
     try {
         diffOutput = execFileSync('gh', [
-            'pr', 'diff', String(prNumber),
+            'pr', 'diff',
             '--name-only',
+            '--', String(safePrNumber)
         ], { encoding: 'utf-8' });
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
