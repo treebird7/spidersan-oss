@@ -40,12 +40,15 @@ function checkDeterministicConflicts(
   // Find overlapping files with registered branches
   const overlaps: Array<{ branch: string; file: string; tier: 1 | 2 | 3 }> = [];
 
+  // ⚡ Bolt: Convert event.files to a Set for O(1) lookups inside the loop instead of O(N*M) array filtering.
+  const eventFilesSet = new Set(event.files);
+
   for (const branch of context.registry.branches) {
     if (branch.name === event.branch) continue;
     if (branch.status !== 'active') continue;
 
-    for (const file of event.files) {
-      if (branch.files.includes(file)) {
+    for (const file of branch.files) {
+      if (eventFilesSet.has(file)) {
         overlaps.push({ branch: branch.name, file, tier: classifyTier(file) });
       }
     }
