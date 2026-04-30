@@ -21,7 +21,7 @@ const MIGRATIONS_DIR = join(process.cwd(), 'migrations');
 function runSpidersan(args, silent = false) {
     try {
         const argList = args.split(/\s+/).filter(Boolean);
-        const result = execFileSync('node', ['dist/bin/spidersan.js', ...argList], {
+        const result = execFileSync(process.execPath, ['dist/bin/spidersan.js', ...argList], {
             encoding: 'utf-8',
             cwd: process.cwd(),
         });
