@@ -804,7 +804,7 @@ function startRealtimeSubscription(
             log(`realtime: disconnected — reconnecting in ${backoffMs / 1000}s`);
             reconnectTimer = setTimeout(() => {
                 // Catch up on events missed during disconnect, then reconnect
-                getConfig() && catchUp(cfg, repoMap, opts).catch(() => {}).finally(connect);
+                if (getConfig()) catchUp(cfg, repoMap, opts).catch(() => {}).finally(connect);
             }, backoffMs);
             backoffMs = Math.min(backoffMs * 2, 30_000);
         };
