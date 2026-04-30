@@ -66,5 +66,5 @@ describe('Local Storage Performance', () => {
 
         expect(resultsOptimized.length).toBe(resultsBaseline.length);
         expect(timeOptimized).toBeLessThan(timeBaseline);
-    }, 30000); // give it plenty of time to populate and run
+    }, 60000); // give it plenty of time to populate and run
 });

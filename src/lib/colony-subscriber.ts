@@ -290,12 +290,25 @@ export async function syncFromColony(): Promise<SyncResult> {
         const activeBranches = postSweepBranches.filter(b => b.status === 'active');
         const conflicts: ConflictReport[] = [];
 
+        // Performance Optimization: Pre-compute sets to avoid O(N^2) memory allocations
+        const branchFileSets = activeBranches.map(b => new Set(b.files));
+
         for (let i = 0; i < activeBranches.length; i++) {
+            const a = activeBranches[i];
+            const aFiles = branchFileSets[i];
+
             for (let j = i + 1; j < activeBranches.length; j++) {
-                const a = activeBranches[i];
                 const b = activeBranches[j];
-                const aFiles = new Set(a.files);
-                const overlapping = b.files.filter(f => aFiles.has(f));
+
+                // Prioritize standard loop over .filter for short-circuit and less allocations
+                const overlapping: string[] = [];
+                for (let k = 0; k < b.files.length; k++) {
+                    const f = b.files[k];
+                    if (aFiles.has(f)) {
+                        overlapping.push(f);
+                    }
+                }
+
                 if (overlapping.length > 0) {
                     conflicts.push({
                         branch: a.name,
