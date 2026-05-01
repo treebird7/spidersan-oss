@@ -380,6 +380,82 @@ spidersan rescue --abandon path/to/file.ts
 
 ---
 
+## 🪝 Claude Code Hook Recipes
+
+Wire Spidersan into Claude Code's hook system so conflict checks, AI advice, and registry syncs happen **automatically** — no agent needs to remember to run them.
+
+### How it works
+
+Claude Code's `~/.claude/settings.json` supports `PreToolUse` hooks that fire before any Bash command and can hard-block execution (returning `continue: false`) or inject context back to the model. Spidersan's `--strict` flag exits with code `1` on TIER 2+ conflicts, making it a natural hard-stop gate.
+
+### The full recipe
+
+Add these hooks to `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command // empty' | grep -qE '\\brm\\b' && jq -n '{\"continue\":false,\"stopReason\":\"🛑 rm blocked — verify paths and request explicit permission.\"}' || echo '{}'"
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'cmd=$(jq -r \".tool_input.command // empty\"); if echo \"$cmd\" | grep -qE \"\\\\bgit\\\\s+push\\\\b\"; then if ! spidersan conflicts --tier 2 --strict 2>/dev/null; then jq -n \"{\\\"continue\\\":false,\\\"stopReason\\\":\\\"🕷️ Spidersan: TIER 2+ conflict detected. Run spidersan conflicts to review before pushing.\\\"}\"; exit 0; fi; advice=$(spidersan advise 2>/dev/null | head -30); [ -n \"$advice\" ] && jq -n --arg a \"$advice\" \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"additionalContext\\\":\\\"🕷️ Spidersan pre-push advice:\\\\n\\($a)\\\"}}\" || echo \"{}\"; elif echo \"$cmd\" | grep -qE \"\\\\bgit\\\\s+(merge|rebase)\\\\b\"; then if ! spidersan conflicts --tier 3 --strict 2>/dev/null; then jq -n \"{\\\"continue\\\":false,\\\"stopReason\\\":\\\"🕷️ Spidersan: TIER 3 critical conflict detected. Run spidersan conflicts --tier 3 before merging.\\\"}\"; exit 0; fi; echo \"{}\"; else echo \"{}\"; fi'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'cmd=$(jq -r \".tool_input.command // empty\"); echo \"$cmd\" | grep -qE \"\\\\bgit\\\\s+push\\\\b\" && spidersan registry-sync --push 2>/dev/null &; echo \"{}\"'",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### What each hook does
+
+| Hook | Trigger | Action |
+|------|---------|--------|
+| `rm` guard | Any `rm` command | **Hard block** — requires explicit permission |
+| Pre-push conflict check | `git push` | Runs `spidersan conflicts --tier 2 --strict` — **hard blocks** if TIER 2+ found |
+| Pre-push AI advice | `git push` (after conflict check passes) | Runs `spidersan advise`, injects recommendations into model context |
+| Pre-merge conflict check | `git merge` / `git rebase` | Runs `spidersan conflicts --tier 3 --strict` — **hard blocks** on critical files |
+| Post-push registry sync | `git push` (success) | Runs `spidersan registry-sync --push` async — keeps fleet registry fresh |
+
+### Conflict tiers
+
+| Tier | Threshold | Example files | Gate used on |
+|------|-----------|---------------|--------------|
+| TIER 1 WARN | Low risk | `.md`, `.css`, `.json` | Not blocked |
+| TIER 2 PAUSE | Medium risk | `package.json`, migrations, types | `git push` |
+| TIER 3 BLOCK | Critical | `.env`, auth files, core lib | `git merge`, `git rebase` |
+
+### Installing
+
+```bash
+# Merge into your global settings (preserves existing config)
+cp ~/.claude/settings.json ~/.claude/settings.json.bak
+# Then add the hooks block above — or use /update-config in Claude Code
+```
+
+The hooks are global (`~/.claude/settings.json`) so they apply across all projects automatically. Every agent on the machine benefits without per-repo setup.
+
+---
+
 ## 📖 Documentation
 
 - [Core Guide](docs/CORE.md) - Public feature set and core workflows
