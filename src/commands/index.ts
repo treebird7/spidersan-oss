@@ -21,6 +21,7 @@ export { registrySyncCommand } from './registry-sync.js';
 export { crossConflictsCommand } from './cross-conflicts.js';
 export { pulseCommand } from './pulse.js';
 export { gitWatchCommand } from './git-watch.js';
+export { fleetStatusCommand } from './fleet-status.js';
 
 export { loadEcosystemCommands, getEcosystemStatus } from './ecosystem-loader.js';
 
