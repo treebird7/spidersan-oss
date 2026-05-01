@@ -86,8 +86,10 @@ function checkDeterministicConflicts(
  * Only escalates to LLM for TIER 2+ or complex scenarios.
  *
  * @param opts.repoRoot - Local repo path for context building. Defaults to process.cwd().
+ * @param opts.localOnly - If true, LLM escalation uses local providers only (never hosted/copilot).
+ *                         Use this for daemon/webhook paths to avoid consuming remote API credits.
  */
-export async function handleEvent(event: EventPayload, opts: { repoRoot?: string } = {}): Promise<Advice> {
+export async function handleEvent(event: EventPayload, opts: { repoRoot?: string; localOnly?: boolean } = {}): Promise<Advice> {
   const context = await buildContext({ includeActivity: true, repoRoot: opts.repoRoot });
 
   // Fast path: deterministic conflict check
@@ -100,11 +102,14 @@ export async function handleEvent(event: EventPayload, opts: { repoRoot?: string
   // Slow path: LLM reasoning for TIER 2+ or ambiguous situations
   if (deterministicAdvice?.escalateToLLM) {
     try {
-      const result = await reason({
-        mode: 'ask',
-        question: `Event: ${event.type} on branch ${event.branch ?? 'unknown'} touching files [${(event.files ?? []).join(', ')}]. ${deterministicAdvice.message}. What should the agents do?`,
-        context,
-      });
+      const result = await reason(
+        {
+          mode: 'ask',
+          question: `Event: ${event.type} on branch ${event.branch ?? 'unknown'} touching files [${(event.files ?? []).join(', ')}]. ${deterministicAdvice.message}. What should the agents do?`,
+          context,
+        },
+        { allowRemoteFallback: opts.localOnly ? false : undefined },
+      );
       return {
         ...deterministicAdvice,
         message: result.advice,

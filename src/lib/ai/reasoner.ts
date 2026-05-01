@@ -212,7 +212,7 @@ function serializeContext(context: SpiderContext, verbose?: boolean): string {
 
 export async function reason(
   request: ReasoningRequest,
-  llmOverrides?: Partial<LLMConfig>,
+  llmOverrides?: Partial<LLMConfig> & { allowRemoteFallback?: boolean },
 ): Promise<ReasoningResult> {
   const systemPrompt = buildSystemPrompt(request.mode);
   const contextText = serializeContext(request.context, request.verbose);

@@ -374,8 +374,11 @@ async function consumePendingTreePairs(log: (m: string) => void): Promise<void> 
 
 const NULL_SHA = '0000000000000000000000000000000000000000';
 
+const SHA_RE = /^[0-9a-f]{7,40}$/i;
+
 async function enrichFilesFromGit(repoPath: string, beforeSha: string | null, afterSha: string | null): Promise<string[]> {
     if (!beforeSha || !afterSha || beforeSha === NULL_SHA) return [];
+    if (!SHA_RE.test(beforeSha) || !SHA_RE.test(afterSha)) return [];
     try {
         const { stdout } = await execFileAsync('git', ['diff', '--name-only', `${beforeSha}...${afterSha}`], {
             cwd: repoPath,
@@ -443,7 +446,7 @@ async function handlePush(event: GitEvent, localPaths: string[], log: (m: string
     };
 
     try {
-        const advice = await handleEvent(payload, { repoRoot: aiRepoPath });
+        const advice = await handleEvent(payload, { repoRoot: aiRepoPath, localOnly: true });
         if (advice.tier >= 2) {
             logActivity({
                 repo: event.repo,
@@ -496,7 +499,7 @@ async function handlePR(event: GitEvent, _localPaths: string[], log: (m: string)
         metadata: { action, sender: who },
     };
     try {
-        const advice = await handleEvent(payload);
+        const advice = await handleEvent(payload, { localOnly: true });
         if (advice.tier >= 2) {
             logActivity({
                 repo: event.repo,
@@ -597,7 +600,7 @@ async function handleDelete(event: GitEvent, localPaths: string[], log: (m: stri
                         '--status', 'awaiting-review',
                         '--task', `deleted branch ${branch} had active conflict registrations (${entry.files.length} files) in ${event.repo}`,
                         '--files', entry.files.slice(0, 5).join(','),
-                    ], () => {});
+                    ], { timeout: 10000 }, () => { /* best-effort */ });
                 }
 
                 // Archive first, then remove from active registry
