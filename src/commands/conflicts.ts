@@ -661,7 +661,7 @@ export const conflictsCommand = new Command('conflicts')
                                 // Security: Use execFileSync with argument array
                                 const safeBranch = validateBranchName(targetBranch);
                                 const tierArg = String(parseInt(options.tier, 10) || 1);
-                                execFileSync('node', [getCLIPath(), 'conflicts', '--branch', safeBranch, '--tier', tierArg], {
+                                execFileSync(process.execPath, [getCLIPath(), 'conflicts', '--branch', safeBranch, '--tier', tierArg], {
                                     encoding: 'utf-8',
                                     stdio: 'inherit'
                                 });
