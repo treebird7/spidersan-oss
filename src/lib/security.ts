@@ -49,6 +49,18 @@ export function validateBranchName(branch: string): string {
 }
 
 /**
+ * Validate PR number
+ * @throws Error if invalid
+ */
+export function validatePRNumber(prNumber: number | string): number {
+    const num = typeof prNumber === 'string' ? parseInt(prNumber, 10) : prNumber;
+    if (!Number.isInteger(num) || num <= 0) {
+        throw new Error(`Invalid PR number: ${prNumber}`);
+    }
+    return num;
+}
+
+/**
  * Validate task ID (for torrent/task commands)
  * @throws Error if invalid
  */
@@ -138,6 +150,7 @@ export const patterns = {
 export const sanitizeAgentId = validateAgentId;
 export const sanitizeBranchName = validateBranchName;
 export const sanitizeFilePath = validateFilePath;
+export const sanitizePRNumber = validatePRNumber;
 
 // Message ID validation (for mycmail commands)
 const VALID_MESSAGE_ID = /^[a-z0-9][a-z0-9_-]{0,64}$/i;
