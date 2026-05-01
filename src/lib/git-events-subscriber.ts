@@ -475,31 +475,9 @@ async function handlePush(event: GitEvent, localPaths: string[], log: (m: string
         // AI layer failure is non-fatal — daemon continues
     }
 
-    // Phase C2: auto-pull on main/master pushes when working tree is clean
-    if (isDefaultBranch) {
-        for (const p of localPaths) {
-            enqueue(p, async () => {
-                try {
-                    // Skip if working tree is dirty
-                    const { stdout: status } = await execFileAsync('git', ['status', '--porcelain'], { cwd: p });
-                    if (status.trim()) {
-                        log(`⏭  auto-pull skipped (dirty tree): ${p}`);
-                        return;
-                    }
-                    // Skip if current branch is not main/master
-                    const { stdout: currentBranch } = await execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: p });
-                    if (currentBranch.trim() !== branch) {
-                        log(`⏭  auto-pull skipped (on branch ${currentBranch.trim()}): ${p}`);
-                        return;
-                    }
-                    await execFileAsync('git', ['fetch', 'origin'], { cwd: p });
-                    const { stdout: merged } = await execFileAsync('git', ['merge', '--ff-only', `origin/${branch}`], { cwd: p });
-                    log(`⬇  auto-pulled ${event.repo}/${branch} → ${p}: ${merged.trim().split('\n')[0]}`);
-                } catch (err: any) {
-                    log(`⚠  auto-pull failed for ${p}: ${err?.message ?? err}`);
-                }
-            });
-        }
+    // Per-path queue: reserved for Phase C2 per-path operations
+    for (const p of localPaths) {
+        enqueue(p, async () => { void p; });
     }
 }
 
