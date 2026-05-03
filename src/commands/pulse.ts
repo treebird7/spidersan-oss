@@ -15,49 +15,8 @@ import { execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import { syncFromColony } from '../lib/colony-subscriber.js';
 import { loadConfig } from '../lib/config.js';
-
-// Critical files — TIER 3 block
-const TIER_3_PATTERNS = [
-    /\.env$/,
-    /secrets?\./i,
-    /credentials/i,
-    /password/i,
-    /api[_-]?key/i,
-    /private[_-]?key/i,
-    /\.pem$/,
-    /auth\.(ts|js)$/,
-    /security\.(ts|js)$/,
-];
-
-// Important files — TIER 2 pause
-const TIER_2_PATTERNS = [
-    /package\.json$/,
-    /package-lock\.json$/,
-    /tsconfig\.json$/,
-    /CLAUDE\.md$/,
-    /\.gitignore$/,
-    /server\.(ts|js)$/,
-    /index\.(ts|js)$/,
-    /config\.(ts|js)$/,
-];
-
-
-const COMPILED_TIER_3 = compilePatterns(TIER_3_PATTERNS);
-const COMPILED_TIER_2 = compilePatterns(TIER_2_PATTERNS);
-
-function classifyTier(file: string, compiledHigh: RegExp[] = [], compiledMedium: RegExp[] = []): 1 | 2 | 3 {
-    const tier3 = [...COMPILED_TIER_3, ...compiledHigh];
-    for (const p of tier3) {
-        if (p.test(file)) return 3;
-    }
-
-    const tier2 = [...COMPILED_TIER_2, ...compiledMedium];
-    for (const p of tier2) {
-        if (p.test(file)) return 2;
-    }
-
-    return 1;
-}
+import { classifyTier } from '../lib/conflict-tier.js';
+import type { ConflictTier } from '../lib/conflict-tier.js';
 
 function getCurrentBranch(): string {
     try {
@@ -133,9 +92,12 @@ export const pulseCommand = new Command('pulse')
             if (overlapping.length === 0) continue;
 
             // Determine max tier for this conflict group
-            let maxTier: 1 | 2 | 3 = 1;
+            let maxTier: ConflictTier = 1;
             for (const file of overlapping) {
-                const tier = classifyTier(file, compiledHigh, compiledMedium);
+                const tier = classifyTier(file, {
+                    extraTier3: compiledHigh,
+                    extraTier2: compiledMedium,
+                });
                 if (tier > maxTier) maxTier = tier;
             }
 

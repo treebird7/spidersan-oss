@@ -1,6 +1,6 @@
 # P1-DEEPENING-2 — Extract `conflict-tier` module
 
-**Status:** specced
+**Status:** done (2026-05-04, codex gpt-5.4/high)
 **Owner:** spidersan-m5
 **Source:** `spidersan-ai/docs/arch/STATE.json` candidate `P1-DEEPENING-2-conflict-tier`; consortium 2026-05-03 (sherlocksan-m2 + yosef sequencing); `spidersan-ai/docs/SECURITY_HARDENING.md` H10
 **Related:** P1-DEEPENING-3-conflict-analyzer (hard-blocks on this); SECURITY-H10 (lands as a side-effect; H10 should run AFTER #2, not parallel — yosef)
@@ -12,8 +12,9 @@
 ## Goal
 
 The TIER 1/2/3 path-pattern lists and their `classifyTier` / `getConflictTier` helpers are
-duplicated across **4 files** today. Codex confirmed; spidersan-m5 verified line-for-line
-on `main` 2026-05-03 (sha `006d51e` baseline, post-H2 push):
+duplicated across **5 files** today (contract originally said 4 — codex caught
+`src/lib/ai/event-handler.ts:14-28` during implementation; the spec grep was incomplete).
+spidersan-m5 verified line-for-line on `main` 2026-05-03 (sha `006d51e` baseline):
 
 | File | Tier patterns at | Tier helper at |
 |---|---|---|
@@ -21,6 +22,7 @@ on `main` 2026-05-03 (sha `006d51e` baseline, post-H2 push):
 | `src/commands/cross-conflicts.ts` | L28, L40 | L55 (`classifyTier`, returns `1\|2\|3`); separate `TIER_LABELS` table at L65 |
 | `src/commands/pulse.ts` | L20, L33 | L48 (`classifyTier` with optional extra-pattern args) |
 | `src/lib/ai/context-builder.ts` | L38, L44 | L50 (`classifyTier`, no extras) |
+| `src/lib/ai/event-handler.ts` | L14, L20 | L26 (`classifyTier`, no extras) — **added during impl, not in original spec** |
 
 All four arrays are byte-identical. Each call site re-compiles patterns and re-invents the
 3-tier label table. SECURITY-H10 wants tier classification to read **symbols, not paths** —

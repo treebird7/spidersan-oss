@@ -11,13 +11,13 @@
       "id": "P1-DEEPENING-2-conflict-tier",
       "title": "DEEPENING #2: extract conflict-tier module",
       "owner": "spidersan-m5",
-      "status": "specced",
+      "status": "done",
       "priority": "P1",
       "contract": "docs/arch/contracts/DEEPENING-2-conflict-tier.md",
       "depends_on": [],
-      "rationale": "TIER 1/2/3 path-pattern lists duplicated byte-for-byte across 4 files (commands/conflicts.ts:28, cross-conflicts.ts:28, pulse.ts:20, lib/ai/context-builder.ts:38). Codex confirmed; spidersan-m5 verified on 2026-05-03.",
-      "cross_cut": "Same work as SECURITY-H10 (spidersan-ai/docs/SECURITY_HARDENING.md). yosef sequencing: H10 lands AFTER #2, not parallel.",
-      "next_action": "Author src/lib/conflict-tier.ts and migrate the 4 call sites. ~+60 / -120 LOC."
+      "rationale": "TIER 1/2/3 path-pattern lists duplicated byte-for-byte across 5 files (originally specced as 4; codex caught lib/ai/event-handler.ts:14-28 during impl).",
+      "cross_cut": "Same work as SECURITY-H10 (spidersan-ai/docs/SECURITY_HARDENING.md). yosef sequencing: H10 lands AFTER #2 — now unblocked.",
+      "completed_at": "2026-05-04T00:55Z by spidersan-m5 — codex gpt-5.4/high implementation; +159/-130 LOC (net +29); 7/7 tests pass; tsc + pnpm build clean. DEEPENING-3 now unblocked (was depends_on this)."
     },
     {
       "id": "P1-DEEPENING-1-storage-split",
@@ -35,13 +35,13 @@
       "id": "P1-DEEPENING-3-conflict-analyzer",
       "title": "DEEPENING #3: pure ConflictAnalyzer",
       "owner": "spidersan-m5",
-      "status": "blocked",
+      "status": "specced",
       "priority": "P1",
       "contract": "docs/arch/contracts/DEEPENING-3-conflict-analyzer.md",
       "depends_on": ["P1-DEEPENING-2-conflict-tier"],
-      "rationale": "AST already deep at lib/ast.ts:15; what's still inlined is overlap+tier at conflicts.ts:64,446. Hard-blocks on #2 per sherlocksan A2 #3.",
+      "rationale": "AST already deep at lib/ast.ts:15; what's still inlined is overlap+tier at conflicts.ts:64,446. Was blocked on #2; UNBLOCKED 2026-05-04 by DEEPENING-2 merge.",
       "cross_cut": "Final landing pad for SECURITY-H10 (symbol-aware classifier). The classifierSource enum + useSymbolAware flag are H10's affordances.",
-      "next_action": "Hold until DEEPENING-2 merges. Contract may be reviewed in parallel."
+      "next_action": "Ready to author. Compose classifyTier (now in src/lib/conflict-tier.ts) with src/lib/ast.ts."
     }
   ],
 

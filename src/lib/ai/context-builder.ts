@@ -9,6 +9,7 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { getStorage } from '../../storage/factory.js';
+import { classifyTier } from '../conflict-tier.js';
 import type { Branch } from '../../storage/adapter.js';
 import type {
   BranchSummary,
@@ -31,26 +32,6 @@ export interface BuildContextOptions {
   includeActivity?: boolean;
   includeDaily?: boolean;
   verbose?: boolean;
-}
-
-// ─── Tier Detection (pure, extracted from conflicts.ts patterns) ───
-
-const TIER_3_PATTERNS = [
-  /\.env$/, /secrets?\./i, /credentials/i, /password/i,
-  /api[_-]?key/i, /private[_-]?key/i, /\.pem$/,
-  /auth\.(ts|js)$/, /security\.(ts|js)$/,
-];
-
-const TIER_2_PATTERNS = [
-  /package\.json$/, /package-lock\.json$/, /tsconfig\.json$/,
-  /CLAUDE\.md$/, /\.gitignore$/, /server\.(ts|js)$/,
-  /index\.(ts|js)$/, /config\.(ts|js)$/,
-];
-
-function classifyTier(file: string): 1 | 2 | 3 {
-  for (const p of TIER_3_PATTERNS) if (p.test(file)) return 3;
-  for (const p of TIER_2_PATTERNS) if (p.test(file)) return 2;
-  return 1;
 }
 
 // ─── Git Helpers ────────────────────────────────────────────
@@ -136,7 +117,7 @@ async function getRegistryContext(currentBranch: string): Promise<ContextSource<
         if (other.name === currentBranch || other.status !== 'active') continue;
         const overlapping = other.files.filter(f => currentFilesSet.has(f));
         if (overlapping.length > 0) {
-          const maxTier = Math.max(...overlapping.map(classifyTier)) as 1 | 2 | 3;
+          const maxTier = Math.max(...overlapping.map(file => classifyTier(file))) as ReturnType<typeof classifyTier>;
           conflicts.push({
             branch: currentBranch,
             otherBranch: other.name,
