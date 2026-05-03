@@ -61,10 +61,11 @@ interface ConflictTier {
 const COMPILED_TIER_3 = compilePatterns(TIER_3_PATTERNS);
 const COMPILED_TIER_2 = compilePatterns(TIER_2_PATTERNS);
 
-function getConflictTier(file: string, compiledHigh: RegExp[] = [], compiledMedium: RegExp[] = []): ConflictTier {
+// ⚡ Bolt: Pass pre-compiled combined Regex patterns instead of spreading arrays inside hot loops.
+// This reduces redundant memory allocations and avoids repeatedly combining rules on a per-file basis.
+function getConflictTier(file: string, combinedTier3: RegExp[] = COMPILED_TIER_3, combinedTier2: RegExp[] = COMPILED_TIER_2): ConflictTier {
     // Check TIER 3 first (most critical)
-    const tier3 = [...COMPILED_TIER_3, ...compiledHigh];
-    for (const pattern of tier3) {
+    for (const pattern of combinedTier3) {
         if (pattern.test(file)) {
             return {
                 tier: 3,
@@ -76,8 +77,7 @@ function getConflictTier(file: string, compiledHigh: RegExp[] = [], compiledMedi
     }
 
     // Check TIER 2 
-    const tier2 = [...COMPILED_TIER_2, ...compiledMedium];
-    for (const pattern of tier2) {
+    for (const pattern of combinedTier2) {
         if (pattern.test(file)) {
             return {
                 tier: 2,
@@ -400,8 +400,10 @@ export const conflictsCommand = new Command('conflicts')
         const highSeverity = (config.conflicts?.highSeverityPatterns || []).map(p => new RegExp(p));
         const mediumSeverity = (config.conflicts?.mediumSeverityPatterns || []).map(p => new RegExp(p));
 
-        const compiledHigh = compilePatterns(highSeverity);
-        const compiledMedium = compilePatterns(mediumSeverity);
+        // ⚡ Bolt: Pre-combine and pre-compile regular expressions here instead of inside the `getConflictTier` loop.
+        // This avoids O(N) Array spreads and speeds up regex execution by evaluating fewer combined RegExp objects.
+        const combinedTier3 = compilePatterns([...TIER_3_PATTERNS, ...highSeverity]);
+        const combinedTier2 = compilePatterns([...TIER_2_PATTERNS, ...mediumSeverity]);
 
         let targetBranch: string;
         let targetFiles: string[];
@@ -459,7 +461,7 @@ export const conflictsCommand = new Command('conflicts')
                 // Get highest tier for this conflict
                 let maxTier: ConflictTier = { tier: 1, label: 'WARN', icon: '🟡', action: '' };
                 for (const file of overlappingFiles) {
-                    const fileTier = getConflictTier(file, compiledHigh, compiledMedium);
+                    const fileTier = getConflictTier(file, combinedTier3, combinedTier2);
                     if (fileTier.tier > maxTier.tier) {
                         maxTier = fileTier;
                     }
@@ -563,7 +565,7 @@ export const conflictsCommand = new Command('conflicts')
         for (const conflict of conflicts) {
             console.log(`${conflict.tierInfo.icon} TIER ${conflict.tier} (${conflict.tierInfo.label}): ${conflict.branch}`);
             for (const file of conflict.files) {
-                const fileTier = getConflictTier(file, compiledHigh, compiledMedium);
+                const fileTier = getConflictTier(file, combinedTier3, combinedTier2);
                 console.log(`   ${fileTier.icon} ${file}`);
             }
             console.log(`   → ${conflict.tierInfo.action}`);

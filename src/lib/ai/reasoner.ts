@@ -22,9 +22,9 @@ const KNOWN_SPIDERSAN_COMMANDS = new Set([
   'abandon', 'advise', 'ai-ping', 'ai-setup', 'ai-telemetry', 'ask', 'auto',
   'bot', 'check-opt-out', 'cleanup', 'collab', 'config', 'conflicts', 'context',
   'cross-conflicts', 'daily', 'dashboard', 'depends', 'doctor', 'explain',
-  'git-watch', 'github-sync', 'init', 'list', 'log', 'merge-order', 'merged',
-  'pulse', 'queen', 'ready-check', 'rebase-helper', 'register', 'registry-sync',
-  'rescue', 'stale', 'sync', 'sync-advisor', 'torrent', 'watch', 'welcome',
+  'fleet-status', 'git-watch', 'github-sync', 'init', 'list', 'log', 'merge-order',
+  'merged', 'pulse', 'queen', 'ready-check', 'rebase-helper', 'register',
+  'registry-sync', 'rescue', 'stale', 'sync', 'sync-advisor', 'torrent', 'watch', 'welcome',
 ]);
 
 // ─── Embedded Scenario Playbook ─────────────────────────────
