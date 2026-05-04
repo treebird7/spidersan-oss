@@ -7,8 +7,27 @@
 
 import { reason } from './reasoner.js';
 import { buildContext } from './context-builder.js';
-import { classifyTier } from '../conflict-tier.js';
 import type { Advice, EventPayload, SpiderContext } from './types.js';
+
+// ─── Tier Detection (shared with context-builder) ───────────
+
+const TIER_3_PATTERNS = [
+  /\.env$/, /secrets?\./i, /credentials/i, /password/i,
+  /api[_-]?key/i, /private[_-]?key/i, /\.pem$/,
+  /auth\.(ts|js)$/, /security\.(ts|js)$/,
+];
+
+const TIER_2_PATTERNS = [
+  /package\.json$/, /package-lock\.json$/, /tsconfig\.json$/,
+  /CLAUDE\.md$/, /\.gitignore$/, /server\.(ts|js)$/,
+  /index\.(ts|js)$/, /config\.(ts|js)$/,
+];
+
+function classifyTier(file: string): 1 | 2 | 3 {
+  for (const p of TIER_3_PATTERNS) if (p.test(file)) return 3;
+  for (const p of TIER_2_PATTERNS) if (p.test(file)) return 2;
+  return 1;
+}
 
 // ─── Deterministic Conflict Check ───────────────────────────
 

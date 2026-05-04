@@ -12,16 +12,61 @@
  */
 
 import { Command } from 'commander';
+import { compilePatterns } from '../lib/regex-utils.js';
 import { getStorage } from '../storage/index.js';
 import { LocalStorage } from '../storage/local.js';
 import { SupabaseStorage } from '../storage/supabase.js';
-import { classifyTier, TIER_LABELS } from '../lib/conflict-tier.js';
 import type {
     CrossMachineConflict,
     GlobalConflictReport,
     MachineRegistryView,
     SpiderRegistry,
 } from '../types/cloud.js';
+
+// ─── Tier Classification (mirrors conflicts.ts logic) ───
+
+const TIER_3_PATTERNS = [
+    /\.env$/,
+    /secrets?\./i,
+    /credentials/i,
+    /password/i,
+    /api[_-]?key/i,
+    /private[_-]?key/i,
+    /\.pem$/,
+    /auth\.(ts|js)$/,
+    /security\.(ts|js)$/,
+];
+
+const TIER_2_PATTERNS = [
+    /package\.json$/,
+    /package-lock\.json$/,
+    /tsconfig\.json$/,
+    /CLAUDE\.md$/,
+    /\.gitignore$/,
+    /server\.(ts|js)$/,
+    /index\.(ts|js)$/,
+    /config\.(ts|js)$/,
+];
+
+
+const COMPILED_TIER_3 = compilePatterns(TIER_3_PATTERNS);
+const COMPILED_TIER_2 = compilePatterns(TIER_2_PATTERNS);
+
+function classifyTier(file: string): 1 | 2 | 3 {
+    for (const p of COMPILED_TIER_3) {
+        if (p.test(file)) return 3;
+    }
+    for (const p of COMPILED_TIER_2) {
+        if (p.test(file)) return 2;
+    }
+    return 1;
+}
+
+const TIER_LABELS: Record<number, { label: string; icon: string; action: string }> = {
+    1: { label: 'WARN', icon: '🟡', action: 'Proceed with caution' },
+    2: { label: 'PAUSE', icon: '🟠', action: 'Coordinate with remote agent before proceeding' },
+    3: { label: 'BLOCK', icon: '🔴', action: 'Must resolve before merge — cross-machine conflict' },
+};
 
 // ─── Core: Detect Cross-Machine Conflicts ───
 

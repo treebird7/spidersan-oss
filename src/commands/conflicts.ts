@@ -20,12 +20,82 @@ import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
 import { logActivity } from '../lib/activity.js';
 import { isGhAvailable, getPRDetails } from '../lib/github.js';
-import { classifyWithLabel } from '../lib/conflict-tier.js';
 
 // Config
 const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
 
-type ConflictTierInfo = ReturnType<typeof classifyWithLabel>;
+// Critical files that trigger TIER 3 blocking
+const TIER_3_PATTERNS = [
+    /\.env$/,
+    /secrets?\./i,
+    /credentials/i,
+    /password/i,
+    /api[_-]?key/i,
+    /private[_-]?key/i,
+    /\.pem$/,
+    /auth\.(ts|js)$/,
+    /security\.(ts|js)$/,
+];
+
+// Important files that trigger TIER 2 pause
+const TIER_2_PATTERNS = [
+    /package\.json$/,
+    /package-lock\.json$/,
+    /tsconfig\.json$/,
+    /CLAUDE\.md$/,
+    /\.gitignore$/,
+    /server\.(ts|js)$/,
+    /index\.(ts|js)$/,
+    /config\.(ts|js)$/,
+];
+
+interface ConflictTier {
+    tier: 1 | 2 | 3;
+    label: string;
+    icon: string;
+    action: string;
+}
+
+
+// Optimization: Pre-compile static patterns
+const COMPILED_TIER_3 = compilePatterns(TIER_3_PATTERNS);
+const COMPILED_TIER_2 = compilePatterns(TIER_2_PATTERNS);
+
+function getConflictTier(file: string, compiledHigh: RegExp[] = [], compiledMedium: RegExp[] = []): ConflictTier {
+    // Check TIER 3 first (most critical)
+    const tier3 = [...COMPILED_TIER_3, ...compiledHigh];
+    for (const pattern of tier3) {
+        if (pattern.test(file)) {
+            return {
+                tier: 3,
+                label: 'BLOCK',
+                icon: '🔴',
+                action: 'Merge blocked. Resolve conflict first.'
+            };
+        }
+    }
+
+    // Check TIER 2
+    const tier2 = [...COMPILED_TIER_2, ...compiledMedium];
+    for (const pattern of tier2) {
+        if (pattern.test(file)) {
+            return {
+                tier: 2,
+                label: 'PAUSE',
+                icon: '🟠',
+                action: 'Coordinate with other agent before proceeding.'
+            };
+        }
+    }
+
+    // Default: TIER 1
+    return {
+        tier: 1,
+        label: 'WARN',
+        icon: '🟡',
+        action: 'Consider coordinating, but safe to proceed.'
+    };
+}
 
 function getCurrentBranch(): string {
     try {
@@ -374,7 +444,7 @@ export const conflictsCommand = new Command('conflicts')
         }
 
         const allBranches = await storage.list();
-        const conflicts: Array<{ branch: string; files: string[]; tier: number; tierInfo: ConflictTierInfo }> = [];
+        const conflicts: Array<{ branch: string; files: string[]; tier: number; tierInfo: ConflictTier }> = [];
 
         // Performance Optimization: Convert target files to Set for O(1) lookup
         // Reduces complexity from O(N*M*K) to O(N*M) where N=branches, M=files/branch, K=target_files
@@ -395,12 +465,9 @@ export const conflictsCommand = new Command('conflicts')
             }
             if (overlappingFiles.length > 0) {
                 // Get highest tier for this conflict
-                let maxTier: ConflictTierInfo = { tier: 1, label: 'WARN', icon: '🟡', action: '' };
+                let maxTier: ConflictTier = { tier: 1, label: 'WARN', icon: '🟡', action: '' };
                 for (const file of overlappingFiles) {
-                    const fileTier = classifyWithLabel(file, {
-                        extraTier3: compiledHigh,
-                        extraTier2: compiledMedium,
-                    });
+                    const fileTier = getConflictTier(file, compiledHigh, compiledMedium);
                     if (fileTier.tier > maxTier.tier) {
                         maxTier = fileTier;
                     }
@@ -504,10 +571,7 @@ export const conflictsCommand = new Command('conflicts')
         for (const conflict of conflicts) {
             console.log(`${conflict.tierInfo.icon} TIER ${conflict.tier} (${conflict.tierInfo.label}): ${conflict.branch}`);
             for (const file of conflict.files) {
-                const fileTier = classifyWithLabel(file, {
-                    extraTier3: compiledHigh,
-                    extraTier2: compiledMedium,
-                });
+                const fileTier = getConflictTier(file, compiledHigh, compiledMedium);
                 console.log(`   ${fileTier.icon} ${file}`);
             }
             console.log(`   → ${conflict.tierInfo.action}`);

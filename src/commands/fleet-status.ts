@@ -11,7 +11,7 @@
  */
 
 import { Command } from 'commander';
-import { execFileSync } from 'child_process';
+import { execSync } from 'child_process';
 import { readdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -25,9 +25,9 @@ interface RepoStatus {
     status: 'synced' | 'ahead' | 'behind' | 'diverged' | 'detached' | 'no-remote';
 }
 
-function run(cmd: string, args: string[], cwd: string): string {
+function run(cmd: string, cwd: string): string {
     try {
-        return execFileSync(cmd, args, { cwd, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+        return execSync(cmd, { cwd, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
     } catch {
         return '';
     }
@@ -36,17 +36,17 @@ function run(cmd: string, args: string[], cwd: string): string {
 function checkRepo(dir: string): RepoStatus | null {
     const repo = dir.split('/').pop() ?? dir;
 
-    const branch = run('git', ['branch', '--show-current'], dir);
-    if (!branch) return { repo, branch: '(detached)', sha: run('git', ['rev-parse', '--short', 'HEAD'], dir), ahead: 0, behind: 0, status: 'detached' };
+    const branch = run('git branch --show-current', dir);
+    if (!branch) return { repo, branch: '(detached)', sha: run('git rev-parse --short HEAD', dir), ahead: 0, behind: 0, status: 'detached' };
 
-    const sha = run('git', ['rev-parse', '--short', 'HEAD'], dir);
+    const sha = run('git rev-parse --short HEAD', dir);
 
     const remoteRef = `origin/${branch}`;
-    const hasRemote = run('git', ['rev-parse', '--verify', remoteRef], dir);
+    const hasRemote = run(`git rev-parse --verify ${remoteRef}`, dir);
     if (!hasRemote) return { repo, branch, sha, ahead: 0, behind: 0, status: 'no-remote' };
 
-    const ahead  = parseInt(run('git', ['rev-list', `${remoteRef}..HEAD`, '--count'], dir) || '0', 10);
-    const behind = parseInt(run('git', ['rev-list', `HEAD..${remoteRef}`, '--count'], dir) || '0', 10);
+    const ahead  = parseInt(run(`git rev-list ${remoteRef}..HEAD --count`, dir) || '0', 10);
+    const behind = parseInt(run(`git rev-list HEAD..${remoteRef} --count`, dir) || '0', 10);
 
     let status: RepoStatus['status'];
     if      (ahead === 0 && behind === 0) status = 'synced';
@@ -96,7 +96,7 @@ export const fleetStatusCommand = new Command('fleet-status')
         if (opts.fetch !== false) {
             process.stdout.write(`Fetching ${entries.length} repos…`);
             for (const dir of entries) {
-                run('git', ['fetch', '--quiet'], dir);
+                run('git fetch --quiet 2>/dev/null || true', dir);
             }
             process.stdout.write(' done\n');
         }

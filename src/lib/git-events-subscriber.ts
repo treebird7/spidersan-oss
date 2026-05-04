@@ -475,9 +475,12 @@ async function handlePush(event: GitEvent, localPaths: string[], log: (m: string
         // AI layer failure is non-fatal — daemon continues
     }
 
-    // Per-path queue: reserved for Phase C2 per-path operations
+    // Per-path queue: placeholder for Phase C2 per-path operations (e.g. auto-fetch)
     for (const p of localPaths) {
-        enqueue(p, async () => { void p; });
+        enqueue(p, async () => {
+            // P3: per-path operations (auto-fetch, local conflict check, etc.)
+            void p;
+        });
     }
 }
 
