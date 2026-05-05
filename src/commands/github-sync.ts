@@ -87,41 +87,50 @@ async function scanRepository(
     const prs = await listPullRequests(config);
     const results: GitHubBranchRow[] = [];
 
-    for (const branch of branches) {
-        if (['main', 'master', 'develop', 'production'].includes(branch.name)) continue;
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < branches.length; i += BATCH_SIZE) {
+        const batch = branches.slice(i, i + BATCH_SIZE);
 
-        const commit = await getCommitInfo(config, branch.name);
-        if (!commit) continue;
+        const branchPromises = batch.map(async (branch) => {
+            if (['main', 'master', 'develop', 'production'].includes(branch.name)) return null;
 
-        const pr = prs.find(p => p.headBranch === branch.name);
-        let ciStatus = null;
-        if (options.includeCi) ciStatus = await getCIStatus(config, branch.name);
+            // Fetch commit info first to fail fast if branch is gone
+            const commit = await getCommitInfo(config, branch.name);
+            if (!commit) return null;
 
-        const row: GitHubBranchRow = {
-            id: '',
-            repo_owner: config.owner,
-            repo_name: config.repo,
-            branch_name: branch.name,
-            author: commit.author,
-            last_commit_sha: commit.sha,
-            last_commit_date: commit.date,
-            ahead_behind: { ahead: 0, behind: 0 },
-            pr_number: pr?.number || null,
-            pr_status: pr?.state || null,
-            is_default: false,
-            scanned_at: new Date().toISOString(),
-            scanned_by_machine: options.machine.id,
-        };
+            const pr = prs.find(p => p.headBranch === branch.name);
 
-        try {
-            row.ahead_behind = await getAheadBehind(config, branch.name);
-        } catch {
-            // fallback already set above
+            // Fetch CI status and ahead/behind concurrently
+            const [ciStatus, aheadBehind] = await Promise.all([
+                options.includeCi ? getCIStatus(config, branch.name) : Promise.resolve(null),
+                getAheadBehind(config, branch.name).catch(() => ({ ahead: 0, behind: 0 })),
+            ]);
+
+            const row: GitHubBranchRow = {
+                id: '',
+                repo_owner: config.owner,
+                repo_name: config.repo,
+                branch_name: branch.name,
+                author: commit.author,
+                last_commit_sha: commit.sha,
+                last_commit_date: commit.date,
+                ahead_behind: aheadBehind,
+                pr_number: pr?.number || null,
+                pr_status: pr?.state || null,
+                is_default: false,
+                scanned_at: new Date().toISOString(),
+                scanned_by_machine: options.machine.id,
+            };
+
+            // Suppress unused var warning for ciStatus until Supabase table exists
+            void ciStatus;
+            return row;
+        });
+
+        const mappedResults = await Promise.all(branchPromises);
+        for (const res of mappedResults) {
+            if (res) results.push(res);
         }
-
-        // Suppress unused var warning for ciStatus until Supabase table exists
-        void ciStatus;
-        results.push(row);
     }
     return results;
 }

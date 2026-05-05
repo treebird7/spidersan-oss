@@ -5,7 +5,10 @@
  * without requiring Octokit or managing authentication.
  */
 
-import { execFileSync } from 'child_process';
+import { execFileSync, execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 import { validateBranchName, validatePRNumber } from './security.js';
 
 export interface GitHubRepoConfig {
@@ -79,7 +82,7 @@ export function isGhAvailable(): boolean {
  */
 export async function listBranches(config: GitHubRepoConfig): Promise<GitHubBranchInfo[]> {
     try {
-        const output = execFileSync('gh', [
+        const { stdout: output } = await execFileAsync('gh', [
             'api',
             `repos/${config.owner}/${config.repo}/branches`,
             '--paginate',
@@ -115,7 +118,7 @@ export async function listBranches(config: GitHubRepoConfig): Promise<GitHubBran
 export async function getCommitInfo(config: GitHubRepoConfig, branch: string): Promise<GitHubCommitInfo | null> {
     try {
         const safeBranch = validateBranchName(branch);
-        const output = execFileSync('gh', [
+        const { stdout: output } = await execFileAsync('gh', [
             'api',
             `repos/${config.owner}/${config.repo}/commits/${safeBranch}`,
             '--jq',
@@ -136,7 +139,7 @@ export async function getCommitInfo(config: GitHubRepoConfig, branch: string): P
  */
 export async function listPullRequests(config: GitHubRepoConfig): Promise<GitHubPRInfo[]> {
     try {
-        const output = execFileSync('gh', [
+        const { stdout: output } = await execFileAsync('gh', [
             'pr', 'list',
             '--repo', `${config.owner}/${config.repo}`,
             '--state', 'all',
@@ -168,7 +171,7 @@ export async function listPullRequests(config: GitHubRepoConfig): Promise<GitHub
 export async function getCIStatus(config: GitHubRepoConfig, branch: string): Promise<GitHubCIStatus | null> {
     try {
         const safeBranch = validateBranchName(branch);
-        const output = execFileSync('gh', [
+        const { stdout: output } = await execFileAsync('gh', [
             'run', 'list',
             '--repo', `${config.owner}/${config.repo}`,
             '--branch', safeBranch,
@@ -201,7 +204,7 @@ export async function getAheadBehind(config: GitHubRepoConfig, branch: string, b
     try {
         const safeBranch = validateBranchName(branch);
         const safeBaseBranch = validateBranchName(baseBranch);
-        const output = execFileSync('gh', [
+        const { stdout: output } = await execFileAsync('gh', [
             'api',
             `repos/${config.owner}/${config.repo}/compare/${safeBaseBranch}...${safeBranch}`,
             '--jq',
@@ -228,11 +231,12 @@ export async function getPRDetails(prNumber: number): Promise<GitHubPRDetails> {
     // Get PR metadata (head branch, title, number)
     let prOutput: string;
     try {
-        prOutput = execFileSync('gh', [
+        const { stdout } = await execFileAsync('gh', [
             'pr', 'view',
             '--json', 'headRefName,title,number',
             '--', String(safePrNumber)
         ], { encoding: 'utf-8' });
+        prOutput = stdout;
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         throw new Error(`Failed to fetch PR #${safePrNumber} metadata: ${msg}`);
@@ -243,11 +247,12 @@ export async function getPRDetails(prNumber: number): Promise<GitHubPRDetails> {
     // Get changed file paths via the diff (--name-only lists one file per line)
     let diffOutput: string;
     try {
-        diffOutput = execFileSync('gh', [
+        const { stdout: diffStdout } = await execFileAsync('gh', [
             'pr', 'diff',
             '--name-only',
             '--', String(safePrNumber)
         ], { encoding: 'utf-8' });
+        diffOutput = diffStdout;
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         throw new Error(`Failed to fetch changed files for PR #${prNumber}: ${msg}`);

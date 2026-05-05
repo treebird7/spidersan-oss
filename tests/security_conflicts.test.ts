@@ -7,6 +7,7 @@ import { getStorage } from '../src/storage/index';
 vi.mock('child_process', () => ({
     execSync: vi.fn(),
     execFileSync: vi.fn(),
+    execFile: vi.fn(),
 }));
 
 // Mock storage

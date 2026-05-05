@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
     get: vi.fn(),
     list: vi.fn(),
     execFileSync: vi.fn(),
+    execFile: vi.fn(),
     spawnSync: vi.fn(),
     loadConfig: vi.fn(),
 }));
@@ -21,6 +22,7 @@ vi.mock('../../src/storage/index.js', () => ({
 vi.mock('child_process', () => {
     return {
         execFileSync: mocks.execFileSync,
+        execFile: mocks.execFile,
         spawnSync: mocks.spawnSync,
     }
 });
