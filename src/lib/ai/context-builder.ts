@@ -273,12 +273,24 @@ export async function buildContext(options: BuildContextOptions = {}): Promise<S
       stale: registryCtx.data.stale,
       branches: registryCtx.data.branches,
     },
-    conflicts: {
-      tier1: conflicts.filter(c => c.tier === 1).length,
-      tier2: conflicts.filter(c => c.tier === 2).length,
-      tier3: conflicts.filter(c => c.tier === 3).length,
-      details: conflicts,
-    },
+    conflicts: (() => {
+      // Performance Optimization: Compute conflict counts in a single O(N) pass
+      let tier1 = 0;
+      let tier2 = 0;
+      let tier3 = 0;
+      for (let i = 0; i < conflicts.length; i++) {
+        const t = conflicts[i].tier;
+        if (t === 1) tier1++;
+        else if (t === 2) tier2++;
+        else if (t === 3) tier3++;
+      }
+      return {
+        tier1,
+        tier2,
+        tier3,
+        details: conflicts,
+      };
+    })(),
     gitStatus: {
       ahead: gitInfo.data.ahead,
       behind: gitInfo.data.behind,

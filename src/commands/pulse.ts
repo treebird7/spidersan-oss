@@ -154,9 +154,13 @@ Branches:  ${allBranches.filter(b => b.status === 'active').length} active
             console.log('');
         }
 
-        const t3 = conflicts.filter(c => c.tier === 3).length;
-        const t2 = conflicts.filter(c => c.tier === 2).length;
-        const t1 = conflicts.filter(c => c.tier === 1).length;
+        let t3 = 0, t2 = 0, t1 = 0;
+        for (let i = 0; i < conflicts.length; i++) {
+            const t = conflicts[i].tier;
+            if (t === 3) t3++;
+            else if (t === 2) t2++;
+            else if (t === 1) t1++;
+        }
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log(`📊 Summary: 🔴 ${t3} BLOCK | 🟠 ${t2} PAUSE | 🟡 ${t1} WARN`);
     });
