@@ -18,6 +18,16 @@
 --   • Triggers                     — HMAC gate, optimistic lock, ceiling guard
 --   • Functions                    — decay, tombstone, trust update
 --   • Indexes                      — query patterns from audit HIGH-5
+--
+-- ROLLBACK:
+--   DROP FUNCTION IF EXISTS public.spider_update_agent_trust(TEXT, TEXT, BOOLEAN);
+--   DROP FUNCTION IF EXISTS public.spider_resurface_pattern(TEXT);
+--   DROP FUNCTION IF EXISTS public.spider_tombstone_stale_patterns(INT);
+--   DROP FUNCTION IF EXISTS public.spider_apply_decay(INT);
+--   DROP TABLE IF EXISTS public.spider_pattern_corrections;
+--   DROP TABLE IF EXISTS public.spider_agent_trust;
+--   DROP TABLE IF EXISTS public.spider_pattern_weights;
+--   DROP TABLE IF EXISTS public.spider_decision_stream;
 -- ============================================================
 
 -- ─── 1. Decision Stream ──────────────────────────────────────────────────────
@@ -76,7 +86,8 @@ CREATE POLICY "anon_read_decisions"
 
 -- No UPDATE or DELETE policies — append-only is enforced by absence.
 
-GRANT SELECT, INSERT ON public.spider_decision_stream TO authenticated, anon;
+GRANT SELECT, INSERT ON public.spider_decision_stream TO authenticated;
+GRANT SELECT ON public.spider_decision_stream TO anon;
 
 -- Indexes for HIGH-5 query patterns (git_action + time window + session)
 CREATE INDEX IF NOT EXISTS idx_sds_repo_action_time
@@ -134,9 +145,9 @@ CREATE POLICY "agents_read_patterns"
 DROP POLICY IF EXISTS "service_role_write_patterns" ON public.spider_pattern_weights;
 CREATE POLICY "service_role_write_patterns"
     ON public.spider_pattern_weights FOR ALL
-    TO authenticated
-    USING (auth.role() = 'service_role')
-    WITH CHECK (auth.role() = 'service_role');
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
 
 GRANT SELECT ON public.spider_pattern_weights TO authenticated, anon;
 GRANT ALL ON public.spider_pattern_weights TO service_role;
@@ -195,7 +206,8 @@ CREATE POLICY "agents_read_corrections"
     TO authenticated, anon
     USING (true);
 
-GRANT SELECT, INSERT ON public.spider_pattern_corrections TO authenticated, anon;
+GRANT SELECT, INSERT ON public.spider_pattern_corrections TO authenticated;
+GRANT SELECT ON public.spider_pattern_corrections TO anon;
 
 CREATE INDEX IF NOT EXISTS idx_spc_pattern_id_time
     ON public.spider_pattern_corrections (pattern_id, created_at DESC);
@@ -240,9 +252,9 @@ CREATE POLICY "agents_read_trust"
 DROP POLICY IF EXISTS "service_role_write_trust" ON public.spider_agent_trust;
 CREATE POLICY "service_role_write_trust"
     ON public.spider_agent_trust FOR ALL
-    TO authenticated
-    USING (auth.role() = 'service_role')
-    WITH CHECK (auth.role() = 'service_role');
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
 
 GRANT SELECT ON public.spider_agent_trust TO authenticated, anon;
 GRANT ALL ON public.spider_agent_trust TO service_role;
