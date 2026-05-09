@@ -7,8 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Phase 2.5: Realtime Apprenticeship schema** — 4 new tables on treebird-runtime staging (`spider_decision_stream`, `spider_pattern_weights`, `spider_pattern_corrections`, `spider_agent_trust`). HMAC gate trigger on decision stream, optimistic version lock + weight ceiling (≤0.95) triggers on pattern weights, SECURITY DEFINER functions for decay/tombstone/resurface/trust-upsert. `last_promoted_at` column on `spider_pattern_weights` (SANGIT-08 curriculum sync). Migration: `20260504000000_realtime_apprenticeship.sql` · commit `7392776`.
+- **pg_cron schedules for decay + tombstone** — `spider-decay-daily` (03:00 UTC daily) and `spider-tombstone-weekly` (04:00 UTC Sunday) registered on staging. Idempotent unschedule guard. Migration: `20260509000001_pg_cron_spider_decay_tombstone.sql` · authored by watsan-m5 · commit `d8d09f9`.
+
 ### Fixed
-- **Security: Command injection in auto-register workflow** — Replaced direct `${{ }}` interpolation in shell commands with `env:` variables to prevent arbitrary command execution via malicious branch names
+- **RLS: FOR ALL → per-op split** — `service_role_write_patterns` and `service_role_write_trust` were `FOR ALL`; replaced with separate INSERT / UPDATE / DELETE policies per table (migration `20260509000000_sangit02_rls_and_uniqueness_fixes.sql` · commit `9843107`).
+- **NULL uniqueness gap on `spider_agent_trust`** — `UNIQUE(actor_machine, repo)` did not prevent duplicate rows when `repo IS NULL` (PostgreSQL NULL ≠ NULL in UNIQUE constraints). `ON CONFLICT(actor_machine, repo)` silently skipped upsert for cross-repo trust rows. Fix: dropped composite constraint, replaced with two partial unique indexes (`idx_sat_machine_repo_scoped WHERE repo IS NOT NULL`, `idx_sat_machine_repo_global WHERE repo IS NULL`). Updated `spider_update_agent_trust` to branch on `p_repo IS NULL` with correct partial-index conflict targets.
+- **`spider_apply_decay` RETURNING bug** — was returning post-update `base_weight` for both `old_weight` and `new_weight`. Fixed with CTE to capture pre-update weight before the UPDATE fires.
+- **`SET search_path = ''`** added to all 4 SECURITY DEFINER functions and all 3 trigger functions (consistent hardening; prevents schema injection).
+
+
 - **CI: Security tests failing silently** — Added `git config user.name/email` so git-messages and git-injection tests pass in CI
 - **CI: Lint failures swallowed** — Removed `|| true` and `continue-on-error: true` from lint step; lint now blocks CI
 - **Publish: No tests before npm publish** — Added `npm test -- --run` to publish workflow so broken releases cannot ship
