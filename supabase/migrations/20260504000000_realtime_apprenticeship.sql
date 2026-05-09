@@ -113,6 +113,8 @@ CREATE TABLE IF NOT EXISTS public.spider_pattern_weights (
                               CHECK (decay_rate > 0.0 AND decay_rate <= 1.0),
     is_tombstoned         BOOLEAN     NOT NULL DEFAULT false,
     tombstoned_at         TIMESTAMPTZ,
+    -- Set when pattern is promoted to a curriculum training round (SANGIT-08)
+    last_promoted_at      TIMESTAMPTZ,
     -- Optimistic lock counter; increment on every UPDATE (MEDIUM-7)
     version               INTEGER     NOT NULL DEFAULT 0,
     created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -138,6 +140,10 @@ CREATE POLICY "service_role_write_patterns"
 
 GRANT SELECT ON public.spider_pattern_weights TO authenticated, anon;
 GRANT ALL ON public.spider_pattern_weights TO service_role;
+
+-- Idempotent add for last_promoted_at (may already exist if table pre-dates this column addition)
+ALTER TABLE public.spider_pattern_weights
+    ADD COLUMN IF NOT EXISTS last_promoted_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_spw_repo_scope
     ON public.spider_pattern_weights (repo_scope)
@@ -315,9 +321,21 @@ CREATE TRIGGER enforce_weight_ceiling
 --     Call daily via pg_cron: SELECT spider_apply_decay(1);
 CREATE OR REPLACE FUNCTION public.spider_apply_decay(days_since_last INT DEFAULT 1)
 RETURNS TABLE(pattern_id TEXT, old_weight NUMERIC, new_weight NUMERIC)
-LANGUAGE plpgsql SECURITY DEFINER AS $$
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = ''
+AS $$
 BEGIN
     RETURN QUERY
+    WITH candidates AS (
+        SELECT pw.pattern_id, pw.base_weight AS pre_weight
+        FROM public.spider_pattern_weights pw
+        WHERE
+            pw.is_tombstoned = false
+            AND (
+                pw.last_confirmed_at IS NULL
+                OR pw.last_confirmed_at < now() - (days_since_last || ' days')::interval
+            )
+    )
     UPDATE public.spider_pattern_weights pw
     SET
         base_weight = GREATEST(
@@ -326,13 +344,9 @@ BEGIN
         ),
         version = pw.version + 1,
         updated_at = now()
-    WHERE
-        pw.is_tombstoned = false
-        AND (
-            pw.last_confirmed_at IS NULL
-            OR pw.last_confirmed_at < now() - (days_since_last || ' days')::interval
-        )
-    RETURNING pw.pattern_id, pw.base_weight AS old_weight, pw.base_weight AS new_weight;
+    FROM candidates c
+    WHERE pw.pattern_id = c.pattern_id
+    RETURNING pw.pattern_id, c.pre_weight AS old_weight, pw.base_weight AS new_weight;
 END;
 $$;
 
@@ -340,7 +354,9 @@ $$;
 --     Call weekly: SELECT spider_tombstone_stale_patterns(30);
 CREATE OR REPLACE FUNCTION public.spider_tombstone_stale_patterns(inactive_days INT DEFAULT 30)
 RETURNS TABLE(pattern_id TEXT, last_invoked_at TIMESTAMPTZ)
-LANGUAGE plpgsql SECURITY DEFINER AS $$
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = ''
+AS $$
 BEGIN
     RETURN QUERY
     UPDATE public.spider_pattern_weights pw
@@ -360,7 +376,9 @@ $$;
 -- 6c. Resurface a tombstoned pattern with base weight 0.3 (mappersan angle 4)
 CREATE OR REPLACE FUNCTION public.spider_resurface_pattern(p_pattern_id TEXT)
 RETURNS VOID
-LANGUAGE plpgsql SECURITY DEFINER AS $$
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = ''
+AS $$
 BEGIN
     UPDATE public.spider_pattern_weights
     SET
@@ -382,7 +400,9 @@ CREATE OR REPLACE FUNCTION public.spider_update_agent_trust(
     p_was_correct BOOLEAN
 )
 RETURNS VOID
-LANGUAGE plpgsql SECURITY DEFINER AS $$
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = ''
+AS $$
 BEGIN
     INSERT INTO public.spider_agent_trust (actor_machine, repo, confirmations_correct, confirmations_wrong)
     VALUES (
@@ -400,13 +420,27 @@ BEGIN
 END;
 $$;
 
--- ─── 7. pg_cron schedule (apply manually if cron extension available) ─────────
+-- ─── 7. Function execution grants ────────────────────────────────────────────
+-- SECURITY DEFINER functions bypass RLS — restrict public EXECUTE to prevent
+-- non-service callers from mutating service_role-only tables.
+
+REVOKE ALL ON FUNCTION public.spider_apply_decay(INT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.spider_tombstone_stale_patterns(INT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.spider_resurface_pattern(TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.spider_update_agent_trust(TEXT, TEXT, BOOLEAN) FROM PUBLIC;
+
+GRANT EXECUTE ON FUNCTION public.spider_apply_decay(INT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.spider_tombstone_stale_patterns(INT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.spider_resurface_pattern(TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.spider_update_agent_trust(TEXT, TEXT, BOOLEAN) TO service_role;
+
+-- ─── 8. pg_cron schedule (apply manually if cron extension available) ─────────
 -- Schedule decay + tombstone sweeps.  Uncomment if pg_cron is enabled:
 --
 -- SELECT cron.schedule('spider-decay-daily',   '0 3 * * *', $$SELECT spider_apply_decay(1)$$);
 -- SELECT cron.schedule('spider-tombstone-weekly', '0 4 * * 0', $$SELECT spider_tombstone_stale_patterns(30)$$);
 
--- ─── 8. Comments ──────────────────────────────────────────────────────────────
+-- ─── 9. Comments ──────────────────────────────────────────────────────────────
 
 COMMENT ON TABLE public.spider_decision_stream IS
     'Append-only log of git decisions for real-time apprenticeship. '
