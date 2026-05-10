@@ -36,12 +36,17 @@ function getCurrentBranch(): string {
 }
 
 async function notifyHub(branch: string, conflicts: Array<{ branch: string; files: string[]; tier: number }>): Promise<void> {
-    const tier3 = conflicts.filter(c => c.tier === 3);
-    const tier2 = conflicts.filter(c => c.tier === 2);
+    let hasTier3 = false;
+    let hasTier2 = false;
+    for (const c of conflicts) {
+        if (c.tier === 3) hasTier3 = true;
+        else if (c.tier === 2) hasTier2 = true;
+        if (hasTier3 && hasTier2) break;
+    }
 
-    if (tier3.length === 0 && tier2.length === 0) return;
+    if (!hasTier3 && !hasTier2) return;
 
-    const severity = tier3.length > 0 ? '🔴 TIER 3 BLOCK' : '🟠 TIER 2 PAUSE';
+    const severity = hasTier3 ? '🔴 TIER 3 BLOCK' : '🟠 TIER 2 PAUSE';
     const message = `🕷️⚠️ **Conflict Alert** on \`${branch}\`\n\n${severity}\n\nConflicting files require coordination.`;
 
     try {
@@ -450,23 +455,31 @@ export const conflictsCommand = new Command('conflicts')
         // Sort by tier (highest first)
         conflicts.sort((a, b) => b.tier - a.tier);
 
+        let tier3Count = 0;
+        let tier2Count = 0;
+        let tier1Count = 0;
+
+        for (const c of conflicts) {
+            if (c.tier === 3) tier3Count++;
+            else if (c.tier === 2) tier2Count++;
+            else if (c.tier === 1) tier1Count++;
+        }
+
         // Log conflict detection to activity log
         if (conflicts.length > 0) {
             logActivity({
                 event: 'conflict_detected',
                 branch: targetBranch,
                 details: {
-                    tier3: conflicts.filter(c => c.tier === 3).length,
-                    tier2: conflicts.filter(c => c.tier === 2).length,
-                    tier1: conflicts.filter(c => c.tier === 1).length,
+                    tier3: tier3Count,
+                    tier2: tier2Count,
+                    tier1: tier1Count,
                     conflicting_branches: conflicts.map(c => c.branch),
                 }
             });
         }
 
         // Check for blocking conditions
-        const tier3Count = conflicts.filter(c => c.tier === 3).length;
-        const tier2Count = conflicts.filter(c => c.tier === 2).length;
         const shouldBlock = options.strict && (tier3Count > 0 || tier2Count > 0);
 
         // Notify Hub if requested
@@ -481,7 +494,7 @@ export const conflictsCommand = new Command('conflicts')
                 summary: {
                     tier3: tier3Count,
                     tier2: tier2Count,
-                    tier1: conflicts.filter(c => c.tier === 1).length,
+                    tier1: tier1Count,
                     blocked: shouldBlock
                 }
             }, null, 2));
@@ -515,7 +528,7 @@ export const conflictsCommand = new Command('conflicts')
         }
 
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log(`📊 Summary: 🔴 ${tier3Count} BLOCK | 🟠 ${tier2Count} PAUSE | 🟡 ${conflicts.filter(c => c.tier === 1).length} WARN`);
+        console.log(`📊 Summary: 🔴 ${tier3Count} BLOCK | 🟠 ${tier2Count} PAUSE | 🟡 ${tier1Count} WARN`);
 
         // Offer add/add resolution suggestions for likely add/add files
         suggestAddAddResolution(conflicts);

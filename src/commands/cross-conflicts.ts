@@ -169,9 +169,12 @@ function formatReport(report: GlobalConflictReport, minTier: number): string {
     }
 
     // Summary by tier
-    const t3 = filtered.filter(c => c.tier === 3).length;
-    const t2 = filtered.filter(c => c.tier === 2).length;
-    const t1 = filtered.filter(c => c.tier === 1).length;
+    let t3 = 0, t2 = 0, t1 = 0;
+    for (const c of filtered) {
+        if (c.tier === 3) t3++;
+        else if (c.tier === 2) t2++;
+        else if (c.tier === 1) t1++;
+    }
     lines.push(`Summary: 🔴 ${t3} BLOCK  🟠 ${t2} PAUSE  🟡 ${t1} WARN`);
 
     return lines.join('\n');
