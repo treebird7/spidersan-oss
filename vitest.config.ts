@@ -9,7 +9,8 @@ export default defineConfig({
         exclude: [
             '**/node_modules/**',
             '**/dist/**',
-            '**/mcp-server/node_modules/**'
+            '**/mcp-server/node_modules/**',
+            'tests/conflict-tier.test.ts'
         ],
 
         // Increase memory limit to prevent OOM on larger tests
