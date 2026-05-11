@@ -158,6 +158,10 @@ prompt.md
 todo
 embeddings.json
 
+# Internal architecture planning (not for public repo)
+docs/arch/STATE.json
+docs/arch/contracts/
+
 # Agent/session local files
 .myctoak/
 .mcp.json
