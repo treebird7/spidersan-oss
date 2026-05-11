@@ -20,6 +20,10 @@ export interface BranchRegistry {
     projectId?: string;
 }
 
+/**
+ * @deprecated Use BranchRegistryStore for local registry access and
+ * SupabaseRegistrySyncClient for cross-machine sync.
+ */
 export interface StorageAdapter {
     /**
      * Initialize the storage (create directories, connect to DB, etc.)
