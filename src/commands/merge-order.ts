@@ -7,7 +7,7 @@
 
 import { Command } from 'commander';
 import { getStorage } from '../storage/index.js';
-import type { Branch } from '../storage/adapter.js';
+import { buildConflictGraph, calculateBlockingCounts, topologicalSort } from '../lib/graph.js';
 
 interface MergeOrderOptions {
     json?: boolean;
@@ -33,22 +33,25 @@ export const mergeOrderCommand = new Command('merge-order')
             return;
         }
 
+        const branchNames = branches.map(branch => branch.name);
+        const branchByName = new Map(branches.map(branch => [branch.name, branch] as const));
+
         // Build conflict graph
         const conflictGraph = buildConflictGraph(branches);
 
         // Calculate blocking counts (how many branches are blocked by each branch)
         const blockingCounts = options.blockingCount
-            ? calculateBlockingCounts(branches, conflictGraph)
-            : new Map<string, number>();
+            ? calculateBlockingCounts(branchNames, conflictGraph)
+            : undefined;
 
         // Topological sort with conflict awareness (optionally prioritize by blocking count)
-        const order = topologicalSort(branches, conflictGraph, blockingCounts, options.blockingCount);
+        const order = topologicalSort(branchNames, conflictGraph, blockingCounts);
 
         if (options.json) {
-            const result = order.map(b => ({
-                name: b.name,
-                blocksCount: blockingCounts.get(b.name) || 0,
-                conflicts: conflictGraph.get(b.name) || []
+            const result = order.map(name => ({
+                name,
+                blocksCount: blockingCounts?.get(name) || 0,
+                conflicts: conflictGraph.get(name) || []
             }));
             console.log(JSON.stringify({ order: result }, null, 2));
             return;
@@ -61,9 +64,14 @@ export const mergeOrderCommand = new Command('merge-order')
             console.log('🕷️ Recommended Merge Order:\n');
         }
 
-        order.forEach((branch, i) => {
+        order.forEach((branchName, i) => {
+            const branch = branchByName.get(branchName);
+            if (!branch) {
+                return;
+            }
+
             const conflicts = conflictGraph.get(branch.name) || [];
-            const blocksCount = blockingCounts.get(branch.name) || 0;
+            const blocksCount = blockingCounts?.get(branch.name) || 0;
 
             // Status indicator
             let status = '✅';
@@ -86,7 +94,7 @@ export const mergeOrderCommand = new Command('merge-order')
                 console.log(`     └─ After merging, rebase: ${conflicts.join(', ')}`);
             } else if (options.blockingCount && blocksCount > 0) {
                 // Show which branches this one blocks
-                const blockedBranches = getBlockedBranches(branch.name, branches, conflictGraph);
+                const blockedBranches = getBlockedBranches(branch.name, conflictGraph);
                 if (blockedBranches.length > 0) {
                     console.log(`     └─ Blocks: ${blockedBranches.join(', ')}`);
                 }
@@ -99,102 +107,13 @@ export const mergeOrderCommand = new Command('merge-order')
         }
     });
 
-function buildConflictGraph(branches: Branch[]): Map<string, string[]> {
-    const graph = new Map<string, string[]>();
-
-    // Performance Optimization: Use an inverted index (file -> branches)
-    // Reduces nested loop complexity from O(N^2 * M) to O(N * M)
-    const fileToBranches = new Map<string, string[]>();
-    for (const branch of branches) {
-        for (const file of branch.files) {
-            let list = fileToBranches.get(file);
-            if (!list) {
-                list = [];
-                fileToBranches.set(file, list);
-            }
-            list.push(branch.name);
-        }
-    }
-
-    for (const branch of branches) {
-        const conflictSet = new Set<string>();
-
-        for (const file of branch.files) {
-            const list = fileToBranches.get(file);
-            if (list) {
-                for (let i = 0; i < list.length; i++) {
-                    const otherBranch = list[i];
-                    if (otherBranch !== branch.name) {
-                        conflictSet.add(otherBranch);
-                    }
-                }
-            }
-        }
-
-        graph.set(branch.name, Array.from(conflictSet));
-    }
-
-    return graph;
-}
-
-function topologicalSort(
-    branches: Branch[],
-    conflicts: Map<string, string[]>,
-    blockingCounts: Map<string, number>,
-    useBlockingOrder?: boolean
-): Branch[] {
-    return [...branches].sort((a, b) => {
-        // If using blocking-count mode, sort by most blocking first (rarest-first)
-        if (useBlockingOrder) {
-            const blocksA = blockingCounts.get(a.name) || 0;
-            const blocksB = blockingCounts.get(b.name) || 0;
-
-            if (blocksA !== blocksB) {
-                return blocksB - blocksA;  // Most blocking first
-            }
-        }
-
-        // Default: fewest conflicts first
-        const conflictsA = conflicts.get(a.name)?.length || 0;
-        const conflictsB = conflicts.get(b.name)?.length || 0;
-
-        if (conflictsA !== conflictsB) {
-            return conflictsA - conflictsB;
-        }
-
-        // Oldest first (FIFO)
-        return new Date(a.registeredAt).getTime() - new Date(b.registeredAt).getTime();
-    });
-}
-
-/**
- * Calculate how many branches each branch blocks.
- * A branch "blocks" another if they share files (conflict).
- */
-function calculateBlockingCounts(
-    branches: Branch[],
-    conflictGraph: Map<string, string[]>
-): Map<string, number> {
-    const counts = new Map<string, number>();
-
-    for (const branch of branches) {
-        // Count how many branches conflict with this one (= are blocked by it)
-        const conflictingBranches = conflictGraph.get(branch.name) || [];
-        counts.set(branch.name, conflictingBranches.length);
-    }
-
-    return counts;
-}
-
 /**
  * Get list of branch names that are blocked by a given branch.
  */
 function getBlockedBranches(
     branchName: string,
-    branches: Branch[],
     conflictGraph: Map<string, string[]>
 ): string[] {
     // Return the branches that this branch conflicts with
     return conflictGraph.get(branchName) || [];
 }
-
