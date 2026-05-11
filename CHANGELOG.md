@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.10.0] - 2026-05-11
 
 ### Added
 
@@ -21,9 +21,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`src/commands/bot.ts` — BRANCH_RE length cap** — `/^[\w/.-]+$/` allowed unlimited-length branch names from external smalltoak messages. Changed to `/^[\w/.-]{1,200}$/`.
 - **`src/commands/bot.ts` — stPost silent catch** — `} catch { /* silent */ }` swallowed all posting errors. Now logs non-offline failures via `console.warn`.
 
+### Performance
+
+- **`spidersan conflicts` + `spidersan cross-conflicts`** — replaced multiple `.filter()` passes with single-pass `for` loops for conflict tier counting. Eliminates O(N×3) traversal in `notifyHub()`, `logActivity`, and JSON summary output.
+
 ### Tests
 
-- **147 tests, 32 test files** — up from 139 / 31 after DEEPENING-9 test additions.
+- **161 tests, 35 test files** — up from 147 / 32 after DEEPENING-10 renderer test additions.
 
 ## [0.9.0] - 2026-05-11
 
