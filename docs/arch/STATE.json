@@ -66,6 +66,17 @@
 
   "new_candidates_2026_05_11": [
     {
+      "id": "P1-DEEPENING-8-remote-drift",
+      "title": "DEEPENING #8: pulse --remote-drift (proactive drift detection)",
+      "owner": "spidersan-m5",
+      "status": "codex-dispatched",
+      "codex_session": "last",
+      "priority": "P1",
+      "contract": "docs/arch/contracts/DEEPENING-8-remote-drift.md",
+      "depends_on": ["P1-DEEPENING-4-git-module", "P1-DEEPENING-5-hub-client"],
+      "rationale": "2026-05-11 rebase-sync-chaos incident: spidersan conflicts reported clean (correct) but remote drift was invisible until push rejection. 7 sangit training pairs cover reactive patterns; this closes the proactive gap. src/lib/git.ts (DEEPENING-4) provides getAheadBehind/getRemoteHead; src/lib/hub.ts (DEEPENING-5) provides HubClient for --hub-sync."
+    },
+    {
       "id": "P1-DEEPENING-4-git-module",
       "title": "DEEPENING #4: extract Git operations module",
       "owner": "spidersan-m5",
