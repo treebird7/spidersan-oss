@@ -7,8 +7,10 @@ import { homedir } from 'os';
 import { io, Socket } from 'socket.io-client';
 import { loadConfig } from '../lib/config.js';
 import { syncFromColony } from '../lib/colony-subscriber.js';
-import { getCurrentBranch } from '../lib/git.js';
+import { getCurrentBranch, getRemoteHead } from '../lib/git.js';
 import { createHubClient } from '../lib/hub.js';
+import { computeDriftResult } from '../lib/remote-drift.js';
+import type { DriftResult, DriftSkipped } from '../lib/remote-drift.js';
 
 const DEBOUNCE_MS = 1000;  // Debounce file changes
 const hub = createHubClient();
@@ -21,6 +23,7 @@ interface WatchOptions {
     hub?: boolean;
     hubSync?: boolean;
     quiet?: boolean;
+    fetchPoll?: string | boolean;
     legacy?: boolean;  // Use old behavior (more file descriptors)
 }
 
@@ -49,6 +52,147 @@ function formatConflictChatMessage(branch: string, conflicts: ConflictInfo[]): s
     return `🕷️⚠️ **CONFLICT DETECTED** on branch \`${branch}\`\n\n${conflictDetails}`;
 }
 
+function formatFetchPollTime(date: Date): string {
+    return date.toLocaleTimeString('en-GB', { hour12: false });
+}
+
+function runInRepoDir<T>(repoDir: string, work: () => T): T;
+function runInRepoDir<T>(repoDir: string, work: () => Promise<T>): Promise<T>;
+function runInRepoDir<T>(repoDir: string, work: () => T | Promise<T>): T | Promise<T> {
+    const originalDir = process.cwd();
+    const shouldChangeDir = repoDir && originalDir !== repoDir;
+    let restoreInFinally = true;
+
+    if (shouldChangeDir) {
+        process.chdir(repoDir);
+    }
+
+    try {
+        const result = work();
+        if (result instanceof Promise) {
+            restoreInFinally = false;
+            return result.finally(() => {
+                if (shouldChangeDir) {
+                    process.chdir(originalDir);
+                }
+            });
+        }
+
+        return result;
+    } finally {
+        if (restoreInFinally && shouldChangeDir && process.cwd() === repoDir) {
+            process.chdir(originalDir);
+        }
+    }
+}
+
+function isDriftSkipped(result: DriftResult | DriftSkipped): result is DriftSkipped {
+    return 'skipped' in result;
+}
+
+function formatDriftZoneEntry(file: string, result: DriftResult): string {
+    const labels: string[] = [];
+    const registered = result.registeredInDrift.find((entry) => entry.file === file);
+    const unstaged = result.unstagedInDrift.some((entry) => entry.file === file);
+
+    if (registered && registered.tier !== null) {
+        labels.push(`registered tier ${registered.tier}`);
+    }
+
+    if (unstaged) {
+        labels.push('unstaged ⚠');
+    }
+
+    return labels.length > 0 ? `${file} [${labels.join(', ')}]` : file;
+}
+
+function formatFetchPollWarning(result: DriftResult): string[] {
+    const driftSummary = result.driftZone.length > 0
+        ? result.driftZone.map((file) => formatDriftZoneEntry(file, result)).join(', ')
+        : '(none reported)';
+
+    return [
+        `📡 [FETCH-POLL] Remote advanced while you're working!`,
+        `   Branch: ${result.branch}  |  Remote is ${result.remoteAhead} commit(s) ahead`,
+        `   Drift zone: ${driftSummary}`,
+        `   → Run: git fetch origin && git log --oneline ${result.remote} -5`,
+    ];
+}
+
+export async function startFetchPollLoop(opts: {
+    intervalSecs: number;
+    hubSync: boolean;
+    quiet: boolean;
+    repoDir: string;
+}): Promise<void> {
+    const intervalMs = Math.max(1, opts.intervalSecs) * 1000;
+
+    try {
+        const branch = runInRepoDir(opts.repoDir, () => getCurrentBranch());
+        const storage = await getStorage();
+        const hubClient = opts.hubSync ? createHubClient() : null;
+        let lastRemoteHead = runInRepoDir(opts.repoDir, () => getRemoteHead('origin', branch));
+        let inFlight = false;
+
+        setInterval(() => {
+            if (inFlight) return;
+            inFlight = true;
+
+            void (async () => {
+                try {
+                    const currentRemoteHead = runInRepoDir(opts.repoDir, () => getRemoteHead('origin', branch));
+
+                    if (currentRemoteHead === lastRemoteHead) {
+                        if (!opts.quiet) {
+                            console.log(`📡 [FETCH-POLL] Remote unchanged (checked at ${formatFetchPollTime(new Date())})`);
+                        }
+                        return;
+                    }
+
+                    lastRemoteHead = currentRemoteHead;
+
+                    const registeredFiles = (await storage.get(branch))?.files ?? [];
+                    const result = await runInRepoDir(
+                        opts.repoDir,
+                        () => computeDriftResult(registeredFiles, { remote: 'origin', branch }),
+                    );
+
+                    if (isDriftSkipped(result)) {
+                        if (!opts.quiet) {
+                            console.log(`📡 [FETCH-POLL] Skipped: ${result.reason}`);
+                        }
+                        return;
+                    }
+
+                    if (result.remoteAhead === 0) {
+                        return;
+                    }
+
+                    const warningLines = formatFetchPollWarning(result);
+                    warningLines.forEach((line) => console.log(line));
+
+                    if (hubClient) {
+                        await hubClient.postToChat({
+                            agent: 'spidersan',
+                            name: 'Spidersan',
+                            message: warningLines.join('\n'),
+                            glyph: '🕷️',
+                        });
+                    }
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    console.warn(`⚠️ [FETCH-POLL] ${message}`);
+                } finally {
+                    inFlight = false;
+                }
+            })();
+        }, intervalMs);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`⚠️ [FETCH-POLL] ${message}`);
+    }
+}
+
 export const watchCommand = new Command('watch')
     .description('🕷️ Watch files and auto-register changes (daemon mode)')
     .argument('[directory]', 'Directory to watch (default: current repo)')
@@ -59,6 +203,7 @@ export const watchCommand = new Command('watch')
     .option('--hub', 'Connect to Hub and emit real-time conflict warnings')
     .option('--hub-sync', 'Post conflicts to Hub chat via REST API')
     .option('-q, --quiet', 'Only log conflicts, not file changes')
+    .option('--fetch-poll [seconds]', 'Poll git ls-remote origin every N seconds (default: 60)')
     .option('--legacy', 'Legacy mode: use old watcher settings (more file descriptors)')
     .action(async (directory: string | undefined, options: WatchOptions) => {
         const storage = await getStorage();
@@ -267,6 +412,19 @@ Press Ctrl+C to stop.
             const errorMsg = err instanceof Error ? err.message : String(err);
             console.error(`❌ Watcher error: ${errorMsg}`);
         });
+
+        if (options.fetchPoll) {
+            const parsedSecs = typeof options.fetchPoll === 'string'
+                ? Number.parseInt(options.fetchPoll, 10)
+                : Number.NaN;
+            const intervalSecs = Number.isFinite(parsedSecs) && parsedSecs > 0 ? parsedSecs : 60;
+            void startFetchPollLoop({
+                intervalSecs,
+                hubSync: !!options.hubSync,
+                quiet: !!options.quiet,
+                repoDir: repoRoot,
+            });
+        }
 
         // Handle graceful shutdown
         process.on('SIGINT', () => {
