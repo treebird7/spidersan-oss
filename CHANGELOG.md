@@ -5,10 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.0] - 2026-05-11
 
 ### Added
-- **Phase 2.5: Realtime Apprenticeship schema** — 4 new tables on treebird-runtime staging (`spider_decision_stream`, `spider_pattern_weights`, `spider_pattern_corrections`, `spider_agent_trust`). HMAC gate trigger on decision stream, optimistic version lock + weight ceiling (≤0.95) triggers on pattern weights, SECURITY DEFINER functions for decay/tombstone/resurface/trust-upsert. `last_promoted_at` column on `spider_pattern_weights` (SANGIT-08 curriculum sync). Migration: `20260504000000_realtime_apprenticeship.sql` · commit `7392776`.
+
+- **`spidersan pulse --remote-drift`** — proactive remote drift detection. Fetches `origin`, identifies the drift zone (files touched by remote commits local doesn't have), cross-references against (a) the registered branch file list with tier classification and (b) unstaged working-tree files (rebase-continue blocker risk). Gracefully degrades when offline, detached HEAD, mid-rebase, or no remote branch. Supports `--json`, `--hub-sync` (post to Hub on risk), `--strict` (exit 1 on overlap). Pre-push hook integration: `spidersan pulse --remote-drift --strict`. Closes the proactive gap exposed by the 2026-05-11 rebase-sync-chaos incident — 7 sangit gold pairs cover the reactive patterns; this command warns before the first push attempt.
+- **`src/lib/remote-drift.ts`** — pure library exporting `getDriftZone`, `getUnstagedTrackedFiles`, `classifyDriftZone`, `computeDriftResult`. Extracted so `watch --fetch-poll` can reuse the primitives without importing from the command layer.
+- **Architecture DEEPENING-8** — contract at `docs/arch/contracts/DEEPENING-8-remote-drift.md`; 15 new tests in `tests/remote-drift.test.ts`.
+
+### Architecture (DEEPENING series — all in this release cycle)
+
+- **DEEPENING-3: `src/lib/conflict-analyzer.ts`** — pure `analyzeConflicts() → ConflictReport`; `classifierSource` enum and `useSymbolAware` flag as H10 affordances. `conflicts.ts` reduced from 68 to 2 `console.log` calls.
+- **DEEPENING-4: `src/lib/git.ts`** — canonical git operations module; `getCurrentBranch` deduplication (8× → 1), plus `getChangedFiles`, `getFileAtRef`, `getRemoteHead`, `getAheadBehind`, `GitError`. All git calls use `execFileSync` argv arrays.
+- **DEEPENING-5: `src/lib/hub.ts`** — single `HubClient` with injectable `HubAdapter`; `HUB_URL` defined once (was in 3+ files). Stray `HUB_URL` in `torrent.ts` also removed.
+- **DEEPENING-6: `src/lib/conflict-renderer.ts`** — pure `renderConflictReport()` → `string`; zero side effects; makes conflict detection testable without stdout capture.
+- **DEEPENING-7: `src/lib/graph.ts`** — pure `buildConflictGraph`, `topologicalSort`, `calculateBlockingCounts`; first test coverage for merge-order logic (11 tests).
+- **DEEPENING-1: `src/storage/` split** — `BranchRegistryStore` + `JsonBranchRegistryStore` + `MemoryBranchRegistryStore` (test double) + `SupabaseRegistrySyncClient`. `StorageAdapter` kept as `@deprecated` composing shim; on-disk JSON format unchanged.
+
+### Changed
+
+- `vitest.config.ts` — excludes `conflict-tier.test.ts` (uses `node:test` runner, not vitest)
+
+### Tests
+
+- **139 tests, 31 test files** — up from 84 tests / ~20 files before this cycle. All pass.
+
+ — 4 new tables on treebird-runtime staging (`spider_decision_stream`, `spider_pattern_weights`, `spider_pattern_corrections`, `spider_agent_trust`). HMAC gate trigger on decision stream, optimistic version lock + weight ceiling (≤0.95) triggers on pattern weights, SECURITY DEFINER functions for decay/tombstone/resurface/trust-upsert. `last_promoted_at` column on `spider_pattern_weights` (SANGIT-08 curriculum sync). Migration: `20260504000000_realtime_apprenticeship.sql` · commit `7392776`.
 - **pg_cron schedules for decay + tombstone** — `spider-decay-daily` (03:00 UTC daily) and `spider-tombstone-weekly` (04:00 UTC Sunday) registered on staging. Idempotent unschedule guard. Migration: `20260509000001_pg_cron_spider_decay_tombstone.sql` · authored by watsan-m5 · commit `d8d09f9`.
 
 ### Fixed

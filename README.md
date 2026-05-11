@@ -180,8 +180,38 @@ spidersan bot remove myrepo
 | `spidersan cross-conflicts` | Detect file conflicts across machines via Supabase |
 | `spidersan github-sync` | Fetch branch/PR/CI status from GitHub for configured repos |
 | `spidersan pulse` | Sync from Colony then show active conflicts (quick health-check) |
+| `spidersan pulse --remote-drift` | Fetch origin + detect remote drift zone; cross-ref against registry and unstaged files |
 
-### 👑 Queen Mode (Parallel Dispatch)
+### 📡 Remote Drift Detection
+
+`spidersan pulse --remote-drift` closes the gap between registry-level conflict detection and single-agent divergence:
+
+```bash
+# Check if origin has advanced past local HEAD
+spidersan pulse --remote-drift
+
+# Machine-readable output
+spidersan pulse --remote-drift --json
+
+# Post alert to Hub if registered or unstaged files are in the drift zone
+spidersan pulse --remote-drift --hub-sync
+
+# Exit 1 if any drift risk — use as a pre-push gate
+spidersan pulse --remote-drift --strict
+
+# As a pre-push hook:
+# .git/hooks/pre-push
+spidersan pulse --remote-drift --strict || { echo "Fetch + resolve drift first"; exit 1; }
+```
+
+**What it detects:**
+- 📥 Remote commits that local doesn't have (the *drift zone*)
+- 🟠/🔴 Registered files in the drift zone → rebase conflict risk, classified by tier
+- ⚠️ Unstaged tracked files in the drift zone → `git rebase --continue` blocker risk (even after resolving conflict markers — fix: `git checkout HEAD -- <file>`)
+
+**Graceful degradation:** offline, detached HEAD, mid-rebase, no remote branch — all print a warning and continue without exit 1.
+
+
 
 Dispatch sub-spidersans to run ground jobs across multiple repos in parallel:
 
