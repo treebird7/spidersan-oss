@@ -2,8 +2,8 @@
   "schema_version": "1.0",
   "source": "spidersan/docs/arch/STATE.json — CLI-side mirror of spidersan-ai/docs/arch/STATE.json items that touch this repo",
   "facilitator": "sherlocksan-m2 (consortium); spidersan-m5 (this file)",
-  "last_updated": "2026-05-04",
-  "last_updated_by": "spidersan-m5 — P0-A3 trailing criterion scaffold",
+  "last_updated": "2026-05-11",
+  "last_updated_by": "spidersan-m5 — add DEEPENING-4 git-module, DEEPENING-5 hub-client, DEEPENING-6 output-seam, DEEPENING-7 graph-module; dispatch DEEPENING-3",
   "scope": "Items whose contracts and code live in spidersan/. Items that live in spidersan-ai/ (P0-B, P0-H2, P1-C4, P2-permissive-checker, P2-adversarial) are tracked in spidersan-ai/docs/arch/STATE.json — see source link there.",
 
   "candidates": [
@@ -35,7 +35,8 @@
       "id": "P1-DEEPENING-3-conflict-analyzer",
       "title": "DEEPENING #3: pure ConflictAnalyzer",
       "owner": "spidersan-m5",
-      "status": "specced",
+      "status": "codex-dispatched",
+      "codex_session": "last",
       "priority": "P1",
       "contract": "docs/arch/contracts/DEEPENING-3-conflict-analyzer.md",
       "depends_on": ["P1-DEEPENING-2-conflict-tier"],
@@ -58,5 +59,48 @@
     }
   ],
 
-  "still_needs_detail_to_lock": []
+  "still_needs_detail_to_lock": [],
+
+  "new_candidates_2026_05_11": [
+    {
+      "id": "P1-DEEPENING-4-git-module",
+      "title": "DEEPENING #4: extract Git operations module",
+      "owner": "spidersan-m5",
+      "status": "specced",
+      "priority": "P1",
+      "contract": "docs/arch/contracts/DEEPENING-4-git-module.md",
+      "depends_on": [],
+      "rationale": "getCurrentBranch() defined 8x across command files; getChangedFiles() defined 2x. No seam for git operations — each command reaches directly into child_process. Cannot test git-dependent logic without mocking at the call site."
+    },
+    {
+      "id": "P1-DEEPENING-5-hub-client",
+      "title": "DEEPENING #5: extract Hub client module",
+      "owner": "spidersan-m5",
+      "status": "specced",
+      "priority": "P1",
+      "contract": "docs/arch/contracts/DEEPENING-5-hub-client.md",
+      "depends_on": [],
+      "rationale": "HUB_URL defined in conflicts.ts and watch.ts independently; notifyHub/postConflictToChat/wakeAgent implemented 2-3x with divergent error handling. No seam for Hub integration."
+    },
+    {
+      "id": "P1-DEEPENING-6-output-seam",
+      "title": "DEEPENING #6: command output seam — logic returns data, command formats it",
+      "owner": "spidersan-m5",
+      "status": "specced",
+      "priority": "P1",
+      "contract": "docs/arch/contracts/DEEPENING-6-output-seam.md",
+      "depends_on": ["P1-DEEPENING-3-conflict-analyzer"],
+      "rationale": "230+ console.log calls mixed into business logic across all command files. Cannot test conflict detection without capturing stdout. Tractable once DEEPENING-3 provides a typed ConflictReport."
+    },
+    {
+      "id": "P1-DEEPENING-7-graph-module",
+      "title": "DEEPENING #7: extract pure graph / topological sort module",
+      "owner": "spidersan-m5",
+      "status": "specced",
+      "priority": "P1",
+      "contract": "docs/arch/contracts/DEEPENING-7-graph-module.md",
+      "depends_on": [],
+      "rationale": "topologicalSort() and buildConflictGraph() buried inside merge-order.ts with no extraction. Pure computation, no I/O — deepens trivially. Zero test coverage for the most failure-prone coordination operation."
+    }
+  ]
 }
