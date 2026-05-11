@@ -81,14 +81,29 @@ git show --stat <sha>   →  list of files touched
 Collect the union of all files across all N remote commits. Call this the
 **drift zone**.
 
-### Step 4 — Cross-reference against registry
+### Step 4 — Cross-reference: registry + unstaged working tree
 
-Load the registered file list for the current branch from the spidersan
-registry. Intersect with the drift zone.
+Two independent cross-references against the drift zone:
 
-- **No overlap** → safe to rebase (remote didn't touch your registered files)
-- **Overlap** → conflict-at-rebase risk; classify each overlapping file by tier
-  (using the same `classifyTier()` logic as `conflicts`)
+**4a. Registry cross-ref** — load the registered file list for the current
+branch and intersect with the drift zone.
+
+- **No overlap** → remote didn't touch your declared files
+- **Overlap** → conflict-at-rebase risk; classify each file by tier (same
+  `classifyTier()` logic as `conflicts`)
+
+**4b. Unstaged working-tree cross-ref** — run `git diff --name-only` to get
+all tracked files with unstaged modifications. Intersect with the drift zone.
+
+- **No overlap** → no additional rebase blocker
+- **Overlap** → `git rebase --continue` blocker risk (pair #3 in the
+  2026-05-11 training data): git treats any unstaged tracked file as potential
+  unresolved conflict state, even when that file has no conflict markers.
+  The fix is `git checkout HEAD -- <file>` before continuing — not `git add`.
+
+These are orthogonal: a file can be in both sets, either one, or neither.
+Both are surfaced in output with distinct labels so the operator knows
+which risk they're looking at.
 
 ### Step 5 — Output
 
@@ -100,13 +115,13 @@ registry. Intersect with the drift zone.
 Remote is 3 commits ahead of local.
 
 Drift zone (files touched by remote commits):
-  canopy/tasks.md         [not registered]
-  CONSORTIUM-cat-A.md     [registered — 🟠 TIER 2 PAUSE]
-  docs/PAPER_finetune_findings.md  [registered — 🔴 TIER 3 BLOCK]
+  canopy/tasks.md               [not registered, not modified]
+  CONSORTIUM-cat-A.md           [registered — 🟠 TIER 2] [unstaged modification ⚠]
+  docs/PAPER_finetune_findings.md  [registered — 🔴 TIER 3]
 
 ⚠  2 registered file(s) in drift zone. Rebase will conflict.
-   Recommended: git fetch && git show --stat <sha> for each commit,
-   pre-build merge content in /tmp before rebasing.
+⚠  1 file has unstaged modifications — git rebase --continue may block even
+   after resolving conflict markers. Fix: git checkout HEAD -- <file>
 
    git fetch origin
    git log --oneline origin/main -3
@@ -129,31 +144,35 @@ When clean:
   "state": "diverged",
   "drift_zone": ["canopy/tasks.md", "CONSORTIUM-cat-A.md", "docs/PAPER_finetune_findings.md"],
   "registered_in_drift": [
-    { "file": "CONSORTIUM-cat-A.md", "tier": 2 },
-    { "file": "docs/PAPER_finetune_findings.md", "tier": 3 }
+    { "file": "CONSORTIUM-cat-A.md", "tier": 2, "unstaged": true },
+    { "file": "docs/PAPER_finetune_findings.md", "tier": 3, "unstaged": false }
+  ],
+  "unstaged_in_drift": [
+    { "file": "CONSORTIUM-cat-A.md", "registered": true }
   ],
   "safe_to_push": false,
+  "rebase_continue_risk": true,
   "recommendation": "rebase_with_conflict_prep"
 }
 ```
 
 ### Step 6 — Hub notification (`--hub-sync`)
 
-If `--hub-sync` is passed and there are registered files in the drift zone,
-post to Hub chat (same `fetch(HUB_URL/api/chat)` pattern as `conflicts --notify`):
+If `--hub-sync` is passed and there are registered files **or unstaged files**
+in the drift zone, post to Hub chat:
 
 ```
 🕷️⚠️ Remote drift detected on `main`
-  3 commits ahead | 2 registered files at risk
-  🟠 CONSORTIUM-cat-A.md
+  3 commits ahead | 2 registered files at risk | 1 rebase-continue blocker
+  🟠 CONSORTIUM-cat-A.md  [also has unstaged modifications]
   🔴 docs/PAPER_finetune_findings.md
   Recommended: pre-build merge content before rebasing.
 ```
 
 ### Step 7 — Exit code (`--strict`)
 
-`--strict` causes exit 1 if `registered_in_drift` is non-empty (any tier).
-Mirrors `conflicts --strict` semantics. Suitable for pre-push git hooks:
+`--strict` causes exit 1 if `registered_in_drift` **or `unstaged_in_drift`** is
+non-empty. Both are blocker-class signals in the context of a rebase.
 
 ```bash
 # .git/hooks/pre-push
@@ -200,13 +219,21 @@ function getAheadBehind(remote: string, branch: string): { ahead: number; behind
 // Returns union of files touched by commits in remote that local doesn't have
 function getDriftZone(remote: string, branch: string): string[]
 
-// Classifies drift zone files against registry, returns per-file tier
-function classifyDriftZone(driftFiles: string[], registeredFiles: string[]): DriftEntry[]
+// Returns tracked files with unstaged modifications (git diff --name-only)
+function getUnstagedTrackedFiles(): string[]
+
+// Classifies drift zone files against registry + unstaged set
+function classifyDriftZone(
+  driftFiles: string[],
+  registeredFiles: string[],
+  unstagedFiles: string[],
+): DriftEntry[]
 
 interface DriftEntry {
   file: string;
   registered: boolean;
   tier: 1 | 2 | 3 | null;  // null = not registered
+  unstaged: boolean;        // true = git rebase --continue blocker risk
 }
 
 interface DriftResult {
@@ -215,7 +242,9 @@ interface DriftResult {
   state: 'synced' | 'local_ahead' | 'remote_ahead' | 'diverged';
   driftZone: string[];
   registeredInDrift: DriftEntry[];
+  unstagedInDrift: DriftEntry[];   // entries where unstaged=true (may overlap registeredInDrift)
   safeToPush: boolean;
+  rebaseContinueRisk: boolean;     // true if unstagedInDrift is non-empty
   recommendation: 'push_clean' | 'pull_rebase' | 'rebase_clean' | 'rebase_with_conflict_prep';
 }
 ```
@@ -259,10 +288,12 @@ check. Opt-in only.
 
 - [ ] `spidersan pulse --remote-drift` runs `git fetch origin` and reports drift state
 - [ ] Drifted files cross-referenced against spidersan registry with tier classification
-- [ ] `--json` output matches the schema above
-- [ ] `--hub-sync` posts to Hub when registered files are in drift zone
-- [ ] `--strict` exits 1 when any registered file is in drift zone
+- [ ] Drifted files cross-referenced against `git diff --name-only` (unstaged tracked files); overlap flagged as `rebase_continue_risk`
+- [ ] `--json` output includes `unstaged_in_drift` array and `rebase_continue_risk` boolean
+- [ ] Human output shows `[unstaged modification ⚠]` label and separate warning line for rebase-continue blockers
+- [ ] `--hub-sync` posts to Hub when registered **or unstaged** files are in drift zone
+- [ ] `--strict` exits 1 when `registered_in_drift` or `unstaged_in_drift` is non-empty
 - [ ] All git calls use `execFileSync` with argv array (no string interpolation)
 - [ ] Offline / no-remote / detached-HEAD / mid-rebase all degrade gracefully
-- [ ] `src/lib/remote-drift.ts` exports `getDriftZone` + `classifyDriftZone` for `watch --fetch-poll` reuse
-- [ ] Tests in `tests/remote-drift.test.ts` covering synced / remote-ahead / diverged / offline cases
+- [ ] `src/lib/remote-drift.ts` exports `getDriftZone`, `getUnstagedTrackedFiles`, `classifyDriftZone` for `watch --fetch-poll` reuse
+- [ ] Tests in `tests/remote-drift.test.ts` covering: synced, remote-ahead-no-overlap, remote-ahead-registered-overlap, remote-ahead-unstaged-overlap, diverged-both, offline
