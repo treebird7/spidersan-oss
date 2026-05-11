@@ -15,12 +15,13 @@ import { basename } from 'path';
 import { homedir } from 'os';
 import { getStorage } from '../storage/index.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
+import { analyzeConflicts } from '../lib/conflict-analyzer.js';
 import { validateBranchName } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
 import { logActivity } from '../lib/activity.js';
 import { isGhAvailable, getPRDetails } from '../lib/github.js';
-import { classifyWithLabel } from '../lib/conflict-tier.js';
+import { classifyWithLabel, TIER_LABELS, type ConflictTier } from '../lib/conflict-tier.js';
 
 // Config
 const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
@@ -374,46 +375,47 @@ export const conflictsCommand = new Command('conflicts')
         }
 
         const allBranches = await storage.list();
+        const analysisBranches = allBranches
+            .filter(branch => branch.name !== targetBranch && branch.status === 'active')
+            .map(branch => ({
+                ...branch,
+                files: branch.files.filter(file => !isExcludedPath(file)),
+            }));
+
+        const report = analyzeConflicts({
+            branches: analysisBranches,
+            targetFiles: targetFiles.filter(file => !isExcludedPath(file)),
+            options: {
+                extraTier3: compiledHigh,
+                extraTier2: compiledMedium,
+                useSymbolAware: false,
+            },
+        });
+
+        const conflictByFile = new Map(report.conflicts.map(conflict => [conflict.file, conflict]));
         const conflicts: Array<{ branch: string; files: string[]; tier: number; tierInfo: ConflictTierInfo }> = [];
 
-        // Performance Optimization: Convert target files to Set for O(1) lookup
-        // Reduces complexity from O(N*M*K) to O(N*M) where N=branches, M=files/branch, K=target_files
-        // Filter excluded paths (node_modules/, dist/, etc.) at query time to handle stale registrations
-        const targetFilesSet = new Set(targetFiles.filter(f => !isExcludedPath(f)));
+        for (const branch of analysisBranches) {
+            const overlappingFiles = branch.files.filter(file => conflictByFile.has(file));
+            if (overlappingFiles.length === 0) {
+                continue;
+            }
 
-        for (const branch of allBranches) {
-            if (branch.name === targetBranch || branch.status !== 'active') continue;
-
-            // Performance Optimization: Replace .filter() with a standard loop to avoid array allocation.
-            // Short-circuit using O(1) Set lookup (targetFilesSet.has) before calling the expensive isExcludedPath.
-            const overlappingFiles: string[] = [];
-            for (let i = 0; i < branch.files.length; i++) {
-                const f = branch.files[i];
-                if (targetFilesSet.has(f) && !isExcludedPath(f)) {
-                    overlappingFiles.push(f);
+            let maxTier: ConflictTier = 1;
+            for (const file of overlappingFiles) {
+                const conflict = conflictByFile.get(file);
+                if (conflict && conflict.tier > maxTier) {
+                    maxTier = conflict.tier;
                 }
             }
-            if (overlappingFiles.length > 0) {
-                // Get highest tier for this conflict
-                let maxTier: ConflictTierInfo = { tier: 1, label: 'WARN', icon: '🟡', action: '' };
-                for (const file of overlappingFiles) {
-                    const fileTier = classifyWithLabel(file, {
-                        extraTier3: compiledHigh,
-                        extraTier2: compiledMedium,
-                    });
-                    if (fileTier.tier > maxTier.tier) {
-                        maxTier = fileTier;
-                    }
-                }
 
-                if (maxTier.tier >= minTier) {
-                    conflicts.push({
-                        branch: branch.name,
-                        files: overlappingFiles,
-                        tier: maxTier.tier,
-                        tierInfo: maxTier
-                    });
-                }
+            if (maxTier >= minTier) {
+                conflicts.push({
+                    branch: branch.name,
+                    files: overlappingFiles,
+                    tier: maxTier,
+                    tierInfo: { tier: maxTier, ...TIER_LABELS[maxTier] },
+                });
             }
         }
 
@@ -452,16 +454,20 @@ export const conflictsCommand = new Command('conflicts')
 
         // Log conflict detection to activity log
         if (conflicts.length > 0) {
-            logActivity({
-                event: 'conflict_detected',
-                branch: targetBranch,
-                details: {
-                    tier3: conflicts.filter(c => c.tier === 3).length,
-                    tier2: conflicts.filter(c => c.tier === 2).length,
-                    tier1: conflicts.filter(c => c.tier === 1).length,
-                    conflicting_branches: conflicts.map(c => c.branch),
-                }
-            });
+            try {
+                logActivity({
+                    event: 'conflict_detected',
+                    branch: targetBranch,
+                    details: {
+                        tier3: conflicts.filter(c => c.tier === 3).length,
+                        tier2: conflicts.filter(c => c.tier === 2).length,
+                        tier1: conflicts.filter(c => c.tier === 1).length,
+                        conflicting_branches: conflicts.map(c => c.branch),
+                    }
+                });
+            } catch {
+                // Telemetry should never block conflict detection.
+            }
         }
 
         // Check for blocking conditions
