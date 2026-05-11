@@ -269,6 +269,101 @@ server.tool(
     }
 );
 
+// Tool: pulse_remote_drift
+server.tool(
+    'pulse_remote_drift',
+    'Fetch origin and detect remote drift: identifies commits on origin that local HEAD does not have, then cross-references the affected files against (a) the registered branch file list with tier classification and (b) unstaged working-tree files (which block git rebase --continue even after conflict markers are resolved). Use before pushing or rebasing to catch divergence early.',
+    {
+        repo: z.string().optional().describe('Absolute path to the repo (default: current working directory)'),
+        strict: z.boolean().optional().describe('Return an error result if any registered or unstaged files are in the drift zone'),
+    },
+    async ({ repo, strict }) => {
+        const cwd = repo ?? process.cwd();
+        const cli = resolveSpidersanCliForDir(cwd);
+
+        try {
+            const output = execFileSync(
+                cli.command,
+                [...cli.argsPrefix, 'pulse', '--remote-drift', '--json'],
+                { cwd, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+            );
+
+            let payload: any;
+            try {
+                payload = JSON.parse(output.trim());
+            } catch {
+                return { content: [{ type: 'text', text: `🕷️ Remote drift check ran but output was not JSON:\n${output}` }] };
+            }
+
+            const drift = payload?.remoteDrift;
+
+            if (!drift) {
+                return { content: [{ type: 'text', text: '✅ Remote drift check not available in output. Run spidersan init first.' }] };
+            }
+
+            if (drift.skipped) {
+                return { content: [{ type: 'text', text: `⚠️ Remote drift check skipped: ${drift.reason}` }] };
+            }
+
+            const registeredCount = drift.registeredInDrift?.length ?? 0;
+            const unstagedCount = drift.unstagedInDrift?.length ?? 0;
+            const hasRisk = registeredCount > 0 || unstagedCount > 0;
+
+            if (drift.state === 'synced' || drift.remoteAhead === 0) {
+                return { content: [{ type: 'text', text: `✅ Remote drift: 0 commits ahead. Safe to push.\n\nBranch: ${drift.branch}\nState: ${drift.state}` }] };
+            }
+
+            const driftLines = (drift.driftZone ?? []).map((file: string) => {
+                const reg = (drift.registeredInDrift ?? []).find((e: any) => e.file === file);
+                const parts: string[] = [];
+                if (reg) parts.push(`registered — tier ${reg.tier}`);
+                if (reg?.unstaged) parts.push('unstaged ⚠');
+                else {
+                    const uns = (drift.unstagedInDrift ?? []).find((e: any) => e.file === file);
+                    if (uns) parts.push('unstaged ⚠');
+                }
+                return `  ${file}${parts.length ? `  [${parts.join(', ')}]` : ''}`;
+            }).join('\n');
+
+            const warnings: string[] = [];
+            if (registeredCount > 0) warnings.push(`⚠️ ${registeredCount} registered file(s) in drift zone — rebase will conflict.`);
+            if (unstagedCount > 0) warnings.push(`⚠️ ${unstagedCount} file(s) with unstaged modifications — git rebase --continue may block.\n   Fix: git checkout HEAD -- <file>`);
+
+            const text = [
+                `🕷️ REMOTE DRIFT — "${drift.branch}"`,
+                `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+                `Remote is ${drift.remoteAhead} commit(s) ahead | local is ${drift.localAhead} ahead`,
+                `State: ${drift.state} | Recommendation: ${drift.recommendation}`,
+                '',
+                'Drift zone:',
+                driftLines || '  (no files identified)',
+                '',
+                ...warnings,
+                warnings.length === 0 ? '✅ No registered or unstaged files in drift zone — rebase should be clean.' : '',
+                '',
+                `   git fetch origin`,
+                `   git log --oneline ${drift.remote} -5`,
+            ].filter(line => line !== undefined).join('\n');
+
+            if (strict && hasRisk) {
+                return {
+                    isError: true,
+                    content: [{ type: 'text', text: text + '\n\n❌ --strict: drift risk detected. Fetch and resolve before pushing.' }],
+                };
+            }
+
+            return { content: [{ type: 'text', text: text }] };
+        } catch (error: any) {
+            const stderr = error?.stderr ?? '';
+            // Offline / no remote — graceful
+            if (/unreachable|Could not resolve|ENOTFOUND|No remote/i.test(stderr + error?.message)) {
+                return { content: [{ type: 'text', text: '⚠️ Remote unreachable — drift check skipped. Check your network connection.' }] };
+            }
+            return { content: [{ type: 'text', text: `⚠️ pulse --remote-drift failed: ${error?.message ?? error}` }] };
+        }
+    }
+);
+
 // Tool: get_merge_order
 server.tool(
     'get_merge_order',
@@ -2065,6 +2160,7 @@ server.tool(
             { name: 'spidersan_advise', desc: '🧠 AI: Get proactive recommendations for next actions', args: 'repo?, provider?' },
             { name: 'spidersan_explain', desc: '🧠 AI: Explain a branch\'s status and merge readiness', args: 'branch, repo?, provider?' },
             { name: 'spidersan_ping', desc: '🧠 AI: Health check the LLM connection', args: 'provider?' },
+            { name: 'pulse_remote_drift', desc: '📡 Detect remote drift zone and cross-ref against registry + unstaged files', args: 'repo?, strict?' },
             { name: 'list_tools', desc: 'This command - list available tools', args: 'none' },
         ];
 
@@ -2073,7 +2169,7 @@ server.tool(
         return {
             content: [{
                 type: 'text',
-                text: `🕷️ Spidersan MCP Server v1.2.3 (OSS)
+                text: `🕷️ Spidersan MCP Server v0.9.0 (OSS)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ${formatted}

@@ -106,9 +106,9 @@ describe.sequential('MCP tools integration', () => {
         expect(text).toContain('SPIDERSAN WELCOMES YOU');
     });
 
-    it('list_tools returns 22 items', async () => {
+    it('list_tools returns 28 items', async () => {
         const { text } = await callTool('list_tools');
-        expect(text).toContain('Total: 22 tools available');
+        expect(text).toContain('Total: 28 tools available');
     });
 
     it('register_branch creates entry', async () => {
