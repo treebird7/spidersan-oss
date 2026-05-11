@@ -15,17 +15,20 @@ import { basename } from 'path';
 import { homedir } from 'os';
 import { getStorage } from '../storage/index.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
+import type { ConflictReport } from '../lib/conflict-analyzer.js';
 import { analyzeConflicts } from '../lib/conflict-analyzer.js';
+import { renderConflictReport } from '../lib/conflict-renderer.js';
 import { getCurrentBranch, getFileAtRef } from '../lib/git.js';
 import { validateBranchName } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
 import { logActivity } from '../lib/activity.js';
 import { isGhAvailable, getPRDetails } from '../lib/github.js';
-import { classifyWithLabel, TIER_LABELS, type ConflictTier } from '../lib/conflict-tier.js';
+import { TIER_LABELS, type ConflictTier } from '../lib/conflict-tier.js';
 import { createHubClient } from '../lib/hub.js';
 
-type ConflictTierInfo = ReturnType<typeof classifyWithLabel>;
+type ConflictTierInfo = (typeof TIER_LABELS)[ConflictTier];
+type BranchConflict = { branch: string; files: string[]; tier: ConflictTier; tierInfo: ConflictTierInfo };
 const hub = createHubClient();
 
 /**
@@ -35,36 +38,18 @@ function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-/**
- * Suggest simple resolutions for add/add style conflicts where both branches added the same file
- * Typically occurs with docs or generated files. This prints guidance and a recommended sequence
- * to preserve both variants for auditability (e.g., create a .incoming copy).
- */
-function suggestAddAddResolution(conflicts: Array<{ branch: string; files: string[]; tier: number }>): void {
-    const addAddFiles = new Set<string>();
-    for (const conflict of conflicts) {
-        for (const f of conflict.files) {
-            // Simple heuristic: docs and markdown files are common add/add candidates
-            if (/\.md$/.test(f) || /docs\//.test(f)) {
-                addAddFiles.add(f);
-            }
-        }
-    }
+function writeStdout(message: string = ''): void {
+    process.stdout.write(`${message}\n`);
+}
 
-    if (addAddFiles.size === 0) return;
+function writeStderr(message: string): void {
+    process.stderr.write(`${message}\n`);
+}
 
-    console.log('\n💡 Add/Add Conflict Helper');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('Detected files added in both branches. Recommended actions:');
-    console.log('  1. Preserve incoming variant for auditability:');
-    console.log('       git checkout --theirs <file> && mv <file> <file>.<their-branch>.incoming && git add <file>.<their-branch>.incoming');
-    console.log('  2. Keep canonical version in main branch and include note linking the incoming variant.');
-    console.log('  3. Commit and continue rebase: git add -A && git rebase --continue');
-    console.log('\nExamples:');
-    for (const f of addAddFiles) {
-        console.log(`   • ${f} -> preserve incoming as ${f}.incoming`);
-    }
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+function fail(messages: string | string[]): never {
+    const output = Array.isArray(messages) ? messages.join('\n') : messages;
+    writeStderr(output);
+    process.exit(1);
 }
 
 /**
@@ -74,7 +59,7 @@ function suggestAddAddResolution(conflicts: Array<{ branch: string; files: strin
  */
 async function confirmAction(prompt: string, autoConfirm: boolean = false): Promise<boolean> {
     if (autoConfirm) {
-        console.log(`${prompt} [Y/n]: Y (auto)`);
+        writeStdout(`${prompt} [Y/n]: Y (auto)`);
         return true;
     }
 
@@ -91,6 +76,168 @@ async function confirmAction(prompt: string, autoConfirm: boolean = false): Prom
             resolve(normalized === '' || normalized === 'y' || normalized === 'yes');
         });
     });
+}
+
+function filterConflictReport(report: ConflictReport, minTier: ConflictTier): ConflictReport {
+    const conflicts = report.conflicts.filter((conflict) => conflict.tier >= minTier);
+    const byTier: Record<ConflictTier, ConflictReport['conflicts']> = {
+        1: conflicts.filter((conflict) => conflict.tier === 1),
+        2: conflicts.filter((conflict) => conflict.tier === 2),
+        3: conflicts.filter((conflict) => conflict.tier === 3),
+    };
+    const highest = conflicts.length > 0
+        ? conflicts.reduce<ConflictTier>((max, conflict) => (conflict.tier > max ? conflict.tier : max), 1)
+        : 1;
+
+    return {
+        conflicts,
+        byTier,
+        highest,
+        shouldBlock: highest === 3,
+    };
+}
+
+function buildBranchConflicts(report: ConflictReport): BranchConflict[] {
+    const branchOrder = inferBranchOrder(report);
+    const branchOrderIndex = new Map(branchOrder.map((branch, index) => [branch, index]));
+    const grouped = new Map<string, BranchConflict>();
+
+    for (const conflict of report.conflicts) {
+        for (const branch of conflict.branches) {
+            let entry = grouped.get(branch.name);
+            if (!entry) {
+                entry = {
+                    branch: branch.name,
+                    files: [],
+                    tier: 1,
+                    tierInfo: TIER_LABELS[1],
+                };
+                grouped.set(branch.name, entry);
+            }
+
+            if (!entry.files.includes(conflict.file)) {
+                entry.files.push(conflict.file);
+            }
+
+            if (conflict.tier > entry.tier) {
+                entry.tier = conflict.tier;
+                entry.tierInfo = TIER_LABELS[conflict.tier];
+            }
+        }
+    }
+
+    return [...grouped.values()].sort((left, right) => {
+        if (right.tier !== left.tier) {
+            return right.tier - left.tier;
+        }
+
+        return (branchOrderIndex.get(left.branch) ?? Number.MAX_SAFE_INTEGER)
+            - (branchOrderIndex.get(right.branch) ?? Number.MAX_SAFE_INTEGER);
+    });
+}
+
+function inferBranchOrder(report: ConflictReport): string[] {
+    const adjacency = new Map<string, Set<string>>();
+    const indegree = new Map<string, number>();
+    const firstSeen = new Map<string, number>();
+    let seenIndex = 0;
+
+    const ensureBranch = (branch: string): void => {
+        if (!adjacency.has(branch)) {
+            adjacency.set(branch, new Set<string>());
+        }
+        if (!indegree.has(branch)) {
+            indegree.set(branch, 0);
+        }
+        if (!firstSeen.has(branch)) {
+            firstSeen.set(branch, seenIndex++);
+        }
+    };
+
+    for (const conflict of report.conflicts) {
+        const branchNames = conflict.branches.map((branch) => branch.name);
+        for (const branch of branchNames) {
+            ensureBranch(branch);
+        }
+
+        for (let index = 0; index < branchNames.length; index++) {
+            for (let nextIndex = index + 1; nextIndex < branchNames.length; nextIndex++) {
+                const from = branchNames[index];
+                const to = branchNames[nextIndex];
+                const edges = adjacency.get(from);
+                if (!edges || edges.has(to)) {
+                    continue;
+                }
+
+                edges.add(to);
+                indegree.set(to, (indegree.get(to) ?? 0) + 1);
+            }
+        }
+    }
+
+    const queue = [...indegree.entries()]
+        .filter(([, degree]) => degree === 0)
+        .map(([branch]) => branch)
+        .sort((left, right) => (firstSeen.get(left) ?? 0) - (firstSeen.get(right) ?? 0));
+    const ordered: string[] = [];
+
+    while (queue.length > 0) {
+        const branch = queue.shift();
+        if (!branch) {
+            break;
+        }
+
+        ordered.push(branch);
+
+        for (const next of adjacency.get(branch) ?? []) {
+            const nextDegree = (indegree.get(next) ?? 0) - 1;
+            indegree.set(next, nextDegree);
+            if (nextDegree === 0) {
+                queue.push(next);
+                queue.sort((left, right) => (firstSeen.get(left) ?? 0) - (firstSeen.get(right) ?? 0));
+            }
+        }
+    }
+
+    if (ordered.length === indegree.size) {
+        return ordered;
+    }
+
+    return [...firstSeen.entries()]
+        .sort((left, right) => left[1] - right[1])
+        .map(([branch]) => branch);
+}
+
+function countByTier(report: ConflictReport): { tier1: number; tier2: number; tier3: number } {
+    const conflicts = buildBranchConflicts(report);
+
+    return {
+        tier1: conflicts.filter((conflict) => conflict.tier === 1).length,
+        tier2: conflicts.filter((conflict) => conflict.tier === 2).length,
+        tier3: conflicts.filter((conflict) => conflict.tier === 3).length,
+    };
+}
+
+function createJsonReport(report: ConflictReport, branch: string, blocked: boolean): ConflictReport & {
+    branch: string;
+    summary: { tier1: number; tier2: number; tier3: number; blocked: boolean };
+    conflicts: Array<ConflictReport['conflicts'][number] & { files: string[]; branch?: string }>;
+} {
+    const summary = countByTier(report);
+
+    return {
+        ...report,
+        branch,
+        conflicts: report.conflicts.map((conflict) => ({
+            ...conflict,
+            files: [conflict.file],
+            branch: conflict.branches[0]?.name,
+        })),
+        summary: {
+            ...summary,
+            blocked,
+        },
+    };
 }
 
 // ── Ecosystem scan ────────────────────────────────────────────────────────────
@@ -198,7 +345,7 @@ function runEcosystemScan(repos: string[], asJson: boolean): void {
     const reposWithConflicts = results.filter(r => r.tier3 + r.tier2 + r.tier1 > 0).length;
 
     if (asJson) {
-        console.log(JSON.stringify({
+        writeStdout(JSON.stringify({
             ecosystem: true,
             repos: results,
             summary: { ...totals, repos_scanned: results.length, repos_with_conflicts: reposWithConflicts },
@@ -206,28 +353,28 @@ function runEcosystemScan(repos: string[], asJson: boolean): void {
         return;
     }
 
-    console.log(`
+    writeStdout(`
 🕷️  ECOSYSTEM CONFLICT SCAN
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 `);
     for (const r of results) {
         if (r.skipped) {
-            console.log(`  ⬜ ${r.name.padEnd(22)} (not initialized)`);
+            writeStdout(`  ⬜ ${r.name.padEnd(22)} (not initialized)`);
             continue;
         }
         if (r.error) {
-            console.log(`  ❓ ${r.name.padEnd(22)} (${r.error})`);
+            writeStdout(`  ❓ ${r.name.padEnd(22)} (${r.error})`);
             continue;
         }
         const icon = r.tier3 > 0 ? '🔴' : r.tier2 > 0 ? '🟠' : r.tier1 > 0 ? '🟡' : '✅';
         const counts = r.tier3 + r.tier2 + r.tier1 > 0
             ? `  T3:${r.tier3} T2:${r.tier2} T1:${r.tier1}`
             : '  clean';
-        console.log(`  ${icon} ${r.name.padEnd(22)}${counts}`);
+        writeStdout(`  ${icon} ${r.name.padEnd(22)}${counts}`);
     }
-    console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-    console.log(`📊 Total: 🔴 ${totals.tier3} BLOCK | 🟠 ${totals.tier2} PAUSE | 🟡 ${totals.tier1} WARN`);
-    console.log(`   Repos scanned: ${results.length} | With conflicts: ${reposWithConflicts}`);
+    writeStdout('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    writeStdout(`📊 Total: 🔴 ${totals.tier3} BLOCK | 🟠 ${totals.tier2} PAUSE | 🟡 ${totals.tier1} WARN`);
+    writeStdout(`   Repos scanned: ${results.length} | With conflicts: ${reposWithConflicts}`);
 }
 
 export const conflictsCommand = new Command('conflicts')
@@ -235,6 +382,7 @@ export const conflictsCommand = new Command('conflicts')
     .option('--branch <name>', 'Check conflicts for specific branch')
     .option('--pr <number>', 'Check conflicts for a GitHub pull request by number')
     .option('--json', 'Output as JSON')
+    .option('--verbose', 'Show detailed symbol overlap information in human output')
     .option('--tier <level>', 'Filter by minimum tier (1, 2, or 3)', '1')
     .option('--strict', 'Strict mode: exit with error if TIER 2+ conflicts found')
     .option('--notify', 'Notify Hub of TIER 2+ conflicts')
@@ -258,8 +406,7 @@ export const conflictsCommand = new Command('conflicts')
         const config = await loadConfig();
 
         if (!await storage.isInitialized()) {
-            console.error('❌ Spidersan not initialized. Run: spidersan init');
-            process.exit(1);
+            fail('❌ Spidersan not initialized. Run: spidersan init');
         }
 
         const minTier = parseInt(options.tier, 10) as 1 | 2 | 3;
@@ -278,35 +425,35 @@ export const conflictsCommand = new Command('conflicts')
             // --pr mode: fetch PR head branch + changed files from GitHub
             const prNumber = parseInt(options.pr, 10);
             if (isNaN(prNumber) || prNumber <= 0) {
-                console.error('❌ Invalid PR number. Provide a positive integer, e.g. --pr 42');
-                process.exit(1);
+                fail('❌ Invalid PR number. Provide a positive integer, e.g. --pr 42');
             }
             if (!isGhAvailable()) {
-                console.error('❌ GitHub CLI (gh) is not available or not authenticated.');
-                console.error('   Install: https://cli.github.com  →  gh auth login');
-                process.exit(1);
+                fail([
+                    '❌ GitHub CLI (gh) is not available or not authenticated.',
+                    '   Install: https://cli.github.com  →  gh auth login',
+                ]);
             }
             let prDetails;
             try {
                 prDetails = await getPRDetails(prNumber);
             } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
-                console.error(`❌ Failed to fetch PR #${prNumber}: ${msg}`);
-                process.exit(1);
+                fail(`❌ Failed to fetch PR #${prNumber}: ${msg}`);
             }
             targetBranch = prDetails.headBranch;
             targetFiles = prDetails.files;
-            console.log(`🕷️ Checking conflicts for PR #${prNumber}: "${prDetails.title}"`);
-            console.log(`   Branch: ${targetBranch} (${targetFiles.length} file(s) changed)`);
+            writeStdout(`🕷️ Checking conflicts for PR #${prNumber}: "${prDetails.title}"`);
+            writeStdout(`   Branch: ${targetBranch} (${targetFiles.length} file(s) changed)`);
         } else {
             // Normal --branch or current branch mode
             targetBranch = options.branch || getCurrentBranch();
             const target = await storage.get(targetBranch);
 
             if (!target) {
-                console.error(`❌ Branch "${targetBranch}" is not registered.`);
-                console.error('   Run: spidersan register --files "..."');
-                process.exit(1);
+                fail([
+                    `❌ Branch "${targetBranch}" is not registered.`,
+                    '   Run: spidersan register --files "..."',
+                ]);
             }
             targetFiles = target.files;
         }
@@ -319,7 +466,7 @@ export const conflictsCommand = new Command('conflicts')
                 files: branch.files.filter(file => !isExcludedPath(file)),
             }));
 
-        const report = analyzeConflicts({
+        const rawReport = analyzeConflicts({
             branches: analysisBranches,
             targetFiles: targetFiles.filter(file => !isExcludedPath(file)),
             options: {
@@ -328,38 +475,13 @@ export const conflictsCommand = new Command('conflicts')
                 useSymbolAware: false,
             },
         });
-
-        const conflictByFile = new Map(report.conflicts.map(conflict => [conflict.file, conflict]));
-        const conflicts: Array<{ branch: string; files: string[]; tier: number; tierInfo: ConflictTierInfo }> = [];
-
-        for (const branch of analysisBranches) {
-            const overlappingFiles = branch.files.filter(file => conflictByFile.has(file));
-            if (overlappingFiles.length === 0) {
-                continue;
-            }
-
-            let maxTier: ConflictTier = 1;
-            for (const file of overlappingFiles) {
-                const conflict = conflictByFile.get(file);
-                if (conflict && conflict.tier > maxTier) {
-                    maxTier = conflict.tier;
-                }
-            }
-
-            if (maxTier >= minTier) {
-                conflicts.push({
-                    branch: branch.name,
-                    files: overlappingFiles,
-                    tier: maxTier,
-                    tierInfo: { tier: maxTier, ...TIER_LABELS[maxTier] },
-                });
-            }
-        }
+        const report = filterConflictReport(rawReport, minTier);
+        const conflicts = buildBranchConflicts(report);
 
         // SEMANTIC ANALYSIS with AST parser
         const semanticConflicts: SymbolConflict[] = [];
         if (options.semantic && conflicts.length > 0) {
-            console.log('\n🔬 Running semantic (AST) analysis...');
+            writeStdout('\n🔬 Running semantic (AST) analysis...');
             const astParser = new ASTParser();
 
             for (const conflict of conflicts) {
@@ -387,19 +509,17 @@ export const conflictsCommand = new Command('conflicts')
             }
         }
 
-        // Sort by tier (highest first)
-        conflicts.sort((a, b) => b.tier - a.tier);
-
         // Log conflict detection to activity log
         if (conflicts.length > 0) {
             try {
+                const summary = countByTier(report);
                 logActivity({
                     event: 'conflict_detected',
                     branch: targetBranch,
                     details: {
-                        tier3: conflicts.filter(c => c.tier === 3).length,
-                        tier2: conflicts.filter(c => c.tier === 2).length,
-                        tier1: conflicts.filter(c => c.tier === 1).length,
+                        tier3: summary.tier3,
+                        tier2: summary.tier2,
+                        tier1: summary.tier1,
                         conflicting_branches: conflicts.map(c => c.branch),
                     }
                 });
@@ -409,8 +529,7 @@ export const conflictsCommand = new Command('conflicts')
         }
 
         // Check for blocking conditions
-        const tier3Count = conflicts.filter(c => c.tier === 3).length;
-        const tier2Count = conflicts.filter(c => c.tier === 2).length;
+        const { tier2: tier2Count, tier3: tier3Count } = countByTier(report);
         const shouldBlock = options.strict && (tier3Count > 0 || tier2Count > 0);
 
         // Notify Hub if requested
@@ -419,76 +538,47 @@ export const conflictsCommand = new Command('conflicts')
         }
 
         if (options.json) {
-            console.log(JSON.stringify({
-                branch: targetBranch,
-                conflicts,
-                summary: {
-                    tier3: tier3Count,
-                    tier2: tier2Count,
-                    tier1: conflicts.filter(c => c.tier === 1).length,
-                    blocked: shouldBlock
-                }
-            }, null, 2));
+            console.log(JSON.stringify(createJsonReport(report, targetBranch, shouldBlock), null, 2));
 
             if (shouldBlock) process.exit(1);
             return;
         }
 
-        if (conflicts.length === 0) {
-            console.log(`🕷️ No conflicts detected for "${targetBranch}"`);
-            console.log('   ✅ You\'re good to merge!');
-            return;
-        }
-
-        console.log(`
+        const renderedReport = renderConflictReport(report, { verbose: !!options.verbose });
+        const humanOutput = conflicts.length === 0
+            ? renderedReport.replace('🕷️ No conflicts detected', `🕷️ No conflicts detected for "${targetBranch}"`)
+            : `
 🕷️ CONFLICT ANALYSIS: "${targetBranch}"
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        `);
-
-        for (const conflict of conflicts) {
-            console.log(`${conflict.tierInfo.icon} TIER ${conflict.tier} (${conflict.tierInfo.label}): ${conflict.branch}`);
-            for (const file of conflict.files) {
-                const fileTier = classifyWithLabel(file, {
-                    extraTier3: compiledHigh,
-                    extraTier2: compiledMedium,
-                });
-                console.log(`   ${fileTier.icon} ${file}`);
-            }
-            console.log(`   → ${conflict.tierInfo.action}`);
-            console.log('');
-        }
-
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log(`📊 Summary: 🔴 ${tier3Count} BLOCK | 🟠 ${tier2Count} PAUSE | 🟡 ${conflicts.filter(c => c.tier === 1).length} WARN`);
-
-        // Offer add/add resolution suggestions for likely add/add files
-        suggestAddAddResolution(conflicts);
+        
+${renderedReport}`;
+        console.log(humanOutput);
 
         // Show semantic analysis results
         if (options.semantic && semanticConflicts.length > 0) {
-            console.log(`\n🔬 SEMANTIC CONFLICTS DETECTED (${semanticConflicts.length} symbols):`);
-            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            writeStdout(`\n🔬 SEMANTIC CONFLICTS DETECTED (${semanticConflicts.length} symbols):`);
+            writeStdout('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
             for (const sc of semanticConflicts) {
-                console.log(`  ⚡ ${sc.symbolType} '${sc.symbolName}'`);
-                console.log(`     Modified in BOTH branches (different content)`);
+                writeStdout(`  ⚡ ${sc.symbolType} '${sc.symbolName}'`);
+                writeStdout('     Modified in BOTH branches (different content)');
             }
-            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-            console.log('\n💡 TIP: Coordinate on these specific functions/classes,');
-            console.log('   not just the files. One of you should rebase.');
+            writeStdout('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            writeStdout('\n💡 TIP: Coordinate on these specific functions/classes,');
+            writeStdout('   not just the files. One of you should rebase.');
         } else if (options.semantic && semanticConflicts.length === 0) {
-            console.log('\n🔬 SEMANTIC ANALYSIS: No symbol-level conflicts!');
-            console.log('   Files overlap, but different functions were modified.');
-            console.log('   ✅ Likely safe to merge (git will auto-merge).');
+            writeStdout('\n🔬 SEMANTIC ANALYSIS: No symbol-level conflicts!');
+            writeStdout('   Files overlap, but different functions were modified.');
+            writeStdout('   ✅ Likely safe to merge (git will auto-merge).');
         }
 
         if (tier3Count > 0) {
-            console.log(`
+            writeStdout(`
 🔴 TIER 3 CONFLICTS FOUND
    These files are security-critical and MUST be resolved.
    Merge is BLOCKED until conflicts are cleared.
             `);
         } else if (tier2Count > 0) {
-            console.log(`
+            writeStdout(`
 🟠 TIER 2 CONFLICTS FOUND
    Coordinate with the other agent before proceeding.
             `);
@@ -512,34 +602,34 @@ export const conflictsCommand = new Command('conflicts')
             }
 
             if (agentsToWake.size === 0) {
-                console.log('\n⚠️ No agents registered on conflicting branches.');
+                writeStdout('\n⚠️ No agents registered on conflicting branches.');
             } else {
                 // Show what will happen and ask for confirmation
-                console.log('\n🔔 WAKE AGENTS?');
-                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                writeStdout('\n🔔 WAKE AGENTS?');
+                writeStdout('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
                 for (const [agent, info] of agentsToWake) {
-                    console.log(`  • ${agent} (${info.branch})`);
+                    writeStdout(`  • ${agent} (${info.branch})`);
                 }
-                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                console.log('This will:');
-                console.log('  1. Send wake signal via Hub\n');
+                writeStdout('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                writeStdout('This will:');
+                writeStdout('  1. Send wake signal via Hub\n');
 
                 const confirmed = await confirmAction('Wake these agents?', options.auto);
 
                 if (confirmed) {
-                    console.log('\n🔔 WAKING AGENTS...\n');
+                    writeStdout('\n🔔 WAKING AGENTS...\n');
                     for (const [agentId, info] of agentsToWake) {
                         const woke = await hub.wakeAgent(
                             agentId,
                             `Conflict on ${info.branch} - need resolution`,
                         );
                         if (woke) {
-                            console.log(`  🔔 Wake signal sent to ${agentId}`);
+                            writeStdout(`  🔔 Wake signal sent to ${agentId}`);
                         } else {
-                            console.log(`  ⚠️ Could not wake ${agentId} via Hub`);
+                            writeStdout(`  ⚠️ Could not wake ${agentId} via Hub`);
                         }
                     }
-                    console.log(`\n✅ Woke ${agentsToWake.size} agent(s)`);
+                    writeStdout(`\n✅ Woke ${agentsToWake.size} agent(s)`);
 
                     // If --retry is set, ask before waiting
                     if (options.retry) {
@@ -547,10 +637,10 @@ export const conflictsCommand = new Command('conflicts')
                         const retryConfirmed = await confirmAction(`\nWait ${waitSeconds}s and re-check conflicts?`, options.auto);
 
                         if (retryConfirmed) {
-                            console.log(`\n⏳ Waiting ${waitSeconds}s for agents to resolve conflicts...`);
+                            writeStdout(`\n⏳ Waiting ${waitSeconds}s for agents to resolve conflicts...`);
                             await sleep(waitSeconds * 1000);
 
-                            console.log('\n🔄 RE-CHECKING CONFLICTS...\n');
+                            writeStdout('\n🔄 RE-CHECKING CONFLICTS...\n');
                             const { execFileSync } = await import('child_process');
                             try {
                                 const { getCLIPath } = await import('../lib/security.js');
@@ -563,20 +653,20 @@ export const conflictsCommand = new Command('conflicts')
                                 });
                                 return;
                             } catch {
-                                console.log('❌ Conflicts still exist after retry.');
+                                writeStdout('❌ Conflicts still exist after retry.');
                             }
                         } else {
-                            console.log('⏭️ Skipping retry.');
+                            writeStdout('⏭️ Skipping retry.');
                         }
                     }
                 } else {
-                    console.log('⏭️ Skipping wake.');
+                    writeStdout('⏭️ Skipping wake.');
                 }
             }
         }
 
         if (shouldBlock) {
-            console.log('❌ Strict mode: Exiting with error due to TIER 2+ conflicts.');
+            writeStdout('❌ Strict mode: Exiting with error due to TIER 2+ conflicts.');
             process.exit(1);
         }
     });
