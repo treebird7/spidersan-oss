@@ -43,14 +43,17 @@ export interface DriftSkipped {
     reason: string;
 }
 
+const GIT_TIMEOUT_MS = 15_000;
+
 function execGit(args: string[]): string {
     return execFileSync('git', args, {
         encoding: 'utf-8',
         env: { ...process.env },
+        timeout: GIT_TIMEOUT_MS,
     });
 }
 
-function isOfflineError(error: unknown): boolean {
+export function isOfflineError(error: unknown): boolean {
     const msg = String(error instanceof Error ? error.message : error);
     return /ENOTFOUND|ETIMEDOUT|ECONNREFUSED|network|Could not resolve host|unable to connect|cannot access/i.test(msg);
 }

@@ -33,7 +33,24 @@ const SYNC_INTERVAL = 90_000;
 const RATE_LIMIT = 10_000; // ms per repo
 
 const VALID_COMMANDS = new Set(['sync', 'pull', 'push', 'status', 'conflicts', 'log']);
-const BRANCH_RE = /^[\w/.-]+$/;
+const BRANCH_RE = /^[\w/.-]{1,200}$/;
+
+// Minimal env for git subprocesses — excludes bot secrets (SMALLTOAK_TOKEN etc.)
+function gitEnv(): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = { GIT_TERMINAL_PROMPT: '0' };
+    for (const k of ['HOME', 'PATH', 'GIT_SSH_COMMAND', 'SSH_AUTH_SOCK',
+                     'GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL',
+                     'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL']) {
+        if (process.env[k] !== undefined) env[k] = process.env[k];
+    }
+    return env;
+}
+
+// Env for spidersan subprocesses — full env minus bot-specific secrets
+function spidersanEnv(): NodeJS.ProcessEnv {
+    const { SMALLTOAK_TOKEN: _t, SMALLTOAK_SERVER_URL: _u, GIT_BOT_ENABLED: _e, ...rest } = process.env;
+    return rest;
+}
 
 // ── Tiers ───────────────────────────────────────────────────────────────────
 
@@ -146,7 +163,7 @@ async function stPost(text: string, to?: string, replyTo?: number): Promise<void
         reply_to: replyTo,
       }),
     });
-  } catch { /* silent */ }
+  } catch (e: unknown) { console.warn('[bot] stPost failed:', e); }
 }
 
 // ── High-water mark ─────────────────────────────────────────────────────────
@@ -166,7 +183,7 @@ function saveHwm(id: number): void {
 function executePull(cfg: RepoConfig, branch?: string): string {
   try {
     const b = branch || cfg.branch;
-    const r = execFileSync('git', ['pull', '--ff-only', 'origin', b], { cwd: cfg.path, encoding: 'utf-8', timeout: 60000 });
+    const r = execFileSync('git', ['pull', '--ff-only', 'origin', b], { cwd: cfg.path, encoding: 'utf-8', timeout: 60_000, env: gitEnv() });
     return r.trim().substring(0, 500);
   } catch (err: any) {
     return err.message;
@@ -179,14 +196,14 @@ function executePush(cfg: RepoConfig): string {
   if (conflict) return conflict;
   try {
     for (const filePattern of cfg.autoPush) {
-      execFileSync('git', ['add', filePattern], { cwd: cfg.path, encoding: 'utf-8' });
+      execFileSync('git', ['add', filePattern], { cwd: cfg.path, encoding: 'utf-8', env: gitEnv() });
     }
     try {
-      execFileSync('git', ['diff', '--cached', '--quiet'], { cwd: cfg.path, encoding: 'utf-8' });
+      execFileSync('git', ['diff', '--cached', '--quiet'], { cwd: cfg.path, encoding: 'utf-8', env: gitEnv() });
       return 'No changes to push';
     } catch { /* has staged changes */ }
-    execFileSync('git', ['commit', '-m', 'spidersan bot auto-push'], { cwd: cfg.path, encoding: 'utf-8' });
-    const r = execFileSync('git', ['push'], { cwd: cfg.path, encoding: 'utf-8', timeout: 60000 });
+    execFileSync('git', ['commit', '-m', 'spidersan bot auto-push'], { cwd: cfg.path, encoding: 'utf-8', env: gitEnv() });
+    const r = execFileSync('git', ['push'], { cwd: cfg.path, encoding: 'utf-8', timeout: 60_000, env: gitEnv() });
     return r.trim().substring(0, 500) || 'Pushed';
   } catch (err: any) {
     return err.message;
@@ -198,13 +215,13 @@ function registerFiles(cfg: RepoConfig): void {
     execFileSync('spidersan', ['register',
       '--agent', 'spidersan-bot',
       '--files', cfg.autoPush.join(','),
-    ], { cwd: cfg.path, encoding: 'utf-8', timeout: 10000 });
+    ], { cwd: cfg.path, encoding: 'utf-8', timeout: 10_000, env: spidersanEnv() });
   } catch { /* best effort */ }
 }
 
 function checkConflictsBefore(cfg: RepoConfig): string | null {
   try {
-    const result = execFileSync('spidersan', ['conflicts', '--json'], { cwd: cfg.path, encoding: 'utf-8', timeout: 10000 });
+    const result = execFileSync('spidersan', ['conflicts', '--json'], { cwd: cfg.path, encoding: 'utf-8', timeout: 10_000, env: spidersanEnv() });
     const data = JSON.parse(result);
     const blocking = (data.conflicts || []).filter((c: any) => c.tier >= 2 || c.tier === 'BLOCK' || c.tier === 'PAUSE');
     if (blocking.length > 0) {
@@ -226,8 +243,8 @@ function executeSync(cfg: RepoConfig): string {
 
 function executeStatus(cfg: RepoConfig): string {
   try {
-    const status = execFileSync('git', ['status', '--porcelain'], { cwd: cfg.path, encoding: 'utf-8' });
-    const branch = execFileSync('git', ['branch', '--show-current'], { cwd: cfg.path, encoding: 'utf-8' });
+    const status = execFileSync('git', ['status', '--porcelain'], { cwd: cfg.path, encoding: 'utf-8', env: gitEnv() });
+    const branch = execFileSync('git', ['branch', '--show-current'], { cwd: cfg.path, encoding: 'utf-8', env: gitEnv() });
     return `${status.trim()}\nBranch: ${branch.trim()}`.substring(0, 500);
   } catch (err: any) {
     return err.message;
@@ -237,7 +254,7 @@ function executeStatus(cfg: RepoConfig): string {
 function executeLog(cfg: RepoConfig, n = 10): string {
   try {
     const limitedN = Math.min(n, 50);
-    const r = execFileSync('git', ['log', '--oneline', `-${limitedN}`], { cwd: cfg.path, encoding: 'utf-8' });
+    const r = execFileSync('git', ['log', '--oneline', `-${limitedN}`], { cwd: cfg.path, encoding: 'utf-8', env: gitEnv() });
     return r.trim().substring(0, 500);
   } catch (err: any) {
     return err.message;
@@ -246,7 +263,7 @@ function executeLog(cfg: RepoConfig, n = 10): string {
 
 function executeConflicts(cfg: RepoConfig): string {
   try {
-    const r = execFileSync('spidersan', ['conflicts'], { cwd: cfg.path, encoding: 'utf-8', timeout: 60000 });
+    const r = execFileSync('spidersan', ['conflicts'], { cwd: cfg.path, encoding: 'utf-8', timeout: 60_000, env: spidersanEnv() });
     return r.trim().substring(0, 500);
   } catch (err: any) {
     if (err.code === 'ENOENT') return 'spidersan command not found';
@@ -292,7 +309,7 @@ export const botCommand = new Command('bot')
           '--agent', 'spidersan-bot',
           '--files', cfg.autoPush.join(','),
           '--description', `git-bot auto-sync: ${name} (${cfg.branch})`
-        ], { cwd: cfg.path, encoding: 'utf-8', timeout: 10000 });
+        ], { cwd: cfg.path, encoding: 'utf-8', timeout: 10_000, env: spidersanEnv() });
         console.log(`[bot] registered ${name} (${cfg.branch}) — files: ${cfg.autoPush.join(', ')}`);
       } catch (err: any) {
         console.log(`[bot] register ${name} skipped: ${err.message.split('\n')[0]}`);

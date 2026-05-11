@@ -5,6 +5,7 @@ import { loadConfig } from '../lib/config.js';
 import { getChangedFiles, getCurrentBranch } from '../lib/git.js';
 import { validateAgentId, sanitizeFilePaths, validateFilePath } from '../lib/security.js';
 import { logActivity } from '../lib/activity.js';
+import { renderRegisterResult } from '../lib/register-renderer.js';
 // Git execution is centralized in ../lib/git.js via execFileSync('git', [...]).
 
 // Path segments that are never meaningful for conflict tracking (matched anywhere in the path)
@@ -101,9 +102,6 @@ export const registerCommand = new Command('register')
             );
         } else if (options.auto) {
             files = getRelevantChangedFiles();
-            if (files.length > 0) {
-                console.log(`🕷️ Auto-detected ${files.length} changed file(s)`);
-            }
         } else if (options.interactive) {
             const detected = getRelevantChangedFiles();
             files = await promptForFiles(detected);
@@ -143,7 +141,13 @@ export const registerCommand = new Command('register')
                 description: options.description || existing.description,
                 agent: resolvedAgent ?? existing.agent,
             });
-            console.log(`🕷️ Updated branch: ${branchName}`);
+            console.log(renderRegisterResult({
+                branchName,
+                files,
+                isUpdate: true,
+                autoDetected: !!options.auto,
+                autoDetectedFiles: files,
+            }));
             logActivity({ event: 'register', branch: branchName, agent: resolvedAgent ?? undefined, details: { files, description: options.description, updated: true } });
         } else {
             // New registration
@@ -154,11 +158,13 @@ export const registerCommand = new Command('register')
                 description: options.description,
                 agent: resolvedAgent,
             });
-            console.log(`🕷️ Registered branch: ${branchName}`);
+            console.log(renderRegisterResult({
+                branchName,
+                files,
+                isUpdate: false,
+                autoDetected: !!options.auto,
+                autoDetectedFiles: files,
+            }));
             logActivity({ event: 'register', branch: branchName, agent: resolvedAgent ?? undefined, details: { files, description: options.description } });
-        }
-
-        if (files.length > 0) {
-            console.log(`   Files: ${files.join(', ')}`);
         }
     });

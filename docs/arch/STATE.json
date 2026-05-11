@@ -135,6 +135,15 @@
       "depends_on": [
         "P1-DEEPENING-8-remote-drift"
       ]
+    },
+    {
+      "id": "P1-DEEPENING-10-output-seam-remaining",
+      "title": "DEEPENING #10: output seam for pulse.ts, watch.ts, register.ts",
+      "status": "specced",
+      "contract": "docs/arch/contracts/DEEPENING-10-output-seam-remaining.md",
+      "depends_on": [
+        "P1-DEEPENING-6-output-seam"
+      ]
     }
   ]
 }

@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`spidersan watch --fetch-poll`** (DEEPENING-9) — continuous remote drift polling layered on the existing `watch` daemon. Runs `git fetch origin` every `--fetch-interval` seconds (default 120s), reuses `getDriftZone` / `classifyDriftZone` from `src/lib/remote-drift.ts`, and emits a TIER-aware console report whenever new remote commits intersect the registered file list. Supports `--fetch-interval <s>`, `--hub-sync` (post to Hub on drift), `--strict` (exit 1 on first drift hit). Graceful degradation: offline, detached HEAD, mid-rebase, no upstream — all skip the fetch cycle without crashing the watcher.
+- **`CONTEXT.md`** — domain vocabulary and codebase map for AI agent orientation. Covers core concepts (drift zone, tier, registry, colony), canonical file roles, and the DEEPENING architecture series.
+
+### Fixed (security — ts-review 2026-05-11)
+
+- **`src/lib/remote-drift.ts` — git fetch timeout** — `execGit` was missing a timeout; `git fetch` on a stalled TCP connection would block the CLI indefinitely. Added `GIT_TIMEOUT_MS = 15_000` constant applied to all `execFileSync` calls.
+- **`src/lib/remote-drift.ts` — `isOfflineError` exported** — extracted from module-private so `pulse.ts` can use the same classifier instead of duplicating the regex.
+- **`src/commands/pulse.ts` — hub catch now warns** — `.catch(() => {})` on `hub.postToChat` was fully silent; auth failures and unexpected errors were invisible. Replaced with `isOfflineError`-gated `console.warn`.
+- **`src/commands/bot.ts` — env isolation** — all `execFileSync` calls (git and spidersan subprocesses) were implicitly inheriting `process.env`, leaking `SMALLTOAK_TOKEN` and vault-injected secrets to child processes. Added `gitEnv()` (minimal allowlist: HOME, PATH, GIT_SSH_COMMAND, SSH_AUTH_SOCK, GIT_AUTHOR_*/COMMITTER_*, GIT_TERMINAL_PROMPT=0) and `spidersanEnv()` (full env minus SMALLTOAK_TOKEN, SMALLTOAK_SERVER_URL, GIT_BOT_ENABLED).
+- **`src/commands/bot.ts` — BRANCH_RE length cap** — `/^[\w/.-]+$/` allowed unlimited-length branch names from external smalltoak messages. Changed to `/^[\w/.-]{1,200}$/`.
+- **`src/commands/bot.ts` — stPost silent catch** — `} catch { /* silent */ }` swallowed all posting errors. Now logs non-offline failures via `console.warn`.
+
+### Tests
+
+- **147 tests, 32 test files** — up from 139 / 31 after DEEPENING-9 test additions.
+
 ## [0.9.0] - 2026-05-11
 
 ### Added

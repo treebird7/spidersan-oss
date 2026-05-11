@@ -10,6 +10,7 @@ import { syncFromColony } from '../lib/colony-subscriber.js';
 import { getCurrentBranch, getRemoteHead } from '../lib/git.js';
 import { createHubClient } from '../lib/hub.js';
 import { computeDriftResult } from '../lib/remote-drift.js';
+import { renderFetchPollDrift, renderFetchPollHeartbeat } from '../lib/watch-renderer.js';
 import type { DriftResult, DriftSkipped } from '../lib/remote-drift.js';
 
 const DEBOUNCE_MS = 1000;  // Debounce file changes
@@ -90,35 +91,6 @@ function isDriftSkipped(result: DriftResult | DriftSkipped): result is DriftSkip
     return 'skipped' in result;
 }
 
-function formatDriftZoneEntry(file: string, result: DriftResult): string {
-    const labels: string[] = [];
-    const registered = result.registeredInDrift.find((entry) => entry.file === file);
-    const unstaged = result.unstagedInDrift.some((entry) => entry.file === file);
-
-    if (registered && registered.tier !== null) {
-        labels.push(`registered tier ${registered.tier}`);
-    }
-
-    if (unstaged) {
-        labels.push('unstaged ⚠');
-    }
-
-    return labels.length > 0 ? `${file} [${labels.join(', ')}]` : file;
-}
-
-function formatFetchPollWarning(result: DriftResult): string[] {
-    const driftSummary = result.driftZone.length > 0
-        ? result.driftZone.map((file) => formatDriftZoneEntry(file, result)).join(', ')
-        : '(none reported)';
-
-    return [
-        `📡 [FETCH-POLL] Remote advanced while you're working!`,
-        `   Branch: ${result.branch}  |  Remote is ${result.remoteAhead} commit(s) ahead`,
-        `   Drift zone: ${driftSummary}`,
-        `   → Run: git fetch origin && git log --oneline ${result.remote} -5`,
-    ];
-}
-
 export async function startFetchPollLoop(opts: {
     intervalSecs: number;
     hubSync: boolean;
@@ -144,7 +116,10 @@ export async function startFetchPollLoop(opts: {
 
                     if (currentRemoteHead === lastRemoteHead) {
                         if (!opts.quiet) {
-                            console.log(`📡 [FETCH-POLL] Remote unchanged (checked at ${formatFetchPollTime(new Date())})`);
+                            console.log(renderFetchPollHeartbeat({
+                                branch,
+                                timestamp: formatFetchPollTime(new Date()),
+                            }));
                         }
                         return;
                     }
@@ -159,7 +134,7 @@ export async function startFetchPollLoop(opts: {
 
                     if (isDriftSkipped(result)) {
                         if (!opts.quiet) {
-                            console.log(`📡 [FETCH-POLL] Skipped: ${result.reason}`);
+                            console.log(renderFetchPollDrift({ branch, drift: result }));
                         }
                         return;
                     }
@@ -168,14 +143,14 @@ export async function startFetchPollLoop(opts: {
                         return;
                     }
 
-                    const warningLines = formatFetchPollWarning(result);
-                    warningLines.forEach((line) => console.log(line));
+                    const warningOutput = renderFetchPollDrift({ branch, drift: result });
+                    console.log(warningOutput);
 
                     if (hubClient) {
                         await hubClient.postToChat({
                             agent: 'spidersan',
                             name: 'Spidersan',
-                            message: warningLines.join('\n'),
+                            message: warningOutput,
                             glyph: '🕷️',
                         });
                     }
