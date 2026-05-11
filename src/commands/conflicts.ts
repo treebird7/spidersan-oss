@@ -23,66 +23,10 @@ import { loadConfig } from '../lib/config.js';
 import { logActivity } from '../lib/activity.js';
 import { isGhAvailable, getPRDetails } from '../lib/github.js';
 import { classifyWithLabel, TIER_LABELS, type ConflictTier } from '../lib/conflict-tier.js';
-
-// Config
-const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
+import { createHubClient } from '../lib/hub.js';
 
 type ConflictTierInfo = ReturnType<typeof classifyWithLabel>;
-
-async function notifyHub(branch: string, conflicts: Array<{ branch: string; files: string[]; tier: number }>): Promise<void> {
-    const tier3 = conflicts.filter(c => c.tier === 3);
-    const tier2 = conflicts.filter(c => c.tier === 2);
-
-    if (tier3.length === 0 && tier2.length === 0) return;
-
-    const severity = tier3.length > 0 ? '🔴 TIER 3 BLOCK' : '🟠 TIER 2 PAUSE';
-    const message = `🕷️⚠️ **Conflict Alert** on \`${branch}\`\n\n${severity}\n\nConflicting files require coordination.`;
-
-    try {
-        await fetch(`${HUB_URL}/api/chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                agent: 'spidersan',
-                name: 'Spidersan',
-                message,
-                glyph: '🕷️'
-            })
-        });
-    } catch {
-        // Hub offline - silent fail
-    }
-}
-
-/**
- * Wake a conflicting agent and send them a message about what to fix
- */
-async function wakeConflictingAgent(
-    agentId: string,
-    myBranch: string,
-    theirBranch: string,
-    _conflictingFiles: string[]
-): Promise<boolean> {
-    // 1. Wake the agent via Hub
-    try {
-        const wakeResponse = await fetch(`${HUB_URL}/api/wake/${agentId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                sender: 'spidersan',
-                reason: `Conflict on ${theirBranch} - need resolution`
-            })
-        });
-
-        if (wakeResponse.ok) {
-            console.log(`  🔔 Wake signal sent to ${agentId}`);
-        }
-    } catch {
-        console.log(`  ⚠️ Could not wake ${agentId} via Hub`);
-    }
-
-    return true;
-}
+const hub = createHubClient();
 
 /**
  * Wait for a specified time
@@ -471,7 +415,7 @@ export const conflictsCommand = new Command('conflicts')
 
         // Notify Hub if requested
         if (options.notify && (tier3Count > 0 || tier2Count > 0)) {
-            await notifyHub(targetBranch, conflicts);
+            await hub.notifyConflict(targetBranch, conflicts);
         }
 
         if (options.json) {
@@ -585,7 +529,15 @@ export const conflictsCommand = new Command('conflicts')
                 if (confirmed) {
                     console.log('\n🔔 WAKING AGENTS...\n');
                     for (const [agentId, info] of agentsToWake) {
-                        await wakeConflictingAgent(agentId, targetBranch, info.branch, info.files);
+                        const woke = await hub.wakeAgent(
+                            agentId,
+                            `Conflict on ${info.branch} - need resolution`,
+                        );
+                        if (woke) {
+                            console.log(`  🔔 Wake signal sent to ${agentId}`);
+                        } else {
+                            console.log(`  ⚠️ Could not wake ${agentId} via Hub`);
+                        }
                     }
                     console.log(`\n✅ Woke ${agentsToWake.size} agent(s)`);
 

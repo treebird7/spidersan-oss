@@ -10,9 +10,9 @@ import { execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import { validateBranchName, validateTaskId } from '../lib/security.js';
 import type { Branch } from '../storage/adapter.js';
+import { createHubClient } from '../lib/hub.js';
 
-// Config
-const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
+const hub = createHubClient();
 
 interface TorrentCreateOptions {
     agent?: string;
@@ -145,7 +145,7 @@ Parent: ${parentTaskId || '(none)'}
 
         // Try to notify Hub
         try {
-            await fetch(`${HUB_URL}/api/tasks/${taskId}/claim`, {
+            await fetch(`${hub.url}/api/tasks/${taskId}/claim`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ agent, branch: branchName })
@@ -290,7 +290,7 @@ Files:     ${branch.files.length}
 
         // Try to notify Hub
         try {
-            await fetch(`${HUB_URL}/api/tasks/${taskId}/complete`, {
+            await fetch(`${hub.url}/api/tasks/${taskId}/complete`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ agent, branch: branchName })

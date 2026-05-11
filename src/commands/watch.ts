@@ -8,10 +8,10 @@ import { io, Socket } from 'socket.io-client';
 import { loadConfig } from '../lib/config.js';
 import { syncFromColony } from '../lib/colony-subscriber.js';
 import { getCurrentBranch } from '../lib/git.js';
+import { createHubClient } from '../lib/hub.js';
 
-// Config
-const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
 const DEBOUNCE_MS = 1000;  // Debounce file changes
+const hub = createHubClient();
 
 interface WatchOptions {
     dir?: string;
@@ -41,32 +41,12 @@ function parsePaths(value: string): string[] {
     return value.split(',').map((entry) => entry.trim()).filter(Boolean);
 }
 
-// Post conflict warning to Hub chat API
-async function postConflictToChat(branch: string, agent: string, conflicts: ConflictInfo[]): Promise<void> {
+function formatConflictChatMessage(branch: string, conflicts: ConflictInfo[]): string {
     const conflictDetails = conflicts
         .map(c => `• **${c.branch}**: ${c.files.join(', ')}`)
         .join('\n');
 
-    const message = `🕷️⚠️ **CONFLICT DETECTED** on branch \`${branch}\`\n\n${conflictDetails}`;
-
-    try {
-        const response = await fetch(`${HUB_URL}/api/chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                agent: 'spidersan',
-                name: 'Spidersan',
-                message,
-                glyph: '🕷️'
-            })
-        });
-
-        if (!response.ok) {
-            console.log(`⚠️ Failed to post to Hub chat: ${response.status}`);
-        }
-    } catch {
-        // Silently fail - Hub might not be running
-    }
+    return `🕷️⚠️ **CONFLICT DETECTED** on branch \`${branch}\`\n\n${conflictDetails}`;
 }
 
 export const watchCommand = new Command('watch')
@@ -105,7 +85,7 @@ Branch:    ${branch}
 Agent:     ${agent}
 Root:      ${repoRoot}
 Watching:  ${watchLabel}
-Hub:       ${options.hub ? HUB_URL : 'disabled'}
+Hub:       ${options.hub ? hub.url : 'disabled'}
 Hub Sync:  ${options.hubSync ? 'enabled (posts to chat)' : 'disabled'}
 ━━━━━━━━━━━━━━━━━━━━━━━
 Press Ctrl+C to stop.
@@ -115,7 +95,7 @@ Press Ctrl+C to stop.
         let hubSocket: Socket | null = null;
         if (options.hub) {
             try {
-                hubSocket = io(HUB_URL, {
+                hubSocket = io(hub.url, {
                     reconnection: true,
                     reconnectionAttempts: 5,
                     timeout: 5000
@@ -207,7 +187,12 @@ Press Ctrl+C to stop.
 
                 // Post to Hub chat if --hub-sync enabled
                 if (options.hubSync) {
-                    await postConflictToChat(branch, agent, conflicts);
+                    await hub.postToChat({
+                        agent: 'spidersan',
+                        name: 'Spidersan',
+                        message: formatConflictChatMessage(branch, conflicts),
+                        glyph: '🕷️',
+                    });
                     console.log('📤 Posted conflict to Hub chat');
                 }
             }
