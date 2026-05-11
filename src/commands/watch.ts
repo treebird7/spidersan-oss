@@ -7,6 +7,7 @@ import { homedir } from 'os';
 import { io, Socket } from 'socket.io-client';
 import { loadConfig } from '../lib/config.js';
 import { syncFromColony } from '../lib/colony-subscriber.js';
+import { getCurrentBranch } from '../lib/git.js';
 
 // Config
 const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
@@ -26,14 +27,6 @@ interface WatchOptions {
 interface ConflictInfo {
     branch: string;
     files: string[];
-}
-
-function getCurrentBranch(): string {
-    try {
-        return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' }).trim();
-    } catch {
-        throw new Error('Not in a git repository');
-    }
 }
 
 function getRepoRoot(): string {

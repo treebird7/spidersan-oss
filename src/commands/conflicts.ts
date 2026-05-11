@@ -10,12 +10,13 @@
 
 import { Command } from 'commander';
 import { compilePatterns } from '../lib/regex-utils.js';
-import { execFileSync, spawnSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import { basename } from 'path';
 import { homedir } from 'os';
 import { getStorage } from '../storage/index.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
 import { analyzeConflicts } from '../lib/conflict-analyzer.js';
+import { getCurrentBranch, getFileAtRef } from '../lib/git.js';
 import { validateBranchName } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
@@ -27,14 +28,6 @@ import { classifyWithLabel, TIER_LABELS, type ConflictTier } from '../lib/confli
 const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
 
 type ConflictTierInfo = ReturnType<typeof classifyWithLabel>;
-
-function getCurrentBranch(): string {
-    try {
-        return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' }).trim();
-    } catch {
-        throw new Error('Not in a git repository');
-    }
-}
 
 async function notifyHub(branch: string, conflicts: Array<{ branch: string; files: string[]; tier: number }>): Promise<void> {
     const tier3 = conflicts.filter(c => c.tier === 3);
@@ -431,10 +424,11 @@ export const conflictsCommand = new Command('conflicts')
                     if (!/\.(ts|js|tsx|jsx)$/.test(file)) continue;
 
                     try {
-                        // Get file content from both branches
-                        // Security: Use execFileSync to prevent command injection via file names
-                        const currentContent = execFileSync('git', ['show', `HEAD:${file}`], { encoding: 'utf-8' });
-                        const otherContent = execFileSync('git', ['show', `${conflict.branch}:${file}`], { encoding: 'utf-8' });
+                        const currentContent = getFileAtRef('HEAD', file);
+                        const otherContent = getFileAtRef(conflict.branch, file);
+                        if (currentContent === null || otherContent === null) {
+                            continue;
+                        }
 
                         const symbolConflicts = astParser.findSymbolConflicts(
                             currentContent, `${targetBranch}:${file}`,

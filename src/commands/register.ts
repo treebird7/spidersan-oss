@@ -1,18 +1,11 @@
 import { Command } from 'commander';
-import { execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import * as readline from 'readline';
 import { loadConfig } from '../lib/config.js';
+import { getChangedFiles, getCurrentBranch } from '../lib/git.js';
 import { validateAgentId, sanitizeFilePaths, validateFilePath } from '../lib/security.js';
 import { logActivity } from '../lib/activity.js';
-
-function getCurrentBranch(): string {
-    try {
-        return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' }).trim();
-    } catch {
-        throw new Error('Not in a git repository');
-    }
-}
+// Git execution is centralized in ../lib/git.js via execFileSync('git', [...]).
 
 // Path segments that are never meaningful for conflict tracking (matched anywhere in the path)
 const EXCLUDED_PATH_SEGMENTS = [
@@ -32,28 +25,14 @@ export function isExcludedPath(file: string): boolean {
     return EXCLUDED_PATH_SEGMENTS.some(seg => normalised.includes(seg));
 }
 
-function getChangedFiles(): string[] {
-    const diffStrategies: string[][] = [
-        ['diff', '--name-only', 'main...HEAD'],
-        ['diff', '--name-only', 'HEAD~1'],
-        ['diff', '--name-only', 'HEAD'],
-    ];
-
-    for (const args of diffStrategies) {
-        try {
-            const output = execFileSync('git', args, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
-            if (output) return output.trim().split('\n').filter(f => f && !isExcludedPath(f));
-        } catch {
-            continue;
-        }
-    }
-    return [];
-}
-
 export function validateRegistrationFiles(files: string[]): void {
     for (const file of files) {
         validateFilePath(file);
     }
+}
+
+function getRelevantChangedFiles(): string[] {
+    return getChangedFiles().filter((file) => !isExcludedPath(file));
 }
 
 async function promptForFiles(detectedFiles: string[]): Promise<string[]> {
@@ -121,12 +100,12 @@ export const registerCommand = new Command('register')
                 options.files.split(',').map((f: string) => f.trim()).filter((f: string) => f && !isExcludedPath(f))
             );
         } else if (options.auto) {
-            files = getChangedFiles();
+            files = getRelevantChangedFiles();
             if (files.length > 0) {
                 console.log(`🕷️ Auto-detected ${files.length} changed file(s)`);
             }
         } else if (options.interactive) {
-            const detected = getChangedFiles();
+            const detected = getRelevantChangedFiles();
             files = await promptForFiles(detected);
         }
 

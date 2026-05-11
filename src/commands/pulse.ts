@@ -11,18 +11,16 @@
 
 import { Command } from 'commander';
 import { compilePatterns } from '../lib/regex-utils.js';
-import { execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import { syncFromColony } from '../lib/colony-subscriber.js';
 import { loadConfig } from '../lib/config.js';
 import { classifyTier } from '../lib/conflict-tier.js';
+import { getCurrentBranch } from '../lib/git.js';
 import type { ConflictTier } from '../lib/conflict-tier.js';
 
-function getCurrentBranch(): string {
+function resolveCurrentBranch(): string {
     try {
-        return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
-            encoding: 'utf-8',
-        }).trim();
+        return getCurrentBranch();
     } catch {
         return 'unknown';
     }
@@ -60,7 +58,7 @@ export const pulseCommand = new Command('pulse')
         }
 
         // ── Local conflict detection ──────────────────────────────────────────
-        const currentBranch = getCurrentBranch();
+        const currentBranch = resolveCurrentBranch();
         const allBranches = await storage.list();
         const target = allBranches.find(b => b.name === currentBranch);
 

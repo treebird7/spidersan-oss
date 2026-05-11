@@ -5,16 +5,8 @@
  */
 
 import { Command } from 'commander';
-import { execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
-
-function getCurrentBranch(): string {
-    try {
-        return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' }).trim();
-    } catch {
-        throw new Error('Not in a git repository');
-    }
-}
+import { getCurrentBranch } from '../lib/git.js';
 
 export const dependsCommand = new Command('depends')
     .description('Set or show dependencies for a branch')
