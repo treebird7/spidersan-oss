@@ -85,6 +85,16 @@ export async function handleEvent(event: EventPayload, opts: { repoRoot?: string
 
   // Slow path: LLM reasoning for TIER 2+ or ambiguous situations
   if (deterministicAdvice?.escalateToLLM) {
+    // Route git-ops events to Adapter B (git-ops specialist) when configured.
+    // SPIDERSAN_LLM_URL_GITOPS overrides; default `:1234` is the production
+    // mlx_lm.server hosting Adapter B v3 — see com.spidersan.adapter-b-serve
+    // launchd plist + PAPER §52.14. Non-git-event paths and CLI queries keep
+    // using SPIDERSAN_LLM_URL (the general-purpose backend).
+    const gitOpsEventTypes = new Set(['push', 'pr', 'create']);
+    const isGitOps = gitOpsEventTypes.has(event.type ?? '');
+    const adapterBaseUrl = isGitOps
+      ? (process.env['SPIDERSAN_LLM_URL_GITOPS'] ?? 'http://localhost:1234/v1')
+      : undefined;
     try {
       const result = await reason(
         {
@@ -92,7 +102,10 @@ export async function handleEvent(event: EventPayload, opts: { repoRoot?: string
           question: `Event: ${event.type} on branch ${event.branch ?? 'unknown'} touching files [${(event.files ?? []).join(', ')}]. ${deterministicAdvice.message}. What should the agents do?`,
           context,
         },
-        { allowRemoteFallback: opts.localOnly ? false : undefined },
+        {
+          allowRemoteFallback: opts.localOnly ? false : undefined,
+          ...(adapterBaseUrl ? { baseUrl: adapterBaseUrl } : {}),
+        },
       );
       return {
         ...deterministicAdvice,
