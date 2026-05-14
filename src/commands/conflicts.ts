@@ -15,7 +15,7 @@ import { basename } from 'path';
 import { homedir } from 'os';
 import { getStorage } from '../storage/index.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
-import { validateBranchName } from '../lib/security.js';
+import { validateBranchName, validateFilePath } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
 import { logActivity } from '../lib/activity.js';
@@ -434,8 +434,11 @@ export const conflictsCommand = new Command('conflicts')
                     if (!/\.(ts|js|tsx|jsx)$/.test(file)) continue;
 
                     try {
-                        // Get file content from both branches
                         // Security: Use execFileSync to prevent command injection via file names
+                        // Also validate the file path to prevent arbitrary file read via git show
+                        validateFilePath(file);
+
+                        // Get file content from both branches
                         const currentContent = execFileSync('git', ['show', `HEAD:${file}`], { encoding: 'utf-8' });
                         const otherContent = execFileSync('git', ['show', `${conflict.branch}:${file}`], { encoding: 'utf-8' });
 

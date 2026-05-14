@@ -10,7 +10,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { extractSymbols } from './symbol-extractor.js';
-import { validateBranchName } from './security.js';
+import { validateBranchName, validateFilePath } from './security.js';
 
 export interface SalvageableSymbol {
   name: string;
@@ -64,6 +64,13 @@ export async function analyzeSalvage(
 
   try {
     for (const file of branchFiles) {
+      // Validate file path to prevent path traversal in git show
+      try {
+        validateFilePath(file);
+      } catch {
+        continue;
+      }
+
       // Get file content from the abandoned branch
       let branchContent: string;
       try {
