@@ -264,6 +264,17 @@ export async function buildContext(options: BuildContextOptions = {}): Promise<S
 
   const conflicts = registryCtx.data.conflicts;
 
+  // Performance Optimization: Replaced multiple O(N) `.filter(condition).length` calls with a
+  // single O(N) loop to eliminate redundant passes and prevent intermediate array allocations.
+  let tier1 = 0;
+  let tier2 = 0;
+  let tier3 = 0;
+  for (const c of conflicts) {
+    if (c.tier === 1) tier1++;
+    else if (c.tier === 2) tier2++;
+    else if (c.tier === 3) tier3++;
+  }
+
   const context: SpiderContext = {
     timestamp: new Date().toISOString(),
     repo: gitInfo.data.repo,
@@ -274,9 +285,9 @@ export async function buildContext(options: BuildContextOptions = {}): Promise<S
       branches: registryCtx.data.branches,
     },
     conflicts: {
-      tier1: conflicts.filter(c => c.tier === 1).length,
-      tier2: conflicts.filter(c => c.tier === 2).length,
-      tier3: conflicts.filter(c => c.tier === 3).length,
+      tier1,
+      tier2,
+      tier3,
       details: conflicts,
     },
     gitStatus: {
