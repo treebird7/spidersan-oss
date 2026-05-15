@@ -264,6 +264,13 @@ export async function buildContext(options: BuildContextOptions = {}): Promise<S
 
   const conflicts = registryCtx.data.conflicts;
 
+  let tier1Count = 0, tier2Count = 0, tier3Count = 0;
+  for (const c of conflicts) {
+    if (c.tier === 1) tier1Count++;
+    else if (c.tier === 2) tier2Count++;
+    else if (c.tier === 3) tier3Count++;
+  }
+
   const context: SpiderContext = {
     timestamp: new Date().toISOString(),
     repo: gitInfo.data.repo,
@@ -274,9 +281,9 @@ export async function buildContext(options: BuildContextOptions = {}): Promise<S
       branches: registryCtx.data.branches,
     },
     conflicts: {
-      tier1: conflicts.filter(c => c.tier === 1).length,
-      tier2: conflicts.filter(c => c.tier === 2).length,
-      tier3: conflicts.filter(c => c.tier === 3).length,
+      tier1: tier1Count,
+      tier2: tier2Count,
+      tier3: tier3Count,
       details: conflicts,
     },
     gitStatus: {
