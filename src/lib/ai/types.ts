@@ -163,8 +163,11 @@ export const HOSTED_API_BASE_URL = 'https://api.spidersan.net/v1';
 export const DEFAULT_LLM_CONFIGS: Record<LLMProvider, LLMConfig> = {
   lmstudio: {
     provider: 'lmstudio',
-    model: 'gemma-4-26b-a4b-it',
-    baseUrl: 'http://127.0.0.1:1234/v1',
+    // A4B general-purpose backend on :8082 (mlx_lm.server). The model id must be
+    // the exact HF-cache id — mlx_lm.server resolves it from the local cache.
+    // gitOps routing is unaffected: event-handler.ts hardcodes its own :1234 default.
+    model: 'mlx-community/gemma-4-26b-a4b-it-4bit',
+    baseUrl: 'http://127.0.0.1:8082/v1',
     temperature: 0.4,
     maxTokens: 800,
   },
