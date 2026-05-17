@@ -55,9 +55,13 @@ export function renderPulseReport(opts: PulseRenderOptions): string {
             lines.push('');
         }
 
-        const tier3 = opts.conflicts.filter((conflict) => conflict.tier === 3).length;
-        const tier2 = opts.conflicts.filter((conflict) => conflict.tier === 2).length;
-        const tier1 = opts.conflicts.filter((conflict) => conflict.tier === 1).length;
+        // Performance Optimization: Track tier counts in a single O(N) pass rather than multiple O(N) filter allocations
+        let tier3 = 0, tier2 = 0, tier1 = 0;
+        for (const conflict of opts.conflicts) {
+            if (conflict.tier === 3) tier3++;
+            else if (conflict.tier === 2) tier2++;
+            else if (conflict.tier === 1) tier1++;
+        }
 
         lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         lines.push(`📊 Summary: 🔴 ${tier3} BLOCK | 🟠 ${tier2} PAUSE | 🟡 ${tier1} WARN`);

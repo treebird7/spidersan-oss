@@ -491,10 +491,18 @@ torrentCommand
 
         // Summary
         const total = taskBranches.length;
-        const completed = taskBranches.filter(b => b.status === 'completed').length;
-        const active = taskBranches.filter(b => b.status === 'active').length;
+        // Performance Optimization: Calculate completed/active counts in a single pass to avoid O(N) allocations
+        let completed = 0, active = 0;
+        for (const b of taskBranches) {
+            if (b.status === 'completed') completed++;
+            else if (b.status === 'active') active++;
+        }
         const parents = roots.length;
-        const children = total - roots.filter(r => r.children.length === 0).length;
+        let noChildrenCount = 0;
+        for (const r of roots) {
+            if (r.children.length === 0) noChildrenCount++;
+        }
+        const children = total - noChildrenCount;
 
         console.log(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
