@@ -1,0 +1,3 @@
+## 2024-03-24 - Avoid multiple `.filter().length` array traversals for summary counts
+**Learning:** In numerous CLI modules (`doctor.ts`, `torrent.ts`, `pulse-renderer.ts`, etc.), summary generation logic was performing 3 to 5 consecutive `array.filter(c => c.field === 'value').length` operations on the same array. This creates a completely new array in memory for every check (O(N) space) and iterates over the array multiple times (O(M*N) time), introducing redundant garbage collection overhead for simple counting.
+**Action:** When calculating summary stats across mutually exclusive or distinct conditions, consolidate all counts into a single `for...of` loop with counter variables to perform a single-pass O(N) evaluation with O(1) space allocation.
