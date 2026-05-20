@@ -24,6 +24,8 @@ export interface ReasoningResult {
   advice: string;
   commands: string[];
   confidence: 'high' | 'medium' | 'low';
+  /** Numeric trust score 0.0–1.0. Values below 0.7 indicate low certainty; callers should warn. */
+  confidenceScore: number;
   mode: 'ask' | 'advise' | 'explain';
   provider: string;
   tokensUsed: number;

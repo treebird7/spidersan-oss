@@ -248,15 +248,15 @@ export async function reason(
     return m !== null && !m[1]!.startsWith('-') && !KNOWN_SPIDERSAN_COMMANDS.has(m[1]!);
   });
 
-  // Estimate confidence from context quality
+  // Estimate categorical confidence from context quality
   const hasConflicts = request.context.conflicts.tier3 > 0 || request.context.conflicts.tier2 > 0;
   const hasRegistry = request.context.registry.active > 0;
   const confidence = hasRegistry
     ? (hasConflicts ? 'high' : 'medium')
     : 'low';
 
-  // Numeric confidence score: try to extract from model response (P2A-1 structured output),
-  // fall back to heuristic mapping.
+  // Numeric trust score: multi-signal composite (0.0–1.0).
+  // Base from categorical label, then adjusted by context richness and output quality.
   const CONFIDENCE_SCORES: Record<string, number> = { high: 0.9, medium: 0.7, low: 0.3 };
   let confidenceScore = CONFIDENCE_SCORES[confidence]!;
 
@@ -268,6 +268,25 @@ export async function reason(
       confidenceScore = parsed;
     }
   }
+
+  // Context-richness adjustments (additive, capped at 1.0):
+  //   +0.05 if colony is online with active agents (live fleet state available)
+  //   +0.05 if activity log is present and non-empty (recent history available)
+  //   -0.10 per unknown spidersan command in output (model hallucinated a command)
+  //   -0.15 if tier-3 conflict exists and mode is 'advise' (high stakes, lower certainty)
+  if (request.context.colony.online && request.context.colony.activeAgents.length > 0) {
+    confidenceScore = Math.min(1.0, confidenceScore + 0.05);
+  }
+  if (request.context.activityLog && request.context.activityLog.length > 0) {
+    confidenceScore = Math.min(1.0, confidenceScore + 0.05);
+  }
+  if (unknownCommands.length > 0) {
+    confidenceScore = Math.max(0.0, confidenceScore - 0.10 * unknownCommands.length);
+  }
+  if (request.context.conflicts.tier3 > 0 && request.mode === 'advise') {
+    confidenceScore = Math.max(0.0, confidenceScore - 0.15);
+  }
+  confidenceScore = Math.round(confidenceScore * 100) / 100;
 
   return {
     advice: response.content,
