@@ -15,7 +15,7 @@ import { basename } from 'path';
 import { homedir } from 'os';
 import { getStorage } from '../storage/index.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
-import { validateBranchName } from '../lib/security.js';
+import { validateBranchName, getCLIPath } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
 import { logActivity } from '../lib/activity.js';
@@ -224,8 +224,8 @@ function runEcosystemScan(repos: string[], asJson: boolean): void {
     for (const repo of repos) {
         const name = basename(repo);
         const result = spawnSync(
-            'spidersan',
-            ['conflicts', '--json'],
+            process.execPath,
+            [getCLIPath(), 'conflicts', '--json'],
             { cwd: repo, encoding: 'utf-8', timeout: 15000 },
         );
 
@@ -614,7 +614,6 @@ export const conflictsCommand = new Command('conflicts')
                             console.log('\n🔄 RE-CHECKING CONFLICTS...\n');
                             const { execFileSync } = await import('child_process');
                             try {
-                                const { getCLIPath } = await import('../lib/security.js');
                                 // Security: Use execFileSync with argument array
                                 const safeBranch = validateBranchName(targetBranch);
                                 const tierArg = String(parseInt(options.tier, 10) || 1);
