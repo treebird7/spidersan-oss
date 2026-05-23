@@ -11,6 +11,7 @@ import { getCurrentBranch, getRemoteHead } from '../lib/git.js';
 import { createHubClient } from '../lib/hub.js';
 import { computeDriftResult } from '../lib/remote-drift.js';
 import { renderFetchPollDrift, renderFetchPollHeartbeat } from '../lib/watch-renderer.js';
+import { getCLIPath } from '../lib/security.js';
 import type { DriftResult, DriftSkipped } from '../lib/remote-drift.js';
 
 const DEBOUNCE_MS = 1000;  // Debounce file changes
@@ -489,7 +490,7 @@ async function runObserverTick(
     // Detect conflicts in each repo. spawnSync captures output even on exit 1.
     for (const repo of repos) {
         try {
-            const result = spawnSync('spidersan', ['conflicts', '--json'], {
+            const result = spawnSync(process.execPath, [getCLIPath(), 'conflicts', '--json'], {
                 cwd: repo,
                 encoding: 'utf-8',
                 timeout: 15000,
@@ -530,7 +531,7 @@ async function runObserverTick(
     // Stale check per repo (informational — no --auto-cleanup yet).
     for (const repo of repos) {
         try {
-            spawnSync('spidersan', ['stale'], {
+            spawnSync(process.execPath, [getCLIPath(), 'stale'], {
                 cwd: repo,
                 encoding: 'utf-8',
                 timeout: 10000,
