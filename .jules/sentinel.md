@@ -1,0 +1,4 @@
+## 2025-02-28 - Self-Invocation PATH Hijacking
+**Vulnerability:** Relying on the system `PATH` to self-invoke the application's CLI (e.g. `spawnSync('spidersan', ...)` or `execFileSync('spidersan', ...)`) exposes the application to PATH hijacking. A malicious executable named `spidersan` placed earlier in the system `PATH` could be executed instead of the intended CLI, leading to arbitrary command execution.
+**Learning:** Hardcoding the CLI name in subprocess executions is a fragile and insecure pattern when an absolute path is not guaranteed.
+**Prevention:** Always use `process.execPath` combined with a robust script path resolver (e.g. `getCLIPath()`) to explicitly execute the correct Node runtime and script, completely bypassing the system `PATH` for self-invocation. When migrating to this pattern, ensure error handlers checking for missing commands (like `ENOENT`) are updated to also handle Node's 'Cannot find module' runtime error.
