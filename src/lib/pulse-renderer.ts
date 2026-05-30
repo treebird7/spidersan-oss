@@ -43,7 +43,16 @@ export function renderPulseReport(opts: PulseRenderOptions): string {
         const tierIcons: Record<number, string> = { 1: '🟡', 2: '🟠', 3: '🔴' };
         const tierLabels: Record<number, string> = { 1: 'WARN', 2: 'PAUSE', 3: 'BLOCK' };
 
+        let tier1 = 0;
+        let tier2 = 0;
+        let tier3 = 0;
+
         for (const conflict of opts.conflicts) {
+            // ⚡ Bolt: Consolidated counting into existing loop to prevent redundant O(N) traversals and array allocations.
+            if (conflict.tier === 1) tier1++;
+            else if (conflict.tier === 2) tier2++;
+            else if (conflict.tier === 3) tier3++;
+
             const icon = tierIcons[conflict.tier] ?? '🟡';
             const label = tierLabels[conflict.tier] ?? 'WARN';
             const agentTag = conflict.agent ? ` [@${conflict.agent}]` : '';
@@ -54,10 +63,6 @@ export function renderPulseReport(opts: PulseRenderOptions): string {
             }
             lines.push('');
         }
-
-        const tier3 = opts.conflicts.filter((conflict) => conflict.tier === 3).length;
-        const tier2 = opts.conflicts.filter((conflict) => conflict.tier === 2).length;
-        const tier1 = opts.conflicts.filter((conflict) => conflict.tier === 1).length;
 
         lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         lines.push(`📊 Summary: 🔴 ${tier3} BLOCK | 🟠 ${tier2} PAUSE | 🟡 ${tier1} WARN`);
