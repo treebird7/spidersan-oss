@@ -273,12 +273,16 @@ export async function buildContext(options: BuildContextOptions = {}): Promise<S
       stale: registryCtx.data.stale,
       branches: registryCtx.data.branches,
     },
-    conflicts: {
-      tier1: conflicts.filter(c => c.tier === 1).length,
-      tier2: conflicts.filter(c => c.tier === 2).length,
-      tier3: conflicts.filter(c => c.tier === 3).length,
-      details: conflicts,
-    },
+    conflicts: (() => {
+      // ⚡ Bolt: Single loop instead of 3 array.filter().length traversals.
+      let tier1 = 0, tier2 = 0, tier3 = 0;
+      for (const c of conflicts) {
+        if (c.tier === 1) tier1++;
+        else if (c.tier === 2) tier2++;
+        else if (c.tier === 3) tier3++;
+      }
+      return { tier1, tier2, tier3, details: conflicts };
+    })(),
     gitStatus: {
       ahead: gitInfo.data.ahead,
       behind: gitInfo.data.behind,
