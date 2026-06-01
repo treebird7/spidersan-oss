@@ -549,11 +549,21 @@ export const doctorCommand = new Command('doctor')
                 console.log(line);
             }
 
-            const pushNeeded = remoteRows.filter(row => row.recommendation === 'push').length;
-            const pullNeeded = remoteRows.filter(row => row.recommendation === 'pull').length;
-            const mergeNeeded = remoteRows.filter(row => row.recommendation === 'merge needed').length;
-            const upToDate = remoteRows.filter(row => row.status === 'up-to-date').length;
-            const noTracking = remoteRows.filter(row => row.status === 'no remote tracking').length;
+            // Performance Optimization: Replace multiple .filter().length passes
+            // with a single loop to avoid redundant O(N) traversals and array allocations
+            let pushNeeded = 0;
+            let pullNeeded = 0;
+            let mergeNeeded = 0;
+            let upToDate = 0;
+            let noTracking = 0;
+
+            for (const row of remoteRows) {
+                if (row.recommendation === 'push') pushNeeded++;
+                if (row.recommendation === 'pull') pullNeeded++;
+                if (row.recommendation === 'merge needed') mergeNeeded++;
+                if (row.status === 'up-to-date') upToDate++;
+                if (row.status === 'no remote tracking') noTracking++;
+            }
 
             console.log('');
             console.log(
@@ -596,8 +606,14 @@ export const doctorCommand = new Command('doctor')
             console.log(`  ${icons[check.status]} ${check.name}: ${check.message}`);
         }
 
-        const errors = checks.filter(c => c.status === 'error').length;
-        const warnings = checks.filter(c => c.status === 'warn').length;
+        // Performance Optimization: Calculate errors/warnings in a single pass
+        // instead of multiple .filter().length calls
+        let errors = 0;
+        let warnings = 0;
+        for (const c of checks) {
+            if (c.status === 'error') errors++;
+            if (c.status === 'warn') warnings++;
+        }
 
         console.log('');
         if (errors > 0) {
