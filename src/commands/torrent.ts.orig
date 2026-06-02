@@ -1,6 +1,6 @@
 /**
  * spidersan torrent
- * 
+ *
  * Task Torrenting integration - manage branches for parallel task execution.
  * BitTorrent-inspired approach: tasks are "seeded" by one agent, "downloaded" by others.
  */
@@ -491,7 +491,6 @@ torrentCommand
 
         // Summary
         const total = taskBranches.length;
-        // Performance Optimization: Avoid intermediate allocations via .filter() by tallying counts in a single pass
         let completed = 0;
         let active = 0;
 

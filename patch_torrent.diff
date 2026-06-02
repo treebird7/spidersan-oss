@@ -1,0 +1,9 @@
+--- src/commands/torrent.ts
++++ src/commands/torrent.ts
+@@ -490,6 +490,7 @@
+
+         // Summary
+         const total = taskBranches.length;
++        // Performance Optimization: Avoid intermediate allocations via .filter() by tallying counts in a single pass
+         let completed = 0;
+         let active = 0;

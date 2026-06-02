@@ -55,7 +55,6 @@ export function renderPulseReport(opts: PulseRenderOptions): string {
             lines.push('');
         }
 
-        // Performance Optimization: Tally counts in a single O(N) loop rather than multiple O(N) passes with memory overhead
         let tier3 = 0;
         let tier2 = 0;
         let tier1 = 0;

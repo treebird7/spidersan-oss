@@ -264,7 +264,6 @@ export async function buildContext(options: BuildContextOptions = {}): Promise<S
 
   const conflicts = registryCtx.data.conflicts;
 
-  // Performance Optimization: Manually count tiers in a single O(N) pass to avoid intermediate array allocations
   let tier1Count = 0;
   let tier2Count = 0;
   let tier3Count = 0;

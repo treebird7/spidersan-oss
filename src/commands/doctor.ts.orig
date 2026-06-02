@@ -1,6 +1,6 @@
 /**
  * spidersan doctor
- * 
+ *
  * Diagnose common issues with Spidersan setup.
  */
 
@@ -549,7 +549,6 @@ export const doctorCommand = new Command('doctor')
                 console.log(line);
             }
 
-            // Performance Optimization: Replace multiple .filter().length passes with a single loop to avoid O(N) array allocations
             let pushNeeded = 0;
             let pullNeeded = 0;
             let mergeNeeded = 0;

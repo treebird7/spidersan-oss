@@ -59,7 +59,6 @@ export function renderConflictReport(report: ConflictReport, options: RenderOpti
 }
 
 function summarizeBranchConflicts(conflicts: BranchConflict[]): { tier1: number; tier2: number; tier3: number } {
-    // Performance Optimization: Tally counts in a single O(N) loop rather than multiple .filter().length passes
     let tier1 = 0;
     let tier2 = 0;
     let tier3 = 0;
