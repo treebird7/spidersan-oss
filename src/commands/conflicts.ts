@@ -258,11 +258,18 @@ function runEcosystemScan(repos: string[], asJson: boolean): void {
         }
     }
 
-    const totals = results.reduce(
-        (acc, r) => ({ tier3: acc.tier3 + r.tier3, tier2: acc.tier2 + r.tier2, tier1: acc.tier1 + r.tier1 }),
-        { tier3: 0, tier2: 0, tier1: 0 },
-    );
-    const reposWithConflicts = results.filter(r => r.tier3 + r.tier2 + r.tier1 > 0).length;
+    // ⚡ Bolt: Single loop calculating totals without running filter+length and reduce
+    const totals = { tier3: 0, tier2: 0, tier1: 0 };
+    let reposWithConflicts = 0;
+
+    for (const r of results) {
+        totals.tier3 += r.tier3;
+        totals.tier2 += r.tier2;
+        totals.tier1 += r.tier1;
+        if (r.tier3 + r.tier2 + r.tier1 > 0) {
+            reposWithConflicts++;
+        }
+    }
 
     if (asJson) {
         console.log(JSON.stringify({

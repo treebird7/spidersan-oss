@@ -169,12 +169,18 @@ export const pulseCommand = new Command('pulse')
             }
         }
 
+        // ⚡ Bolt: Pre-calculate activeBranches to avoid unnecessary .filter inside object literal
+        let activeBranches = 0;
+        for (const branch of allBranches) {
+            if (branch.status === 'active') activeBranches++;
+        }
+
         console.log(renderPulseReport({
             branch: currentBranch,
             registered: true,
             colonySynced,
             colonyOffline,
-            activeBranches: allBranches.filter((branch) => branch.status === 'active').length,
+            activeBranches,
             conflicts,
             drift,
         }));
