@@ -549,11 +549,22 @@ export const doctorCommand = new Command('doctor')
                 console.log(line);
             }
 
-            const pushNeeded = remoteRows.filter(row => row.recommendation === 'push').length;
-            const pullNeeded = remoteRows.filter(row => row.recommendation === 'pull').length;
-            const mergeNeeded = remoteRows.filter(row => row.recommendation === 'merge needed').length;
-            const upToDate = remoteRows.filter(row => row.status === 'up-to-date').length;
-            const noTracking = remoteRows.filter(row => row.status === 'no remote tracking').length;
+            let pushNeeded = 0;
+            let pullNeeded = 0;
+            let mergeNeeded = 0;
+            let upToDate = 0;
+            let noTracking = 0;
+
+            // Performance Optimization: Replace multiple array.filter().length calls
+            // with a single loop to avoid redundant O(N) traversals and allocations.
+            for (const row of remoteRows) {
+                if (row.recommendation === 'push') pushNeeded++;
+                else if (row.recommendation === 'pull') pullNeeded++;
+                else if (row.recommendation === 'merge needed') mergeNeeded++;
+
+                if (row.status === 'up-to-date') upToDate++;
+                else if (row.status === 'no remote tracking') noTracking++;
+            }
 
             console.log('');
             console.log(
@@ -592,12 +603,15 @@ export const doctorCommand = new Command('doctor')
 
         const icons = { ok: '✅', warn: '⚠️ ', error: '❌' };
 
+        let errors = 0;
+        let warnings = 0;
+        // Performance Optimization: Tracking errors and warnings within the existing loop
+        // prevents two additional O(N) traversals from filter().length
         for (const check of checks) {
             console.log(`  ${icons[check.status]} ${check.name}: ${check.message}`);
+            if (check.status === 'error') errors++;
+            else if (check.status === 'warn') warnings++;
         }
-
-        const errors = checks.filter(c => c.status === 'error').length;
-        const warnings = checks.filter(c => c.status === 'warn').length;
 
         console.log('');
         if (errors > 0) {
