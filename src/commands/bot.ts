@@ -1,3 +1,4 @@
+import { getCLIPath } from '../lib/security.js';
 /**
  * spidersan bot — Message-driven git operations daemon via smalltoak.
  *
@@ -212,7 +213,7 @@ function executePush(cfg: RepoConfig): string {
 
 function registerFiles(cfg: RepoConfig): void {
   try {
-    execFileSync('spidersan', ['register',
+    execFileSync(process.execPath, [getCLIPath(), 'register',
       '--agent', 'spidersan-bot',
       '--files', cfg.autoPush.join(','),
     ], { cwd: cfg.path, encoding: 'utf-8', timeout: 10_000, env: spidersanEnv() });
@@ -221,7 +222,7 @@ function registerFiles(cfg: RepoConfig): void {
 
 function checkConflictsBefore(cfg: RepoConfig): string | null {
   try {
-    const result = execFileSync('spidersan', ['conflicts', '--json'], { cwd: cfg.path, encoding: 'utf-8', timeout: 10_000, env: spidersanEnv() });
+    const result = execFileSync(process.execPath, [getCLIPath(), 'conflicts', '--json'], { cwd: cfg.path, encoding: 'utf-8', timeout: 10_000, env: spidersanEnv() });
     const data = JSON.parse(result);
     const blocking = (data.conflicts || []).filter((c: any) => c.tier >= 2 || c.tier === 'BLOCK' || c.tier === 'PAUSE');
     if (blocking.length > 0) {
@@ -263,10 +264,10 @@ function executeLog(cfg: RepoConfig, n = 10): string {
 
 function executeConflicts(cfg: RepoConfig): string {
   try {
-    const r = execFileSync('spidersan', ['conflicts'], { cwd: cfg.path, encoding: 'utf-8', timeout: 60_000, env: spidersanEnv() });
+    const r = execFileSync(process.execPath, [getCLIPath(), 'conflicts'], { cwd: cfg.path, encoding: 'utf-8', timeout: 60_000, env: spidersanEnv() });
     return r.trim().substring(0, 500);
   } catch (err: any) {
-    if (err.code === 'ENOENT') return 'spidersan command not found';
+    if (err.code === 'ENOENT' || err.message?.includes('Cannot find module')) return 'spidersan command not found';
     return err.message;
   }
 }
@@ -305,7 +306,7 @@ export const botCommand = new Command('bot')
     // Register all configured repos/branches with spidersan for conflict detection
     for (const [name, cfg] of Object.entries(config.repos)) {
       try {
-        execFileSync('spidersan', ['register',
+        execFileSync(process.execPath, [getCLIPath(), 'register',
           '--agent', 'spidersan-bot',
           '--files', cfg.autoPush.join(','),
           '--description', `git-bot auto-sync: ${name} (${cfg.branch})`
