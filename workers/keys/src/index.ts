@@ -34,11 +34,14 @@ interface KeyRecord {
   label?: string;
 }
 
-const KEY_REGEX = /^spk_(free|contrib)_[0-9a-f]{40}$/;
+const KEY_REGEX = /^spk_(free|contributor)_[0-9a-f]{40}$/;
 const IP_KEY_DAILY_LIMIT = 5; // max new keys per IP per day
 const HTML_CONTENT_TYPE = 'text/html;charset=UTF-8';
-// CSP: allows inline styles/scripts (needed for copy button + CSS), CF Turnstile frames
-const CSP = "default-src 'none'; script-src 'unsafe-inline' https://challenges.cloudflare.com; style-src 'unsafe-inline'; frame-src https://challenges.cloudflare.com; form-action 'self'; base-uri 'none'";
+// CSP: allows inline styles/scripts (copy button + CSS) and the CF Turnstile
+// frame/script. connect-src is required too — the widget makes its own XHR /
+// telemetry calls to challenges.cloudflare.com that default-src 'none' would
+// otherwise block, silently failing the challenge.
+const CSP = "default-src 'none'; script-src 'unsafe-inline' https://challenges.cloudflare.com; style-src 'unsafe-inline'; frame-src https://challenges.cloudflare.com; connect-src https://challenges.cloudflare.com; form-action 'self'; base-uri 'none'";
 
 function htmlHeaders(extra?: Record<string, string>): Record<string, string> {
   return { 'Content-Type': HTML_CONTENT_TYPE, 'Content-Security-Policy': CSP, ...extra };
@@ -73,6 +76,10 @@ function isValidEmail(email: string): boolean {
 async function checkIpKeyLimit(env: Env, ip: string): Promise<boolean> {
   if (!ip) return true; // can't identify IP — allow (Turnstile is the other gate)
   const today = new Date().toISOString().slice(0, 10);
+  // Counters share the credential KV namespace, distinguished only by the
+  // `ip_rl:` prefix (vs `spk_` for keys). Safe — all reads are exact-match
+  // lookups, never list/scan — but a future KV dump would conflate the two.
+  // If counters grow, split into a dedicated namespace.
   const kvKey = `ip_rl:${ip}:${today}`;
   const raw = await env.VALID_API_KEYS.get(kvKey, { type: 'text' });
   const count = raw ? parseInt(raw, 10) : 0;
