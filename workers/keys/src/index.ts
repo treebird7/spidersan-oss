@@ -37,6 +37,34 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
 
+// A real key is exactly `spk_<tier>_<40 hex>`. `free` is the only tier minted
+// today; `contributor` is allowed for forward-compat with KeyRecord.tier.
+const KEY_SHAPE = /^spk_(free|contributor)_[0-9a-f]{40}$/;
+
+function isValidKeyShape(key: string): boolean {
+  return KEY_SHAPE.test(key);
+}
+
+// Defense-in-depth: even though only key-shaped values reach renderSuccessPage,
+// escape before interpolating into HTML so a future caller can't reintroduce XSS.
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Locks reflected markup down to nothing executable. The success page's only
+// script is the inline copyKey() handler, so 'unsafe-inline' is required for it.
+const HTML_HEADERS = {
+  'Content-Type': 'text/html;charset=UTF-8',
+  'Content-Security-Policy':
+    "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'self'",
+  'X-Content-Type-Options': 'nosniff',
+};
+
 // ── HTML ─────────────────────────────────────────────────────────────────────
 
 const CSS = `
@@ -204,6 +232,7 @@ function renderLandingPage(error?: string): string {
 }
 
 function renderSuccessPage(key: string): string {
+  const safeKey = escapeHtml(key);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -218,7 +247,7 @@ function renderSuccessPage(key: string): string {
   <h1>Your API key <span class="badge-free">FREE</span></h1>
 
   <div class="key-box">
-    <span class="key-value" id="key-value">${key}</span>
+    <span class="key-value" id="key-value">${safeKey}</span>
     <button class="copy-btn" onclick="copyKey()">copy</button>
   </div>
 
@@ -226,10 +255,10 @@ function renderSuccessPage(key: string): string {
     <strong>Add to spidersan CLI:</strong><br>
     Run <code>spidersan ai setup --tier free</code> and paste your key when prompted.<br><br>
     <strong>Or set the env var:</strong><br>
-    <code>export SPIDERSAN_API_KEY=${key}</code><br><br>
+    <code>export SPIDERSAN_API_KEY=${safeKey}</code><br><br>
     <strong>Or call the API directly:</strong><br>
     <code>curl https://spidersan-api-proxy.spidersan.workers.dev/v1/chat/completions \\<br>
-&nbsp;&nbsp;-H "Authorization: Bearer ${key}" \\<br>
+&nbsp;&nbsp;-H "Authorization: Bearer ${safeKey}" \\<br>
 &nbsp;&nbsp;-d '{"model":"spidersan-v1","messages":[...]}'</code>
   </div>
 
@@ -271,18 +300,21 @@ export default {
       return new Response('Not found', { status: 404 });
     }
 
-    // GET /keys?key=<value> → success page
+    // GET /keys?key=<value> → success page.
+    // Only render for values that match a real key shape. Anything else is a
+    // crafted/reflected value (XSS, junk) → fall through to the landing page,
+    // never echo it back into HTML.
     const keyParam = url.searchParams.get('key');
-    if (request.method === 'GET' && keyParam) {
+    if (request.method === 'GET' && keyParam && isValidKeyShape(keyParam)) {
       return new Response(renderSuccessPage(keyParam), {
-        headers: { 'Content-Type': 'text/html;charset=UTF-8' },
+        headers: HTML_HEADERS,
       });
     }
 
-    // GET /keys → landing page
+    // GET /keys (or /keys?key=<malformed>) → landing page
     if (request.method === 'GET') {
       return new Response(renderLandingPage(), {
-        headers: { 'Content-Type': 'text/html;charset=UTF-8' },
+        headers: HTML_HEADERS,
       });
     }
 
@@ -295,14 +327,14 @@ export default {
       } catch {
         return new Response(renderLandingPage('Invalid form submission.'), {
           status: 400,
-          headers: { 'Content-Type': 'text/html;charset=UTF-8' },
+          headers: HTML_HEADERS,
         });
       }
 
       if (!isValidEmail(email)) {
         return new Response(renderLandingPage('Please enter a valid email address.'), {
           status: 400,
-          headers: { 'Content-Type': 'text/html;charset=UTF-8' },
+          headers: HTML_HEADERS,
         });
       }
 
@@ -317,10 +349,14 @@ export default {
 
       await env.VALID_API_KEYS.put(key, JSON.stringify(record));
 
-      // Redirect to success page — key in URL param, not body (avoids resubmit on refresh)
-      return new Response(null, {
-        status: 303,
-        headers: { Location: `/keys?key=${encodeURIComponent(key)}` },
+      // Render the key straight from the POST response. We deliberately do NOT
+      // 303-redirect to /keys?key=<key>: that lands the secret in CF access
+      // logs, browser history, and the Referer header (M4). The cost is that a
+      // page refresh re-POSTs and mints a fresh key — acceptable for a one-time
+      // free key. The GET ?key= path remains only as a shape-validated fallback
+      // for already-shared links; nothing here generates such a URL anymore.
+      return new Response(renderSuccessPage(key), {
+        headers: HTML_HEADERS,
       });
     }
 
