@@ -1,17 +1,30 @@
 /**
- * spidersan Keys Worker — spidersan.dev/keys
+ * spidersan Keys Worker — spidersan.treebird.uk/keys
  *
  * GET  /keys          → HTML landing page with email form
- * POST /keys          → generate + store API key, redirect to /keys?key=<key>
- * GET  /keys?key=<k>  → HTML success page showing the key
+ * POST /keys          → generate + store API key, render success inline (key never in URL)
+ * GET  /keys?key=<k>  → HTML success page (legacy / direct link — validated + escaped)
  *
  * Writes to VALID_API_KEYS KV (same namespace as api-proxy).
- * Key format: spk_free_<32-char hex>
+ * Key format: spk_free_<40-char hex>  (20 CSPRNG bytes)
  * KV record:  { tier: "free", created: ISO, email_hash: SHA256(email).slice(0,12), label? }
+ *
+ * Security controls:
+ *  B2 — per-IP key issuance rate limit (5/day, KV-based)
+ *  B2 — Cloudflare Turnstile CAPTCHA on form (when TURNSTILE_SECRET_KEY secret is set)
+ *  B3 — GET ?key= validated against key regex + HTML-escaped before render
+ *  M4 — POST renders success page inline; key never in redirect URL
  */
 
 export interface Env {
   VALID_API_KEYS: KVNamespace;
+  /** CF Turnstile secret key — set via: wrangler secret put TURNSTILE_SECRET_KEY
+   *  Create widget at: dash.cloudflare.com → Turnstile → Add site
+   *  Leave unset to skip Turnstile (per-IP KV limit still applies). */
+  TURNSTILE_SECRET_KEY?: string;
+  /** CF Turnstile site key — public, safe in source.
+   *  Set via wrangler.toml [vars] once you create the Turnstile widget. */
+  TURNSTILE_SITE_KEY?: string;
 }
 
 interface KeyRecord {
@@ -19,6 +32,25 @@ interface KeyRecord {
   created: string;
   email_hash: string;
   label?: string;
+}
+
+const KEY_REGEX = /^spk_(free|contrib)_[0-9a-f]{40}$/;
+const IP_KEY_DAILY_LIMIT = 5; // max new keys per IP per day
+const HTML_CONTENT_TYPE = 'text/html;charset=UTF-8';
+// CSP: allows inline styles/scripts (needed for copy button + CSS), CF Turnstile frames
+const CSP = "default-src 'none'; script-src 'unsafe-inline' https://challenges.cloudflare.com; style-src 'unsafe-inline'; frame-src https://challenges.cloudflare.com; form-action 'self'; base-uri 'none'";
+
+function htmlHeaders(extra?: Record<string, string>): Record<string, string> {
+  return { 'Content-Type': HTML_CONTENT_TYPE, 'Content-Security-Policy': CSP, ...extra };
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function generateKey(): string {
@@ -37,33 +69,33 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
 
-// A real key is exactly `spk_<tier>_<40 hex>`. `free` is the only tier minted
-// today; `contributor` is allowed for forward-compat with KeyRecord.tier.
-const KEY_SHAPE = /^spk_(free|contributor)_[0-9a-f]{40}$/;
-
-function isValidKeyShape(key: string): boolean {
-  return KEY_SHAPE.test(key);
+/** B2: per-IP issuance rate limit. Not atomic but sufficient as a friction layer. */
+async function checkIpKeyLimit(env: Env, ip: string): Promise<boolean> {
+  if (!ip) return true; // can't identify IP — allow (Turnstile is the other gate)
+  const today = new Date().toISOString().slice(0, 10);
+  const kvKey = `ip_rl:${ip}:${today}`;
+  const raw = await env.VALID_API_KEYS.get(kvKey, { type: 'text' });
+  const count = raw ? parseInt(raw, 10) : 0;
+  if (count >= IP_KEY_DAILY_LIMIT) return false;
+  env.VALID_API_KEYS.put(kvKey, String(count + 1), { expirationTtl: 172800 }).catch(() => {});
+  return true;
 }
 
-// Defense-in-depth: even though only key-shaped values reach renderSuccessPage,
-// escape before interpolating into HTML so a future caller can't reintroduce XSS.
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+/** B2: Cloudflare Turnstile server-side verification. */
+async function verifyTurnstile(secretKey: string, token: string, ip: string): Promise<boolean> {
+  try {
+    const resp = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret: secretKey, response: token, remoteip: ip }),
+    });
+    if (!resp.ok) return false;
+    const data = await resp.json() as { success: boolean };
+    return data.success === true;
+  } catch {
+    return false;
+  }
 }
-
-// Locks reflected markup down to nothing executable. The success page's only
-// script is the inline copyKey() handler, so 'unsafe-inline' is required for it.
-const HTML_HEADERS = {
-  'Content-Type': 'text/html;charset=UTF-8',
-  'Content-Security-Policy':
-    "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'self'",
-  'X-Content-Type-Options': 'nosniff',
-};
 
 // ── HTML ─────────────────────────────────────────────────────────────────────
 
@@ -131,6 +163,7 @@ const CSS = `
     transition: border-color 0.15s;
   }
   input[type="email"]:focus { border-color: var(--accent); }
+  .turnstile-wrap { margin-top: 1rem; }
   button[type="submit"] {
     width: 100%; margin-top: 1rem;
     padding: 0.75rem 1rem;
@@ -187,7 +220,11 @@ const CSS = `
   .error-msg { color: var(--red); font-size: 0.85rem; margin-top: 0.6rem; }
 `;
 
-function renderLandingPage(error?: string): string {
+function renderLandingPage(siteKey?: string, error?: string): string {
+  const turnstileScript = siteKey
+    ? `<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>` : '';
+  const turnstileWidget = siteKey
+    ? `<div class="turnstile-wrap"><div class="cf-turnstile" data-sitekey="${escapeHtml(siteKey)}" data-theme="dark"></div></div>` : '';
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -195,10 +232,11 @@ function renderLandingPage(error?: string): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Get a free API key — spidersan</title>
 <style>${CSS}</style>
+${turnstileScript}
 </head>
 <body>
 <div class="card">
-  <div class="logo">spidersan<span>.dev</span></div>
+  <div class="logo">spidersan<span>.net</span></div>
   <h1>Get your free API key</h1>
   <p class="subtitle">Semantic conflict detection for multi-branch git workflows — the class of bug that passes <code style="font-family:monospace;font-size:0.85em;color:#7c6aff">git merge</code> cleanly but breaks at runtime.</p>
   <div class="limits">
@@ -211,26 +249,28 @@ function renderLandingPage(error?: string): string {
       <span class="limit-label">no credit card</span>
     </div>
     <div class="limit-item">
-      <span class="limit-value">spidersan-llm</span>
+      <span class="limit-value">spidersan-v1</span>
       <span class="limit-label">fine-tuned</span>
     </div>
   </div>
   <form method="POST" action="/keys">
     <label for="email">Your email</label>
     <input type="email" id="email" name="email" placeholder="you@example.com" required autocomplete="email">
-    ${error ? `<p class="error-msg">${error}</p>` : ''}
+    ${error ? `<p class="error-msg">${escapeHtml(error)}</p>` : ''}
+    ${turnstileWidget}
     <button type="submit">Generate free key →</button>
   </form>
   <p class="notice">
     Your email is hashed before storage — we don't keep the plaintext.
     By generating a key you agree not to use this API for bulk data extraction or model distillation.
-    Contributor tier (unlimited requests) available via <a href="https://spidersan.dev/docs/contributor">session contribution</a>.
+    Contributor tier (unlimited requests) available via session contribution.
   </p>
 </div>
 </body>
 </html>`;
 }
 
+/** B3: key is validated against KEY_REGEX before reaching this function, and escaped here as defence-in-depth. */
 function renderSuccessPage(key: string): string {
   const safeKey = escapeHtml(key);
   return `<!DOCTYPE html>
@@ -243,7 +283,7 @@ function renderSuccessPage(key: string): string {
 </head>
 <body>
 <div class="card">
-  <div class="logo">spidersan<span>.dev</span></div>
+  <div class="logo">spidersan<span>.net</span></div>
   <h1>Your API key <span class="badge-free">FREE</span></h1>
 
   <div class="key-box">
@@ -257,7 +297,7 @@ function renderSuccessPage(key: string): string {
     <strong>Or set the env var:</strong><br>
     <code>export SPIDERSAN_API_KEY=${safeKey}</code><br><br>
     <strong>Or call the API directly:</strong><br>
-    <code>curl https://spidersan-api-proxy.spidersan.workers.dev/v1/chat/completions \\<br>
+    <code>curl https://api.spidersan.net/v1/chat/completions \\<br>
 &nbsp;&nbsp;-H "Authorization: Bearer ${safeKey}" \\<br>
 &nbsp;&nbsp;-d '{"model":"spidersan-v1","messages":[...]}'</code>
   </div>
@@ -295,46 +335,73 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
-    // Only handle /keys (and /keys/ with trailing slash)
     if (url.pathname !== '/keys' && url.pathname !== '/keys/') {
       return new Response('Not found', { status: 404 });
     }
 
-    // GET /keys?key=<value> → success page.
-    // Only render for values that match a real key shape. Anything else is a
-    // crafted/reflected value (XSS, junk) → fall through to the landing page,
-    // never echo it back into HTML.
+    // GET /keys?key=<value> → success page (legacy / direct link)
+    // B3: validate key format strictly before rendering — rejects any non-key value
     const keyParam = url.searchParams.get('key');
-    if (request.method === 'GET' && keyParam && isValidKeyShape(keyParam)) {
+    if (request.method === 'GET' && keyParam !== null) {
+      if (!KEY_REGEX.test(keyParam)) {
+        return new Response(renderLandingPage(env.TURNSTILE_SITE_KEY, 'Invalid or missing key.'), {
+          status: 400,
+          headers: htmlHeaders(),
+        });
+      }
       return new Response(renderSuccessPage(keyParam), {
-        headers: HTML_HEADERS,
+        headers: htmlHeaders(),
       });
     }
 
-    // GET /keys (or /keys?key=<malformed>) → landing page
+    // GET /keys → landing page
     if (request.method === 'GET') {
-      return new Response(renderLandingPage(), {
-        headers: HTML_HEADERS,
+      return new Response(renderLandingPage(env.TURNSTILE_SITE_KEY), {
+        headers: htmlHeaders(),
       });
     }
 
     // POST /keys → issue key
     if (request.method === 'POST') {
       let email = '';
+      let turnstileToken = '';
       try {
         const body = await request.formData();
         email = (body.get('email') as string | null) ?? '';
+        turnstileToken = (body.get('cf-turnstile-response') as string | null) ?? '';
       } catch {
-        return new Response(renderLandingPage('Invalid form submission.'), {
+        return new Response(renderLandingPage(env.TURNSTILE_SITE_KEY, 'Invalid form submission.'), {
           status: 400,
-          headers: HTML_HEADERS,
+          headers: htmlHeaders(),
         });
       }
 
       if (!isValidEmail(email)) {
-        return new Response(renderLandingPage('Please enter a valid email address.'), {
+        return new Response(renderLandingPage(env.TURNSTILE_SITE_KEY, 'Please enter a valid email address.'), {
           status: 400,
-          headers: HTML_HEADERS,
+          headers: htmlHeaders(),
+        });
+      }
+
+      // B2: Cloudflare Turnstile verification (when TURNSTILE_SECRET_KEY is configured)
+      if (env.TURNSTILE_SECRET_KEY) {
+        const ip = request.headers.get('CF-Connecting-IP') ?? '';
+        const valid = await verifyTurnstile(env.TURNSTILE_SECRET_KEY, turnstileToken, ip);
+        if (!valid) {
+          return new Response(renderLandingPage(env.TURNSTILE_SITE_KEY, 'Challenge failed. Please try again.'), {
+            status: 400,
+            headers: htmlHeaders(),
+          });
+        }
+      }
+
+      // B2: per-IP issuance rate limit (always enforced, regardless of Turnstile)
+      const ip = request.headers.get('CF-Connecting-IP') ?? '';
+      const ipAllowed = await checkIpKeyLimit(env, ip);
+      if (!ipAllowed) {
+        return new Response(renderLandingPage(env.TURNSTILE_SITE_KEY, 'Too many keys generated from this IP today. Try again tomorrow.'), {
+          status: 429,
+          headers: htmlHeaders(),
         });
       }
 
@@ -349,14 +416,10 @@ export default {
 
       await env.VALID_API_KEYS.put(key, JSON.stringify(record));
 
-      // Render the key straight from the POST response. We deliberately do NOT
-      // 303-redirect to /keys?key=<key>: that lands the secret in CF access
-      // logs, browser history, and the Referer header (M4). The cost is that a
-      // page refresh re-POSTs and mints a fresh key — acceptable for a one-time
-      // free key. The GET ?key= path remains only as a shape-validated fallback
-      // for already-shared links; nothing here generates such a URL anymore.
+      // M4: render success inline — key stays out of the URL and CF access logs
       return new Response(renderSuccessPage(key), {
-        headers: HTML_HEADERS,
+        status: 200,
+        headers: htmlHeaders(),
       });
     }
 
