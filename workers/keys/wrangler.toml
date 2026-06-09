@@ -1,6 +1,11 @@
 name = "spidersan-keys"
 main = "src/index.ts"
 compatibility_date = "2026-04-21"
+workers_dev = false
+
+[[routes]]
+pattern = "spidersan.net/keys*"
+zone_name = "spidersan.net"
 
 [[routes]]
 pattern = "spidersan.treebird.uk/keys*"
@@ -11,3 +16,9 @@ zone_name = "treebird.uk"
 binding = "VALID_API_KEYS"
 id = "d05e42b679db41249eb9934a21cc2c78"
 preview_id = "d05e42b679db41249eb9934a21cc2c78"
+
+# Vars (public — safe in source; uncomment once Turnstile widget is created)
+# [vars]
+# TURNSTILE_SITE_KEY = "0x..."
+
+# Secrets (set via: wrangler secret put TURNSTILE_SECRET_KEY)

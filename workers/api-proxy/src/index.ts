@@ -4,33 +4,37 @@
  * Proxies /v1/chat/completions and /v1/models to the fine-tuned model backend.
  * Auth: Bearer token validated against VALID_API_KEYS KV namespace.
  *
- * Deploy to: api.spidersan.dev
+ * Deploy to: api.spidersan.net
  *
  * KV bindings required (wrangler.toml):
  *   VALID_API_KEYS  — key = raw API key string, value = metadata JSON
  *                     e.g. '{"tier":"free","created":"2026-01-01T00:00:00Z"}'
  *
- * Environment variables:
- *   MODEL_BACKEND_URL — base URL of the model backend (no trailing slash)
- *                       e.g. https://model.internal.spidersan.dev
+ * Secrets (set via wrangler secret put):
+ *   MODEL_BACKEND_URL      — base URL of the model backend (no trailing slash)
+ *                            e.g. https://spidersan-model.treebird.uk
+ *   MODEL_ID               — model ID the backend expects; rewritten into requests
+ *                            e.g. sweep-m5-b4v2c4c3m2c5-a095/fused
+ *   CF_ACCESS_CLIENT_ID    — CF Access service token ID (gates the model tunnel; B1)
+ *   CF_ACCESS_CLIENT_SECRET — CF Access service token secret (B1)
  *
- * Rate limiting: tracked per-key in KV (eventually consistent — use Durable Objects
- * for exact enforcement, this is advisory only).
- *
- * TODO(P3-4): Migrate to Durable Object rate limiter for precise per-key limits.
+ * Rate limiting: per-key KV counter (eventually consistent — advisory only).
+ * TODO(P3): Migrate to Durable Object rate limiter for precise enforcement.
  */
 
 export interface Env {
   VALID_API_KEYS: KVNamespace;
   MODEL_BACKEND_URL: string;
-  /** Internal model ID the backend expects. Rewrites `model` field in chat/completions requests.
-   *  Set via: wrangler secret put MODEL_ID
-   *  e.g. /Users/freedbird/Dev/spidersan-ai/output/mlx-run-p2a3c-20260421-0114/fused-best-600 */
-  MODEL_ID?: string;
+  /** M1: required — Worker returns 503 if unset rather than passing model choice to client. */
+  MODEL_ID: string;
+  /** B1: CF Access service token — sent as CF-Access-Client-Id/Secret to gate the tunnel.
+   *  Create at: dash.cloudflare.com → Access → Service Auth → Create Service Token
+   *  Then protect the tunnel app with a policy requiring that token. */
+  CF_ACCESS_CLIENT_ID?: string;
+  CF_ACCESS_CLIENT_SECRET?: string;
 }
 
 const ALLOWED_PATHS = new Set(['/v1/chat/completions', '/v1/models']);
-// Free tier: 50 req/day. Contributor: unlimited.
 const FREE_TIER_DAILY_LIMIT = 50;
 
 interface KeyMetadata {
@@ -45,14 +49,13 @@ async function validateApiKey(env: Env, key: string): Promise<KeyMetadata | null
   try {
     return JSON.parse(raw) as KeyMetadata;
   } catch {
-    // Legacy key with no metadata — treat as free tier
     return { tier: 'free', created: '' };
   }
 }
 
 /**
- * Advisory per-key daily counter in KV for free tier. Not atomic — eventually consistent.
- * Contributor tier skips this entirely (unlimited).
+ * Advisory per-key daily counter. Not atomic — eventually consistent.
+ * Contributor tier is unlimited.
  */
 async function checkRateLimit(
   env: Env,
@@ -60,16 +63,15 @@ async function checkRateLimit(
   tier: 'free' | 'contributor',
 ): Promise<{ remaining: number; limited: boolean }> {
   if (tier === 'contributor') {
-    return { remaining: -1, limited: false }; // unlimited
+    return { remaining: -1, limited: false };
   }
-  const bucketKey = `rl:${key}:${new Date().toISOString().slice(0, 10)}`; // daily bucket YYYY-MM-DD
+  const bucketKey = `rl:${key}:${new Date().toISOString().slice(0, 10)}`;
   const raw = await env.VALID_API_KEYS.get(bucketKey, { type: 'text' });
   const count = raw ? parseInt(raw, 10) : 0;
   if (count >= FREE_TIER_DAILY_LIMIT) {
     return { remaining: 0, limited: true };
   }
-  // Fire-and-forget update (eventually consistent)
-  env.VALID_API_KEYS.put(bucketKey, String(count + 1), { expirationTtl: 172800 }).catch(() => {}); // 48h TTL
+  env.VALID_API_KEYS.put(bucketKey, String(count + 1), { expirationTtl: 172800 }).catch(() => {});
   return { remaining: FREE_TIER_DAILY_LIMIT - count - 1, limited: false };
 }
 
@@ -80,18 +82,26 @@ function errorResponse(status: number, message: string, headers?: Record<string,
   });
 }
 
+/** M2: normalize /v1/models response — strips internal FS model paths from clients. */
+function normalizedModelsResponse(): Response {
+  return new Response(
+    JSON.stringify({
+      object: 'list',
+      data: [{ id: 'spidersan-v1', object: 'model', owned_by: 'spidersan', created: 0 }],
+    }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  );
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    // Strip /api prefix when routed through spidersan.treebird.uk/api/*
     const path = url.pathname.replace(/^\/api/, '') || '/';
 
-    // Only allow supported paths
     if (!ALLOWED_PATHS.has(path)) {
       return errorResponse(404, `Not found: ${path}`);
     }
 
-    // Only allow GET /v1/models and POST /v1/chat/completions
     if (path === '/v1/chat/completions' && request.method !== 'POST') {
       return errorResponse(405, 'Method not allowed');
     }
@@ -111,7 +121,12 @@ export default {
       return errorResponse(401, 'Invalid API key');
     }
 
-    // Rate limiting (advisory, KV-based; contributor = unlimited)
+    // M1: fail-closed — reject if MODEL_ID secret was never set
+    if (!env.MODEL_ID) {
+      return errorResponse(503, 'Model backend not configured');
+    }
+
+    // Rate limiting
     const { remaining, limited } = await checkRateLimit(env, apiKey, keyMeta.tier);
     if (limited) {
       return errorResponse(429, 'Daily limit reached (50 req/day). Upgrade to contributor tier for unlimited.', {
@@ -122,24 +137,36 @@ export default {
       });
     }
 
-    // Proxy to backend — strip client auth, add backend forwarding headers
+    // M2: /v1/models — return normalized list (never proxy FS model paths to clients)
+    if (path === '/v1/models') {
+      return normalizedModelsResponse();
+    }
+
+    // Proxy to backend
     const backendUrl = `${env.MODEL_BACKEND_URL}${path}${url.search}`;
     const proxyHeaders = new Headers(request.headers);
     proxyHeaders.delete('Authorization');
     proxyHeaders.set('X-Forwarded-For', request.headers.get('CF-Connecting-IP') ?? 'unknown');
     proxyHeaders.set('X-Spidersan-Tier', keyMeta.tier);
 
-    // Rewrite model field if MODEL_ID secret is set — client sends "spidersan-v1",
-    // mlx_lm.server expects the actual model path or HF model ID.
-    let proxyBody: BodyInit | null = request.method !== 'GET' ? request.body : null;
-    if (env.MODEL_ID && path === '/v1/chat/completions' && request.method === 'POST') {
+    // B1: CF Access service token — authenticates this Worker to the tunnel
+    // Requires: CF Access app protecting spidersan-model.treebird.uk with a service token policy
+    if (env.CF_ACCESS_CLIENT_ID) {
+      proxyHeaders.set('CF-Access-Client-Id', env.CF_ACCESS_CLIENT_ID);
+    }
+    if (env.CF_ACCESS_CLIENT_SECRET) {
+      proxyHeaders.set('CF-Access-Client-Secret', env.CF_ACCESS_CLIENT_SECRET);
+    }
+
+    // Rewrite model field — client sends "spidersan-v1", backend expects the actual model ID
+    let proxyBody: BodyInit | null = request.body;
+    if (path === '/v1/chat/completions' && request.method === 'POST') {
       try {
         const json = await request.json() as Record<string, unknown>;
         json['model'] = env.MODEL_ID;
         proxyBody = JSON.stringify(json);
         proxyHeaders.set('Content-Type', 'application/json');
       } catch {
-        // Body unreadable — pass through as-is
         proxyBody = null;
       }
     }
