@@ -1,5 +1,5 @@
 /**
- * spidersan Keys Worker — spidersan.treebird.uk/keys
+ * spidersan Keys Worker — spidersan.net/keys
  *
  * GET  /keys          → HTML landing page with email form
  * POST /keys          → generate + store API key, render success inline (key never in URL)

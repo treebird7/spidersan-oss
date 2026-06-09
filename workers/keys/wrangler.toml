@@ -7,10 +7,6 @@ workers_dev = false
 pattern = "spidersan.net/keys*"
 zone_name = "spidersan.net"
 
-[[routes]]
-pattern = "spidersan.treebird.uk/keys*"
-zone_name = "treebird.uk"
-
 # Shared KV with api-proxy — same namespace so keys issued here are validated there
 [[kv_namespaces]]
 binding = "VALID_API_KEYS"
