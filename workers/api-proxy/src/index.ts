@@ -37,6 +37,12 @@ export interface Env {
 const ALLOWED_PATHS = new Set(['/v1/chat/completions', '/v1/models']);
 const FREE_TIER_DAILY_LIMIT = 50;
 
+// C1 (cost): hard ceilings so a backend swap to a metered provider can't become
+// an unbounded bill. These are code constants by design — not a property of
+// today's local-MLX wiring. Tune as needed; the point is that a ceiling exists.
+const MAX_OUTPUT_TOKENS = 4096;          // clamp on max_tokens (also the default when unset)
+const MAX_REQUEST_BYTES = 256 * 1024;    // 256 KB cap on request body (prompt size)
+
 interface KeyMetadata {
   tier: 'free' | 'contributor';
   created: string;
@@ -109,6 +115,13 @@ export default {
       return errorResponse(405, 'Method not allowed');
     }
 
+    // C1 (cost): reject oversized requests up front, before any KV/backend work.
+    // Covers the declared-length case; chunked uploads are re-checked post-parse.
+    const declaredLen = Number(request.headers.get('Content-Length') ?? '0');
+    if (Number.isFinite(declaredLen) && declaredLen > MAX_REQUEST_BYTES) {
+      return errorResponse(413, `Request too large (max ${MAX_REQUEST_BYTES} bytes)`);
+    }
+
     // Validate Bearer token
     const authHeader = request.headers.get('Authorization') ?? '';
     const apiKey = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
@@ -164,7 +177,16 @@ export default {
       try {
         const json = await request.json() as Record<string, unknown>;
         json['model'] = env.MODEL_ID;
-        proxyBody = JSON.stringify(json);
+        // C1 (cost): clamp output length to the ceiling; also sets a bounded
+        // default when the client omits max_tokens (open-ended generation).
+        const reqMax = typeof json['max_tokens'] === 'number' ? json['max_tokens'] as number : 0;
+        json['max_tokens'] = reqMax > 0 ? Math.min(reqMax, MAX_OUTPUT_TOKENS) : MAX_OUTPUT_TOKENS;
+        const serialized = JSON.stringify(json);
+        // C1 (cost): re-check size for chunked uploads with no Content-Length.
+        if (serialized.length > MAX_REQUEST_BYTES) {
+          return errorResponse(413, `Request too large (max ${MAX_REQUEST_BYTES} bytes)`);
+        }
+        proxyBody = serialized;
         proxyHeaders.set('Content-Type', 'application/json');
       } catch {
         proxyBody = null;
