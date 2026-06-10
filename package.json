@@ -89,5 +89,6 @@
         "eslint": "^8.0.0",
         "typescript": "^5.3.0",
         "vitest": "^4.0.17"
-    }
+    },
+    "packageManager": "npm@11.6.1"
 }
