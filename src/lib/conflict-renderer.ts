@@ -59,11 +59,16 @@ export function renderConflictReport(report: ConflictReport, options: RenderOpti
 }
 
 function summarizeBranchConflicts(conflicts: BranchConflict[]): { tier1: number; tier2: number; tier3: number } {
-    return {
-        tier1: conflicts.filter((conflict) => conflict.tier === 1).length,
-        tier2: conflicts.filter((conflict) => conflict.tier === 2).length,
-        tier3: conflicts.filter((conflict) => conflict.tier === 3).length,
-    };
+    // ⚡ Bolt: Consolidated multiple .filter().length calls into a single loop to avoid redundant O(N) traversals
+    let tier1 = 0;
+    let tier2 = 0;
+    let tier3 = 0;
+    for (const conflict of conflicts) {
+        if (conflict.tier === 1) tier1++;
+        else if (conflict.tier === 2) tier2++;
+        else if (conflict.tier === 3) tier3++;
+    }
+    return { tier1, tier2, tier3 };
 }
 
 function buildBranchConflicts(report: ConflictReport): BranchConflict[] {

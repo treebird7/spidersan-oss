@@ -264,6 +264,14 @@ export async function buildContext(options: BuildContextOptions = {}): Promise<S
 
   const conflicts = registryCtx.data.conflicts;
 
+  // ⚡ Bolt: Single loop tracking counts to replace multiple redundant .filter().length array passes
+  const counts = { tier1: 0, tier2: 0, tier3: 0 };
+  for (const c of conflicts) {
+    if (c.tier === 1) counts.tier1++;
+    else if (c.tier === 2) counts.tier2++;
+    else if (c.tier === 3) counts.tier3++;
+  }
+
   const context: SpiderContext = {
     timestamp: new Date().toISOString(),
     repo: gitInfo.data.repo,
@@ -274,9 +282,9 @@ export async function buildContext(options: BuildContextOptions = {}): Promise<S
       branches: registryCtx.data.branches,
     },
     conflicts: {
-      tier1: conflicts.filter(c => c.tier === 1).length,
-      tier2: conflicts.filter(c => c.tier === 2).length,
-      tier3: conflicts.filter(c => c.tier === 3).length,
+      tier1: counts.tier1,
+      tier2: counts.tier2,
+      tier3: counts.tier3,
       details: conflicts,
     },
     gitStatus: {
