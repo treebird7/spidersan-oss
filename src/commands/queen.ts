@@ -168,11 +168,12 @@ function buildGroundJobScript(
   git pull origin main --rebase 2>&1 | tail -3
   spidersan pulse --quiet`,
         conflicts: `  # GROUND JOB: conflict scan
-  TMP_FILE=$(mktemp /tmp/ssan-conflicts-XXXXXX)
-  trap 'rm -f "$TMP_FILE"' EXIT
+  TMP_DIR=$(mktemp -d /tmp/ssan-conflicts-XXXXXX)
+  TMP_FILE="$TMP_DIR/conflicts.json"
+  trap 'rm -rf "$TMP_DIR"' EXIT
   spidersan conflicts --json --tier 1 > "$TMP_FILE"
   jq '.summary' "$TMP_FILE"
-  rm -f "$TMP_FILE"
+  rm -rf "$TMP_DIR"
   trap - EXIT`,
         cleanup: `  # GROUND JOB: stale cleanup
   spidersan stale
