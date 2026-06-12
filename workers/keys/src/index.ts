@@ -1,9 +1,9 @@
 /**
  * spidersan Keys Worker — spidersan.dev/keys
  *
- * GET  /keys          → HTML landing page with email form
- * POST /keys          → generate + store API key, redirect to /keys?key=<key>
- * GET  /keys?key=<k>  → HTML success page showing the key
+ * GET  /keys   → HTML landing page with email form + Turnstile widget
+ * POST /keys   → verify Turnstile (server-side, fail-closed) → generate + store API key
+ *               → render the key in the response body (never in a URL — no ?key= route)
  *
  * Writes to VALID_API_KEYS KV (same namespace as api-proxy).
  * Key format: spk_free_<32-char hex>
@@ -12,6 +12,10 @@
 
 export interface Env {
   VALID_API_KEYS: KVNamespace;
+  /** Cloudflare Turnstile secret — set via: wrangler secret put TURNSTILE_SECRET */
+  TURNSTILE_SECRET: string;
+  /** Public Turnstile site key — set in wrangler.toml [vars] */
+  TURNSTILE_SITE_KEY: string;
 }
 
 interface KeyRecord {
@@ -36,6 +40,41 @@ async function hashEmail(email: string): Promise<string> {
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
+
+/** HTML-escape any value before interpolation into a template (defense-in-depth vs reflected XSS). */
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string
+  ));
+}
+
+/** Server-side Turnstile verification — fail-closed. A client-only widget is bypassable. */
+async function verifyTurnstile(token: string, secret: string, ip: string): Promise<boolean> {
+  if (!token) return false;
+  const body = new FormData();
+  body.append('secret', secret);
+  body.append('response', token);
+  if (ip) body.append('remoteip', ip);
+  try {
+    const r = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body });
+    const data = (await r.json()) as { success?: boolean };
+    return data.success === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Security headers for every HTML response. CSP allows the Turnstile widget + the page's inline style/script. */
+const HTML_HEADERS: Record<string, string> = {
+  'Content-Type': 'text/html;charset=UTF-8',
+  'Content-Security-Policy':
+    "default-src 'none'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; " +
+    "frame-src https://challenges.cloudflare.com; style-src 'unsafe-inline'; " +
+    "connect-src https://challenges.cloudflare.com; form-action 'self'; base-uri 'none'",
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'no-referrer',
+};
 
 // ── HTML ─────────────────────────────────────────────────────────────────────
 
@@ -159,7 +198,7 @@ const CSS = `
   .error-msg { color: var(--red); font-size: 0.85rem; margin-top: 0.6rem; }
 `;
 
-function renderLandingPage(error?: string): string {
+function renderLandingPage(siteKey: string, error?: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -167,6 +206,7 @@ function renderLandingPage(error?: string): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Get a free API key — spidersan</title>
 <style>${CSS}</style>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
 <div class="card">
@@ -190,7 +230,8 @@ function renderLandingPage(error?: string): string {
   <form method="POST" action="/keys">
     <label for="email">Your email</label>
     <input type="email" id="email" name="email" placeholder="you@example.com" required autocomplete="email">
-    ${error ? `<p class="error-msg">${error}</p>` : ''}
+    <div class="cf-turnstile" data-sitekey="${escapeHtml(siteKey)}" style="margin-top:1rem"></div>
+    ${error ? `<p class="error-msg">${escapeHtml(error)}</p>` : ''}
     <button type="submit">Generate free key →</button>
   </form>
   <p class="notice">
@@ -218,7 +259,7 @@ function renderSuccessPage(key: string): string {
   <h1>Your API key <span class="badge-free">FREE</span></h1>
 
   <div class="key-box">
-    <span class="key-value" id="key-value">${key}</span>
+    <span class="key-value" id="key-value">${escapeHtml(key)}</span>
     <button class="copy-btn" onclick="copyKey()">copy</button>
   </div>
 
@@ -226,10 +267,10 @@ function renderSuccessPage(key: string): string {
     <strong>Add to spidersan CLI:</strong><br>
     Run <code>spidersan ai setup --tier free</code> and paste your key when prompted.<br><br>
     <strong>Or set the env var:</strong><br>
-    <code>export SPIDERSAN_API_KEY=${key}</code><br><br>
+    <code>export SPIDERSAN_API_KEY=${escapeHtml(key)}</code><br><br>
     <strong>Or call the API directly:</strong><br>
     <code>curl https://spidersan-api-proxy.spidersan.workers.dev/v1/chat/completions \\<br>
-&nbsp;&nbsp;-H "Authorization: Bearer ${key}" \\<br>
+&nbsp;&nbsp;-H "Authorization: Bearer ${escapeHtml(key)}" \\<br>
 &nbsp;&nbsp;-d '{"model":"spidersan-v1","messages":[...]}'</code>
   </div>
 
@@ -271,38 +312,43 @@ export default {
       return new Response('Not found', { status: 404 });
     }
 
-    // GET /keys?key=<value> → success page
-    const keyParam = url.searchParams.get('key');
-    if (request.method === 'GET' && keyParam) {
-      return new Response(renderSuccessPage(keyParam), {
-        headers: { 'Content-Type': 'text/html;charset=UTF-8' },
-      });
-    }
-
-    // GET /keys → landing page
+    // GET /keys → landing page. (No ?key= success route — the key is shown only in the
+    // POST response, never reflected from a URL param. Removes the reflected-XSS surface
+    // and keeps the bearer key out of the URL / browser history / CF request logs.)
     if (request.method === 'GET') {
-      return new Response(renderLandingPage(), {
-        headers: { 'Content-Type': 'text/html;charset=UTF-8' },
-      });
+      return new Response(renderLandingPage(env.TURNSTILE_SITE_KEY), { headers: HTML_HEADERS });
     }
 
     // POST /keys → issue key
     if (request.method === 'POST') {
       let email = '';
+      let turnstileToken = '';
       try {
         const body = await request.formData();
         email = (body.get('email') as string | null) ?? '';
+        turnstileToken = (body.get('cf-turnstile-response') as string | null) ?? '';
       } catch {
-        return new Response(renderLandingPage('Invalid form submission.'), {
-          status: 400,
-          headers: { 'Content-Type': 'text/html;charset=UTF-8' },
+        return new Response(renderLandingPage(env.TURNSTILE_SITE_KEY, 'Invalid form submission.'), {
+          status: 400, headers: HTML_HEADERS,
+        });
+      }
+
+      // Server-side Turnstile verification — fail-closed. Never issue without a verified token.
+      if (!env.TURNSTILE_SECRET) {
+        return new Response(renderLandingPage(env.TURNSTILE_SITE_KEY, 'Key issuance is temporarily unavailable.'), {
+          status: 503, headers: HTML_HEADERS,
+        });
+      }
+      const ip = request.headers.get('CF-Connecting-IP') ?? '';
+      if (!(await verifyTurnstile(turnstileToken, env.TURNSTILE_SECRET, ip))) {
+        return new Response(renderLandingPage(env.TURNSTILE_SITE_KEY, 'Bot check failed — please try again.'), {
+          status: 403, headers: HTML_HEADERS,
         });
       }
 
       if (!isValidEmail(email)) {
-        return new Response(renderLandingPage('Please enter a valid email address.'), {
-          status: 400,
-          headers: { 'Content-Type': 'text/html;charset=UTF-8' },
+        return new Response(renderLandingPage(env.TURNSTILE_SITE_KEY, 'Please enter a valid email address.'), {
+          status: 400, headers: HTML_HEADERS,
         });
       }
 
@@ -317,11 +363,9 @@ export default {
 
       await env.VALID_API_KEYS.put(key, JSON.stringify(record));
 
-      // Redirect to success page — key in URL param, not body (avoids resubmit on refresh)
-      return new Response(null, {
-        status: 303,
-        headers: { Location: `/keys?key=${encodeURIComponent(key)}` },
-      });
+      // Render the key directly in the POST response — NOT via a ?key= redirect.
+      // A refresh re-POSTs and mints a new key (mild waste, not a credential leak).
+      return new Response(renderSuccessPage(key), { status: 200, headers: HTML_HEADERS });
     }
 
     return new Response('Method not allowed', { status: 405 });

@@ -2,6 +2,13 @@ name = "spidersan-keys"
 main = "src/index.ts"
 compatibility_date = "2026-04-21"
 
+# Cloudflare Turnstile — bot-gate on key issuance, verified SERVER-SIDE in the Worker.
+# TURNSTILE_SITE_KEY is public (rendered into the form widget).
+# TURNSTILE_SECRET is secret — set it with: wrangler secret put TURNSTILE_SECRET
+# The POST handler fails CLOSED: no TURNSTILE_SECRET configured → 503, no key issued.
+[vars]
+TURNSTILE_SITE_KEY = "REPLACE_WITH_PUBLIC_TURNSTILE_SITE_KEY"
+
 [[routes]]
 pattern = "spidersan.treebird.uk/keys*"
 zone_name = "treebird.uk"
