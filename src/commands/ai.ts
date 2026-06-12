@@ -263,7 +263,7 @@ async function runConsentWizard(rl: ReturnType<typeof createInterface>): Promise
 export const aiSetupCommand = new Command('ai-setup')
   .description('Set up spidersan AI — choose local model, hosted API, or BYOM')
   .option('--byom <url>', 'Directly configure a custom LLM URL (skips menu)')
-  .option('--tier <tier>', 'Set tier directly: free | contributor | byom | local')
+  .option('--tier <tier>', 'Set tier directly: hosted | free | contributor | byom | local (hosted = free, the default)')
   .option('--yes', 'Skip external URL confirmation (scripted use)')
   .action(async (options: { byom?: string; tier?: string; yes?: boolean }) => {
     const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -272,7 +272,9 @@ export const aiSetupCommand = new Command('ai-setup')
       // Fast path: --byom or --tier flags
       if (options.byom ?? options.tier) {
         const existing = await loadAiConfig() ?? {} as Partial<AiSetupConfig>;
-        let tier = (options.tier as AiTier | undefined) ?? existing.tier ?? 'free';
+        // 'hosted' is an alias for the free hosted tier (api.spidersan.net) — the default.
+        const requestedTier = options.tier === 'hosted' ? 'free' : options.tier;
+        let tier = (requestedTier as AiTier | undefined) ?? existing.tier ?? 'free';
         let byomUrl: string | undefined;
 
         if (options.byom) {
@@ -321,7 +323,7 @@ export const aiSetupCommand = new Command('ai-setup')
         });
       }
 
-      menuItems.push({ label: 'Hosted API — free tier, 50 calls/day (requires API key from spidersan.dev)', tier: 'free' });
+      menuItems.push({ label: 'Hosted API — free tier, 50 calls/day (requires API key from spidersan.dev) — recommended', tier: 'free' });
       menuItems.push({ label: 'Hosted API — Contributor tier (unlimited, share anonymized sessions)', tier: 'contributor' });
       menuItems.push({ label: 'Custom URL (BYOM)', tier: 'byom' });
 
@@ -341,7 +343,9 @@ export const aiSetupCommand = new Command('ai-setup')
       });
       console.log('');
 
-      const defaultChoice = '1';
+      // Default to the hosted free tier (api.spidersan.net) rather than local.
+      const freeIdx = menuItems.findIndex((m) => m.tier === 'free');
+      const defaultChoice = String(freeIdx >= 0 ? freeIdx + 1 : 1);
       const raw = await prompt(rl, `Choice [${defaultChoice}]: `);
       const choice = parseInt(raw.trim() || defaultChoice, 10);
 
