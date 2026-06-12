@@ -168,7 +168,7 @@ function buildGroundJobScript(
   git pull origin main --rebase 2>&1 | tail -3
   spidersan pulse --quiet`,
         conflicts: `  # GROUND JOB: conflict scan
-  TMP_FILE=$(mktemp /tmp/ssan-conflicts-XXXXXX)
+  TMP_FILE=$(mktemp -t ssan-conflicts.XXXXXX)
   trap 'rm -f "$TMP_FILE"' EXIT
   spidersan conflicts --json --tier 1 > "$TMP_FILE"
   jq '.summary' "$TMP_FILE"
