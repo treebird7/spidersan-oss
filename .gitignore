@@ -172,7 +172,7 @@ tasks/
 .claude/
 .jules/
 INDEX_MOVED.md
-bin/
+/bin/
 run.sh
 CLAUDE.md
 SPIDERSAN_LESSONS_LEARNED.md

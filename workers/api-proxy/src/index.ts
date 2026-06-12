@@ -113,6 +113,49 @@ function normalizedModelsResponse(): Response {
   );
 }
 
+/**
+ * M3 (leak): allowlist response headers. The backend (mlx_lm.server / uvicorn)
+ * emits Server / Date / version headers that fingerprint the serving machine's
+ * stack — never forward them. Only Content-Type, an optional Cache-Control, and
+ * our own rate-limit headers reach the client.
+ */
+function safeResponseHeaders(backendResp: Response, tier: string, remaining: number): Headers {
+  const h = new Headers();
+  h.set('Content-Type', backendResp.headers.get('Content-Type') ?? 'application/json');
+  const cacheControl = backendResp.headers.get('Cache-Control');
+  if (cacheControl) h.set('Cache-Control', cacheControl);
+  if (tier === 'free') {
+    h.set('X-RateLimit-Limit', String(FREE_TIER_DAILY_LIMIT));
+    h.set('X-RateLimit-Remaining', String(remaining));
+  }
+  return h;
+}
+
+/**
+ * M3 (leak): replace every occurrence of the internal model id with the public
+ * alias across a streamed byte body, holding back (id.length - 1) chars so an id
+ * split across a chunk boundary can't slip through unreplaced. Used for the SSE
+ * streaming path; the non-streaming path rewrites the parsed `model` field directly.
+ */
+function scrubModelIdStream(modelId: string, alias: string): TransformStream<Uint8Array, Uint8Array> {
+  const enc = new TextEncoder();
+  const dec = new TextDecoder();
+  const hold = Math.max(0, modelId.length - 1);
+  let carry = '';
+  return new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      const text = (carry + dec.decode(chunk, { stream: true })).split(modelId).join(alias);
+      const cut = Math.max(0, text.length - hold);
+      carry = text.slice(cut);
+      if (cut > 0) controller.enqueue(enc.encode(text.slice(0, cut)));
+    },
+    flush(controller) {
+      const tail = carry.split(modelId).join(alias);
+      if (tail) controller.enqueue(enc.encode(tail));
+    },
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -213,21 +256,44 @@ export default {
       body: proxyBody,
     });
 
+    let backendResp: Response;
     try {
-      const backendResp = await fetch(proxyRequest);
-      const respHeaders = new Headers(backendResp.headers);
-      if (keyMeta.tier === 'free') {
-        respHeaders.set('X-RateLimit-Limit', String(FREE_TIER_DAILY_LIMIT));
-        respHeaders.set('X-RateLimit-Remaining', String(remaining));
-      }
+      backendResp = await fetch(proxyRequest);
+    } catch {
+      // M3 (leak): never surface the underlying fetch error — it can name the
+      // backend host or network internals. Generic message only.
+      return errorResponse(502, 'Backend unavailable');
+    }
 
-      return new Response(backendResp.body, {
-        status: backendResp.status,
-        headers: respHeaders,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      return errorResponse(502, `Backend unavailable: ${msg}`);
+    // M3 (leak): the backend's own error bodies can carry local filesystem paths
+    // and Python tracebacks. Never forward them — collapse to a generic message
+    // with a coarse status class.
+    if (!backendResp.ok) {
+      const status = backendResp.status >= 500 ? 502 : 400;
+      return errorResponse(status, status === 502 ? 'Backend error' : 'Backend rejected the request');
+    }
+
+    const respHeaders = safeResponseHeaders(backendResp, keyMeta.tier, remaining);
+    const contentType = respHeaders.get('Content-Type') ?? '';
+
+    // M3 (leak): the completion response echoes the request `model` field — i.e.
+    // the internal MODEL_ID (an FS-style identifier). Rewrite it to the public
+    // alias on the way out, symmetric with /v1/models (M2).
+    if (contentType.includes('text/event-stream') && backendResp.body) {
+      return new Response(
+        backendResp.body.pipeThrough(scrubModelIdStream(env.MODEL_ID, 'spidersan-v1')),
+        { status: 200, headers: respHeaders },
+      );
+    }
+
+    // Non-streaming JSON: parse, rewrite `model`, re-serialize. If the body isn't
+    // the shape we expect, fail closed rather than forward an unknown payload.
+    try {
+      const data = await backendResp.json() as Record<string, unknown>;
+      if (typeof data['model'] === 'string') data['model'] = 'spidersan-v1';
+      return new Response(JSON.stringify(data), { status: 200, headers: respHeaders });
+    } catch {
+      return errorResponse(502, 'Backend error');
     }
   },
 };
