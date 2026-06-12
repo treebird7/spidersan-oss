@@ -11,16 +11,20 @@
  *
  * Security controls:
  *  B2 — per-IP key issuance rate limit (5/day, KV-based)
- *  B2 — Cloudflare Turnstile CAPTCHA on form (when TURNSTILE_SECRET_KEY secret is set)
+ *  B2 — Cloudflare Turnstile CAPTCHA on form, verified server-side, FAIL-CLOSED
+ *       (no TURNSTILE_SECRET_KEY → issuance returns 503, never opens)
  *  B3 — GET ?key= validated against key regex + HTML-escaped before render
  *  M4 — POST renders success page inline; key never in redirect URL
+ *  Hardening — every HTML response carries CSP + nosniff + X-Frame-Options:DENY
+ *       + Referrer-Policy:no-referrer (see htmlHeaders)
  */
 
 export interface Env {
   VALID_API_KEYS: KVNamespace;
   /** CF Turnstile secret key — set via: wrangler secret put TURNSTILE_SECRET_KEY
    *  Create widget at: dash.cloudflare.com → Turnstile → Add site
-   *  Leave unset to skip Turnstile (per-IP KV limit still applies). */
+   *  REQUIRED in production: if unset, POST /keys fails closed (503) — issuance
+   *  will not open without a verifiable bot check. */
   TURNSTILE_SECRET_KEY?: string;
   /** CF Turnstile site key — public, safe in source.
    *  Set via wrangler.toml [vars] once you create the Turnstile widget. */
@@ -44,7 +48,14 @@ const HTML_CONTENT_TYPE = 'text/html;charset=UTF-8';
 const CSP = "default-src 'none'; script-src 'unsafe-inline' https://challenges.cloudflare.com; style-src 'unsafe-inline'; frame-src https://challenges.cloudflare.com; connect-src https://challenges.cloudflare.com; form-action 'self'; base-uri 'none'";
 
 function htmlHeaders(extra?: Record<string, string>): Record<string, string> {
-  return { 'Content-Type': HTML_CONTENT_TYPE, 'Content-Security-Policy': CSP, ...extra };
+  return {
+    'Content-Type': HTML_CONTENT_TYPE,
+    'Content-Security-Policy': CSP,
+    'X-Content-Type-Options': 'nosniff', // block MIME-sniffing (defense-in-depth behind the CSP)
+    'X-Frame-Options': 'DENY', // this page renders a bearer key — never frame it (clickjacking)
+    'Referrer-Policy': 'no-referrer', // don't leak the key page in a Referer header
+    ...extra,
+  };
 }
 
 function escapeHtml(s: string): string {
@@ -390,20 +401,28 @@ export default {
         });
       }
 
-      // B2: Cloudflare Turnstile verification (when TURNSTILE_SECRET_KEY is configured)
-      if (env.TURNSTILE_SECRET_KEY) {
-        const ip = request.headers.get('CF-Connecting-IP') ?? '';
-        const valid = await verifyTurnstile(env.TURNSTILE_SECRET_KEY, turnstileToken, ip);
-        if (!valid) {
-          return new Response(renderLandingPage(env.TURNSTILE_SITE_KEY, 'Challenge failed. Please try again.'), {
-            status: 400,
-            headers: htmlHeaders(),
-          });
-        }
+      const ip = request.headers.get('CF-Connecting-IP') ?? '';
+
+      // B2: Cloudflare Turnstile verification — fail-closed.
+      // If the secret is unset we do NOT issue a key (previously fail-open: the
+      // check was skipped when TURNSTILE_SECRET_KEY was absent). Production sets
+      // the secret, so no behaviour change there — this only hardens the
+      // unconfigured / misdeploy case so a bad deploy can't silently open issuance.
+      if (!env.TURNSTILE_SECRET_KEY) {
+        return new Response(renderLandingPage(env.TURNSTILE_SITE_KEY, 'Key issuance is temporarily unavailable.'), {
+          status: 503,
+          headers: htmlHeaders(),
+        });
+      }
+      const turnstileOk = await verifyTurnstile(env.TURNSTILE_SECRET_KEY, turnstileToken, ip);
+      if (!turnstileOk) {
+        return new Response(renderLandingPage(env.TURNSTILE_SITE_KEY, 'Bot check failed — please try again.'), {
+          status: 403,
+          headers: htmlHeaders(),
+        });
       }
 
       // B2: per-IP issuance rate limit (always enforced, regardless of Turnstile)
-      const ip = request.headers.get('CF-Connecting-IP') ?? '';
       const ipAllowed = await checkIpKeyLimit(env, ip);
       if (!ipAllowed) {
         return new Response(renderLandingPage(env.TURNSTILE_SITE_KEY, 'Too many keys generated from this IP today. Try again tomorrow.'), {
