@@ -15,6 +15,7 @@
 import 'dotenv/config';
 import { Command } from 'commander';
 import { createRequire } from 'module';
+import { COMMANDS, LOADER_BY_NAME } from './command-registry.js';
 
 // Read version from package.json dynamically
 const require = createRequire(import.meta.url);
@@ -62,56 +63,6 @@ program
         }
     });
 
-/**
- * Lazy registry: command name → loader that imports just that command's module
- * and registers it onto `program`. Insertion order matches the help-listing
- * order. Most commands export a ready-built `Command`; the exceptions are the
- * `sync-advisor` factory, the attach-style `log`/`daily` (which mutate program),
- * and `ai.js` which exports several commands from one module.
- */
-const COMMAND_LOADERS: Record<string, (p: Command) => Promise<unknown>> = {
-    init:             async p => p.addCommand((await import('../commands/init.js')).initCommand),
-    register:         async p => p.addCommand((await import('../commands/register.js')).registerCommand),
-    list:             async p => p.addCommand((await import('../commands/list.js')).listCommand),
-    conflicts:        async p => p.addCommand((await import('../commands/conflicts.js')).conflictsCommand),
-    'merge-order':    async p => p.addCommand((await import('../commands/merge-order.js')).mergeOrderCommand),
-    'ready-check':    async p => p.addCommand((await import('../commands/ready-check.js')).readyCheckCommand),
-    depends:          async p => p.addCommand((await import('../commands/depends.js')).dependsCommand),
-    stale:            async p => p.addCommand((await import('../commands/stale.js')).staleCommand),
-    cleanup:          async p => p.addCommand((await import('../commands/cleanup.js')).cleanupCommand),
-    rescue:           async p => p.addCommand((await import('../commands/rescue.js')).rescueCommand),
-    abandon:          async p => p.addCommand((await import('../commands/abandon.js')).abandonCommand),
-    merged:           async p => p.addCommand((await import('../commands/merged.js')).mergedCommand),
-    sync:             async p => p.addCommand((await import('../commands/sync.js')).syncCommand),
-    watch:            async p => p.addCommand((await import('../commands/watch.js')).watchCommand),
-    doctor:           async p => p.addCommand((await import('../commands/doctor.js')).doctorCommand),
-    config:           async p => p.addCommand((await import('../commands/config.js')).configCommand),
-    auto:             async p => p.addCommand((await import('../commands/auto.js')).autoCommand),
-    welcome:          async p => p.addCommand((await import('../commands/welcome.js')).welcomeCommand),
-    'registry-sync':  async p => p.addCommand((await import('../commands/registry-sync.js')).registrySyncCommand),
-    'cross-conflicts':async p => p.addCommand((await import('../commands/cross-conflicts.js')).crossConflictsCommand),
-    pulse:            async p => p.addCommand((await import('../commands/pulse.js')).pulseCommand),
-    'git-watch':      async p => p.addCommand((await import('../commands/git-watch.js')).gitWatchCommand),
-    'fleet-status':   async p => p.addCommand((await import('../commands/fleet-status.js')).fleetStatusCommand),
-    torrent:          async p => p.addCommand((await import('../commands/torrent.js')).torrentCommand),
-    queen:            async p => p.addCommand((await import('../commands/queen.js')).queenCommand),
-    bot:              async p => p.addCommand((await import('../commands/bot.js')).botCommand),
-    'github-sync':    async p => p.addCommand((await import('../commands/github-sync.js')).githubSyncCommand),
-    'sync-advisor':   async p => p.addCommand((await import('../commands/sync-advisor.js')).syncAdvisorCommand()),
-    dashboard:        async p => p.addCommand((await import('../commands/dashboard.js')).dashboardCommand),
-    'rebase-helper':  async p => p.addCommand((await import('../commands/rebase-helper.js')).rebaseHelperCommand),
-    log:              async p => { (await import('../commands/log.js')).logCommand(p); },
-    daily:            async p => { (await import('../commands/daily.js')).dailyCommand(p); },
-    context:          async p => p.addCommand((await import('../commands/context.js')).contextCommand),
-    ask:              async p => p.addCommand((await import('../commands/ai.js')).askCommand),
-    advise:           async p => p.addCommand((await import('../commands/ai.js')).adviseCommand),
-    explain:          async p => p.addCommand((await import('../commands/ai.js')).explainCommand),
-    'ai-ping':        async p => p.addCommand((await import('../commands/ai.js')).aiPingCommand),
-    'ai-setup':       async p => p.addCommand((await import('../commands/ai.js')).aiSetupCommand),
-    'ai-telemetry':   async p => p.addCommand((await import('../commands/ai.js')).aiTelemetryCommand),
-    'check-opt-out':  async p => p.addCommand((await import('../commands/ai.js')).checkOptOutCommand),
-};
-
 /** First non-option token in argv — the invoked top-level command, if any. */
 function firstCommandToken(argv: string[]): string | undefined {
     for (const a of argv) {
@@ -119,13 +70,6 @@ function firstCommandToken(argv: string[]): string | undefined {
         if (!a.startsWith('-')) return a;
     }
     return undefined;
-}
-
-/** Cold path: register every core command (preserves help-listing order). */
-async function loadAllCommands(p: Command): Promise<void> {
-    for (const load of Object.values(COMMAND_LOADERS)) {
-        await load(p);
-    }
 }
 
 async function main(): Promise<void> {
@@ -138,16 +82,21 @@ async function main(): Promise<void> {
         return;
     }
 
-    if (cmd && Object.prototype.hasOwnProperty.call(COMMAND_LOADERS, cmd)) {
+    if (cmd && LOADER_BY_NAME.has(cmd)) {
         // Hot path: a known core command — load only that module. Core commands
         // always win over ecosystem ones (see dedup below), so ecosystem loading
         // is unnecessary here.
-        await COMMAND_LOADERS[cmd](program);
+        await LOADER_BY_NAME.get(cmd)!(program);
     } else {
         // Cold path: help / no command / unknown command / ecosystem command.
-        // Build the full tree so commander can list every command, route to an
-        // ecosystem command, or emit a correct unknown-command error.
-        await loadAllCommands(program);
+        // Register lightweight stubs (name + description) so commander can render
+        // the full command listing WITHOUT importing every module; a core command
+        // is never *executed* here (it would have taken the hot path above), so
+        // the stubs need no options or action. Ecosystem commands are loaded for
+        // real below so they remain routable.
+        for (const entry of COMMANDS) {
+            program.command(entry.name).description(entry.description);
+        }
 
         const { loadEcosystemCommands, getEcosystemStatus } = await import('../commands/ecosystem-loader.js');
         const ecosystemCommands = await loadEcosystemCommands();
