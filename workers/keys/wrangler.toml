@@ -13,8 +13,7 @@ binding = "VALID_API_KEYS"
 id = "d05e42b679db41249eb9934a21cc2c78"
 preview_id = "d05e42b679db41249eb9934a21cc2c78"
 
-# Vars (public — safe in source; uncomment once Turnstile widget is created)
-# [vars]
-# TURNSTILE_SITE_KEY = "0x..."
+[vars]
+TURNSTILE_SITE_KEY = "0x4AAAAAADjcO1zH8xDkZP_x"
 
 # Secrets (set via: wrangler secret put TURNSTILE_SECRET_KEY)
