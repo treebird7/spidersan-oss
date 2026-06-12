@@ -66,9 +66,14 @@ async function validateApiKey(env: Env, key: string): Promise<KeyMetadata | null
   // upstream, so this doesn't leak revoked-vs-nonexistent to the caller.
   if (meta.revoked) return null;
   // M2: lazy expiry on read — reject expired keys, best-effort delete the stale record.
-  if (meta.expires_at && Date.parse(meta.expires_at) <= Date.now()) {
-    env.VALID_API_KEYS.delete(key).catch(() => {});
-    return null;
+  // A malformed expires_at (Date.parse → NaN) must fail CLOSED: NaN <= now is false,
+  // so without the isFinite guard a corrupt/truncated record becomes a permanent key.
+  if (meta.expires_at) {
+    const exp = Date.parse(meta.expires_at);
+    if (!Number.isFinite(exp) || exp <= Date.now()) {
+      env.VALID_API_KEYS.delete(key).catch(() => {});
+      return null;
+    }
   }
   return meta;
 }
