@@ -36,10 +36,21 @@ interface KeyRecord {
   created: string;
   email_hash: string;
   label?: string;
+  /** M2: ISO expiry. Absent = never expires. validateApiKey lazy-expires on read. */
+  expires_at?: string;
+  /** M2: per-key disable flag. Set true to revoke without deleting (keeps audit record). */
+  revoked?: boolean;
+  revoked_at?: string;
+  revoked_reason?: string;
 }
 
 const KEY_REGEX = /^spk_(free|contributor)_[0-9a-f]{40}$/;
 const IP_KEY_DAILY_LIMIT = 5; // max new keys per IP per day
+// M2: free keys expire after this window — bounds the accumulation of permanent
+// credentials. Written as expires_at in the record AND as the KV expirationTtl so
+// storage auto-cleans; api-proxy lazy-checks expires_at as the authoritative gate.
+const FREE_KEY_TTL_DAYS = 90;
+const FREE_KEY_TTL_SECONDS = FREE_KEY_TTL_DAYS * 24 * 60 * 60;
 const HTML_CONTENT_TYPE = 'text/html;charset=UTF-8';
 // CSP: allows inline styles/scripts (copy button + CSS) and the CF Turnstile
 // frame/script. connect-src is required too — the widget makes its own XHR /
@@ -322,7 +333,7 @@ function renderSuccessPage(key: string): string {
 
   <p class="notice">
     Save this key — it won't be shown again. Free tier: 50 requests/day, resets at UTC midnight.
-    Lost your key? <a href="/keys">Generate a new one</a>.
+    Keys expire ${FREE_KEY_TTL_DAYS} days after issue. Lost or expired key? <a href="/keys">Generate a new one</a>.
   </p>
 </div>
 <script>
@@ -434,13 +445,17 @@ export default {
       const key = generateKey();
       const emailHash = await hashEmail(email);
 
+      const now = Date.now();
       const record: KeyRecord = {
         tier: 'free',
-        created: new Date().toISOString(),
+        created: new Date(now).toISOString(),
         email_hash: emailHash,
+        expires_at: new Date(now + FREE_KEY_TTL_SECONDS * 1000).toISOString(),
       };
 
-      await env.VALID_API_KEYS.put(key, JSON.stringify(record));
+      // M2: expirationTtl auto-deletes the record at expiry; the api-proxy still
+      // lazy-checks expires_at so behaviour is deterministic regardless of KV GC timing.
+      await env.VALID_API_KEYS.put(key, JSON.stringify(record), { expirationTtl: FREE_KEY_TTL_SECONDS });
 
       // M4: render success inline — key stays out of the URL and CF access logs
       return new Response(renderSuccessPage(key), {
