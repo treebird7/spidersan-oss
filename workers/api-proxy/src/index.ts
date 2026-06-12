@@ -47,16 +47,30 @@ interface KeyMetadata {
   tier: 'free' | 'contributor';
   created: string;
   label?: string;
+  /** M2: ISO expiry. Absent = never expires. */
+  expires_at?: string;
+  /** M2: per-key disable flag — revoked keys are rejected without deletion. */
+  revoked?: boolean;
 }
 
 async function validateApiKey(env: Env, key: string): Promise<KeyMetadata | null> {
   const raw = await env.VALID_API_KEYS.get(key, { type: 'text' });
   if (!raw) return null;
+  let meta: KeyMetadata;
   try {
-    return JSON.parse(raw) as KeyMetadata;
+    meta = JSON.parse(raw) as KeyMetadata;
   } catch {
-    return { tier: 'free', created: '' };
+    return null; // M2: a corrupt record is not a valid credential
   }
+  // M2: revocation — disabled keys rejected (record kept for audit). Generic 401
+  // upstream, so this doesn't leak revoked-vs-nonexistent to the caller.
+  if (meta.revoked) return null;
+  // M2: lazy expiry on read — reject expired keys, best-effort delete the stale record.
+  if (meta.expires_at && Date.parse(meta.expires_at) <= Date.now()) {
+    env.VALID_API_KEYS.delete(key).catch(() => {});
+    return null;
+  }
+  return meta;
 }
 
 /**
