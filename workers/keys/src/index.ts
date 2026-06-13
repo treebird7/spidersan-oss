@@ -232,13 +232,17 @@ const CSS = `
     font-size: 0.85rem; line-height: 1.7; color: var(--muted);
     margin-bottom: 1.5rem;
   }
-  .steps code {
-    font-family: var(--mono); font-size: 0.8rem;
+  .steps strong { display: block; color: var(--text); margin-top: 1.3rem; }
+  .steps strong:first-child { margin-top: 0; }
+  .steps .hint { font-size: 0.78rem; color: var(--muted); margin-top: 0.45rem; }
+  .cmd {
+    display: block; margin-top: 0.5rem;
+    font-family: var(--mono); font-size: 0.8rem; line-height: 1.55;
     background: #0a0a0a; border: 1px solid var(--border);
-    padding: 0.15rem 0.4rem; border-radius: 4px;
+    border-radius: 8px; padding: 0.7rem 0.9rem;
     color: var(--text);
+    white-space: pre-wrap; word-break: break-all; overflow-wrap: anywhere;
   }
-  .steps strong { color: var(--text); }
   .badge-free {
     display: inline-block; font-size: 0.72rem; font-weight: 600;
     background: var(--accent-dim); color: var(--accent);
@@ -321,14 +325,17 @@ function renderSuccessPage(key: string): string {
   </div>
 
   <div class="steps">
-    <strong>Add to spidersan CLI:</strong><br>
-    Run <code>spidersan ai setup --tier free</code> and paste your key when prompted.<br><br>
-    <strong>Or set the env var:</strong><br>
-    <code>export SPIDERSAN_API_KEY=${safeKey}</code><br><br>
-    <strong>Or call the API directly:</strong><br>
-    <code>curl https://api.spidersan.net/v1/chat/completions \\<br>
-&nbsp;&nbsp;-H "Authorization: Bearer ${safeKey}" \\<br>
-&nbsp;&nbsp;-d '{"model":"spidersan-v1","messages":[...]}'</code>
+    <strong>Add to spidersan CLI:</strong>
+    <div class="cmd">spidersan ai-setup --tier free</div>
+    <p class="hint">…then paste your key when prompted.</p>
+
+    <strong>Or set the env var:</strong>
+    <div class="cmd">export SPIDERSAN_API_KEY=${safeKey}</div>
+
+    <strong>Or call the API directly:</strong>
+    <div class="cmd">curl https://api.spidersan.net/v1/chat/completions \\
+  -H "Authorization: Bearer ${safeKey}" \\
+  -d '{"model":"spidersan-v1","messages":[...]}'</div>
   </div>
 
   <p class="notice">
