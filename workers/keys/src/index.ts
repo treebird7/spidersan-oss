@@ -28,6 +28,8 @@ import type { ApiKeyRecord } from '../../lib/types';
 
 export interface Env {
   VALID_API_KEYS: KVNamespace;
+  /** Rate-limit counters (ip_rl:* prefix). Separate from credentials — see wrangler.toml. */
+  COUNTERS_KV: KVNamespace;
   /** CF Turnstile secret key — set via: wrangler secret put TURNSTILE_SECRET_KEY
    *  Create widget at: dash.cloudflare.com → Turnstile → Add site
    *  REQUIRED in production: if unset, POST /keys fails closed (503) — issuance
@@ -508,7 +510,7 @@ export default {
       // B2: per-IP issuance rate limit (always enforced, regardless of Turnstile).
       // If IP is absent, allow — Turnstile is the other gate.
       if (ip) {
-        const { allowed } = await checkDailyLimit(env.VALID_API_KEYS, 'ip_rl', ip, IP_KEY_DAILY_LIMIT);
+        const { allowed } = await checkDailyLimit(env.COUNTERS_KV, 'ip_rl', ip, IP_KEY_DAILY_LIMIT);
         if (!allowed) {
           return new Response(renderLandingPage(env.TURNSTILE_SITE_KEY, 'Too many keys generated from this IP today. Try again tomorrow.'), {
             status: 429,

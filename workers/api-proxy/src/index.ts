@@ -28,6 +28,8 @@ import type { ApiKeyRecord } from '../../lib/types';
 
 export interface Env {
   VALID_API_KEYS: KVNamespace;
+  /** Rate-limit counters (rl:* prefix). Separate from credentials — see wrangler.toml. */
+  COUNTERS_KV: KVNamespace;
   MODEL_BACKEND_URL: string;
   /** M1: required — Worker returns 503 if unset rather than passing model choice to client. */
   MODEL_ID: string;
@@ -171,7 +173,7 @@ export default {
     let remaining = -1;
     if (keyMeta.tier === 'free') {
       const { allowed, remaining: rem, resetAt } = await checkDailyLimit(
-        env.VALID_API_KEYS, 'rl', apiKey, FREE_TIER_DAILY_LIMIT,
+        env.COUNTERS_KV, 'rl', apiKey, FREE_TIER_DAILY_LIMIT,
       );
       if (!allowed) {
         return errorResponse(429, `Daily limit reached (${FREE_TIER_DAILY_LIMIT} req/day). Upgrade to contributor tier for unlimited.`, {
