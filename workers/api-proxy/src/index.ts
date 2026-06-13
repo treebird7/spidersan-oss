@@ -23,7 +23,7 @@
  */
 
 import { FREE_TIER_DAILY_LIMIT, MAX_OUTPUT_TOKENS, MAX_REQUEST_BYTES } from '../../lib/constants';
-import { checkDailyLimit } from '../../lib/rate-limit';
+import { checkDailyLimit, sha256Hex } from '../../lib/rate-limit';
 import type { ApiKeyRecord } from '../../lib/types';
 
 export interface Env {
@@ -172,8 +172,11 @@ export default {
     // Rate limiting — contributor tier is unlimited; free tier gets a daily counter.
     let remaining = -1;
     if (keyMeta.tier === 'free') {
+      // Hash the key into the bucket id so plaintext key material never enters
+      // COUNTERS_KV — preserves the credentials/counters isolation boundary.
+      const keyBucketId = await sha256Hex(apiKey);
       const { allowed, remaining: rem, resetAt } = await checkDailyLimit(
-        env.COUNTERS_KV, 'rl', apiKey, FREE_TIER_DAILY_LIMIT,
+        env.COUNTERS_KV, 'rl', keyBucketId, FREE_TIER_DAILY_LIMIT,
       );
       if (!allowed) {
         return errorResponse(429, `Daily limit reached (${FREE_TIER_DAILY_LIMIT} req/day). Upgrade to contributor tier for unlimited.`, {

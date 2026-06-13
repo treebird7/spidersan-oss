@@ -16,6 +16,21 @@
  * @param id     The subject being rate-limited (API key string or IP address)
  * @param max    Max allowed hits per UTC calendar day
  */
+/**
+ * SHA-256 hex digest truncated to 16 chars (64 bits). Use to derive a
+ * non-reversible counter-bucket id from secret material (e.g. an API key) so
+ * plaintext keys never land in the counter KV namespace. 64 bits is ample for
+ * bucket keying — collisions only conflate two keys' advisory counters, never
+ * leak or cross security state.
+ *
+ * Do NOT use for hashing IPs into buckets — IP is PII, not key material, and
+ * keeping it readable aids abuse triage. Hash only the secret subject.
+ */
+export async function sha256Hex(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+}
+
 export async function checkDailyLimit(
   kv: KVNamespace,
   prefix: string,
