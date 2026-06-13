@@ -69,6 +69,8 @@ export interface EvidenceRecord {
 export interface DecisionRecord {
   outcome: string;
   by: string;
+  rationale: string;        // grammar v0.2: required — the T4 §8 pair-gen reads it
+  steps_completed?: number; // grammar v0.2: optional
   action?: string;
   session?: string;
   lineIndex: number;
@@ -78,6 +80,32 @@ export interface CollisionRecord {
   type: string;
   surfaces: string[];
   agents: string[];
+  lineIndex: number;
+}
+
+/** A [VERIFY] event — the §16 reward ground truth + a wake-8 transition. */
+export interface VerifyRecord {
+  n?: number;
+  agent: string;
+  checks: string[];
+  result: 'pass' | 'fail' | string;
+  sha?: string;
+  lineIndex: number;
+}
+
+/**
+ * A [ADVICE] event from Sangit. Not in the wake-8 (it does not move the state
+ * machine), but the §16 verified-outcome reward reads Sangit's advice at quorum.
+ * `confidence` is an integer 0-100 for ADVICE (vs the VOTE enum) — grammar §6.
+ */
+export interface AdviceRecord {
+  from: string;
+  verdict: string;
+  confidence?: number;   // 0-100 integer
+  pattern?: string;
+  salt?: string;
+  msg?: string;
+  rule?: string;
   lineIndex: number;
 }
 
@@ -91,6 +119,36 @@ export type SessionOutcome =
   | 'deferred'
   | 'partial'
   | 'open';   // not yet closed
+
+/**
+ * The normative wake-set (grammar §11.1, "wake-8"): the only tags that move the
+ * state machine or demand another actor react. Parsing ingests all tags; only
+ * these wake. This is the single scanner shared by the T6 wake-predicate and the
+ * Sangit subscriber — do not build a second one.
+ */
+export const WAKE_8: ReadonlySet<string> = new Set([
+  'SESSION', 'VOTE', 'GO', 'DONE', 'VERIFY', 'COLLISION', 'DECISION', 'CLOSE',
+]);
+
+/** A wake-8 transition surfaced by ResolveSession.diff() for subscribers. */
+export interface Transition {
+  tagName: string;       // one of WAKE_8
+  lineIndex: number;
+  event: TagEvent;
+}
+
+/**
+ * Maps a tag-name to the field that names its claimed emitter. Used to enforce
+ * the author≠from reject (spec §14.3 / Floor-F2): when the transport stamps an
+ * authenticated `author`, a keyed mutation is applied only if it matches the
+ * claimed emitter — otherwise the event still lands in the canonical log but its
+ * mutation is dropped (the spoof attempt becomes a training pair).
+ */
+const CLAIMED_EMITTER_FIELD: Readonly<Record<string, string>> = {
+  JOIN: 'agent', LEAVE: 'agent', VOTE: 'agent',
+  CLAIM: 'by', DECISION: 'by', PRUNE: 'by',
+  GO: 'from', ADVICE: 'from', CORRECT: 'by',
+};
 
 // ---------------------------------------------------------------------------
 // ResolveSession
@@ -121,7 +179,11 @@ export class ResolveSession {
   readonly decisions: ReadonlyArray<DecisionRecord>;
   /** All COLLISION records (audit trail). */
   readonly collisions: ReadonlyArray<CollisionRecord>;
-  /** Warnings emitted during fold (e.g. unknown tag, missing required field). */
+  /** All VERIFY records — §16 reward ground truth. */
+  readonly verifications: ReadonlyArray<VerifyRecord>;
+  /** All ADVICE records from Sangit (read by the §16 reward at CLOSE). */
+  readonly advice: ReadonlyArray<AdviceRecord>;
+  /** Warnings emitted during fold (e.g. unknown tag, missing required field, spoofed author). */
   readonly warnings: ReadonlyArray<string>;
 
   private constructor(
@@ -142,6 +204,8 @@ export class ResolveSession {
     this.evidence = idx.evidence;
     this.decisions = idx.decisions;
     this.collisions = idx.collisions;
+    this.verifications = idx.verifications;
+    this.advice = idx.advice;
     this.warnings = idx.warnings;
   }
 
@@ -197,6 +261,28 @@ export class ResolveSession {
     return this.outcome !== 'open';
   }
 
+  /** Latest VERIFY for a given step (or the latest overall if `step` omitted). */
+  verifyAt(step?: number): VerifyRecord | undefined {
+    const matches = step === undefined
+      ? this.verifications
+      : this.verifications.filter(v => v.n === step);
+    return matches.length ? matches[matches.length - 1] : undefined;
+  }
+
+  /**
+   * Wake-8 transitions appended since `prev` — the subscription surface for the
+   * T6 wake-predicate and the Sangit subscriber. Because the log is append-only
+   * and immutable, "new" = events ordered after prev's last event (G3).
+   */
+  diff(prev: ResolveSession): Transition[] {
+    const prevMaxLine = prev.events.length
+      ? prev.events[prev.events.length - 1].lineIndex
+      : -1;
+    return this.events
+      .filter(e => e.lineIndex > prevMaxLine && WAKE_8.has(e.tagName))
+      .map(e => ({ tagName: e.tagName, lineIndex: e.lineIndex, event: e }));
+  }
+
   /** Summary line for logging / hive signals. */
   get summary(): string {
     const agents = this.activeAgents.map(a => a.name).join(', ');
@@ -224,6 +310,8 @@ interface Indexes {
   evidence: EvidenceRecord | undefined;
   decisions: DecisionRecord[];
   collisions: CollisionRecord[];
+  verifications: VerifyRecord[];
+  advice: AdviceRecord[];
   warnings: string[];
 }
 
@@ -242,6 +330,8 @@ function buildIndexes(events: ReadonlyArray<TagEvent>): Indexes {
     evidence: undefined,
     decisions: [],
     collisions: [],
+    verifications: [],
+    advice: [],
     warnings: [],
   };
 
@@ -258,6 +348,24 @@ function buildIndexes(events: ReadonlyArray<TagEvent>): Indexes {
 
 function applyEvent(ev: TagEvent, idx: Indexes): void {
   const f = ev.fields;
+
+  // G1 / Floor-F2 (spec §14.3): if the transport stamped an authenticated
+  // `author`, a keyed mutation is applied only when it matches the tag's claimed
+  // emitter. A mismatch is a spoofed emitter — drop the mutation but keep the
+  // event in the canonical log (the caller already appended it). When `author`
+  // is absent (pre-T6 transport), enforcement is skipped for back-compat.
+  const claimField = CLAIMED_EMITTER_FIELD[ev.tagName];
+  if (claimField && ev.author != null) {
+    const claimed = f[claimField];
+    if (claimed && claimed !== ev.author) {
+      idx.warnings.push(
+        `[fold] line ${ev.lineIndex} ${ev.tagName}: author "${ev.author}" != ` +
+        `${claimField}="${claimed}" — spoofed emitter, mutation rejected ` +
+        `(F2/§14.3); event retained in log`,
+      );
+      return;
+    }
+  }
 
   switch (ev.tagName) {
     case 'SESSION': {
@@ -376,9 +484,14 @@ function applyEvent(ev: TagEvent, idx: Indexes): void {
     }
 
     case 'DECISION': {
+      if (!f['rationale']) {
+        idx.warnings.push(`[fold] line ${ev.lineIndex} DECISION: missing required field "rationale"`);
+      }
       idx.decisions.push({
         outcome: f['outcome'] ?? '',
         by: f['by'] ?? '',
+        rationale: f['rationale'] ?? '',
+        steps_completed: f['steps_completed'] ? parseInt(f['steps_completed'], 10) : undefined,
         action: f['action'],
         session: f['session'],
         lineIndex: ev.lineIndex,
@@ -396,8 +509,46 @@ function applyEvent(ev: TagEvent, idx: Indexes): void {
       break;
     }
 
+    case 'VERIFY': {
+      // §16 reward ground truth + a wake-8 transition.
+      idx.verifications.push({
+        n: f['n'] ? parseInt(f['n'], 10) : undefined,
+        agent: f['agent'] ?? '',
+        checks: f['checks'] ? f['checks'].split(',').map(s => s.trim()).filter(Boolean) : [],
+        result: (f['result'] ?? '') as VerifyRecord['result'],
+        sha: f['sha'],
+        lineIndex: ev.lineIndex,
+      });
+      break;
+    }
+
+    case 'ADVICE': {
+      // Not a wake-8 tag, but the §16 reward reads Sangit's advice at CLOSE.
+      // confidence is an integer 0-100 for ADVICE (vs the VOTE enum) — grammar §6.
+      let confidence: number | undefined;
+      if (f['confidence'] !== undefined) {
+        const n = parseInt(f['confidence'], 10);
+        if (Number.isFinite(n) && n >= 0 && n <= 100) {
+          confidence = n;
+        } else {
+          idx.warnings.push(`[fold] line ${ev.lineIndex} ADVICE: confidence "${f['confidence']}" not an integer 0-100`);
+        }
+      }
+      idx.advice.push({
+        from: f['from'] ?? '',
+        verdict: f['verdict'] ?? '',
+        confidence,
+        pattern: f['pattern'],
+        salt: f['salt'],
+        msg: f['msg'],
+        rule: f['rule'],
+        lineIndex: ev.lineIndex,
+      });
+      break;
+    }
+
     // These tags are recorded in the event log but don't mutate derived indexes:
-    // GO, STEP, ADVICE, CLEAR, RATIFY, RESOURCE, CORRECT, COMMENT, WIP
+    // GO, STEP, CLEAR, RATIFY, RESOURCE, CORRECT, COMMENT, WIP
     // Consumers read them directly from session.events filtered by tagName.
     default:
       break;

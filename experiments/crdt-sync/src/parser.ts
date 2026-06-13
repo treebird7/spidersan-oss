@@ -22,6 +22,14 @@ export interface TagEvent {
   raw: string;
   /** Zero-based line index in the append-log (defines total order). */
   lineIndex: number;
+  /**
+   * Authenticated emitter, lifted from the transport line's `[HH:MM author]`
+   * prefix by the T6 seam (grammar §11.4 — `WakeEvent`). The parser itself is
+   * identity-agnostic and never sets this; it stays `undefined` until transport
+   * stamps it. `null` = transport saw the line but could not attribute an author.
+   * The ResolveSession fold uses it to enforce the author≠from reject (§14.3/F2).
+   */
+  author?: string | null;
 }
 
 /** Errors the parser can emit in strict mode. */
