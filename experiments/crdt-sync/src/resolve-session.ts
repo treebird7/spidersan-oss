@@ -280,6 +280,15 @@ export class ResolveSession {
    * assumption about `lineIndex` being monotonic or contiguous.
    */
   diff(prev: ResolveSession): Transition[] {
+    // N2: enforce the prefix contract instead of silently returning a wrong
+    // window. The wake path (T6 predicate / Sangit) must never miss a transition.
+    if (prev.events.length > this.events.length) {
+      throw new Error('diff(): prev is longer than this — not a prior snapshot');
+    }
+    const boundary = prev.events.length - 1;
+    if (boundary >= 0 && this.events[boundary] !== prev.events[boundary]) {
+      throw new Error('diff(): prev is not a prefix of this — stale or unrelated snapshot');
+    }
     return this.events
       .slice(prev.events.length)
       .filter(e => WAKE_8.has(e.tagName))
@@ -459,6 +468,12 @@ function applyEvent(ev: TagEvent, idx: Indexes): void {
     case 'CLAIM': {
       const surface = f['surface'];
       if (!surface) break;
+      // `by` is required (grammar §6). Warn-but-keep (audit/training), mirroring
+      // DECISION. A by-less claim has no verifiable owner — PRUNE then denies any
+      // authenticated non-self prune of it (N1), so it can't be silently hijacked.
+      if (!f['by']) {
+        idx.warnings.push(`[fold] line ${ev.lineIndex} CLAIM: missing required field "by"`);
+      }
       // First valid claim on a surface wins (F4 floor)
       if (!idx.claims.has(surface)) {
         idx.claims.set(surface, {
@@ -484,11 +499,14 @@ function applyEvent(ev: TagEvent, idx: Indexes): void {
         // R-c: only the claim's owner may prune it. (A gitops-authority override
         // is a COORD-PROTOCOL policy decision, not yet wired — see scope doc G1.)
         // When author is unknown (pre-T6), enforcement is skipped for back-compat.
-        if (ev.author && claim.by && claim.by !== ev.author) {
-          idx.warnings.push(
-            `[fold] line ${ev.lineIndex} PRUNE: author "${ev.author}" does not own ` +
-            `claim "${surface}" (by="${claim.by}") — prune rejected (R-c)`,
-          );
+        // N1: deny when the author is known but ownership can't be confirmed —
+        // including a claim with an empty/unknown `by` (otherwise it would be
+        // prunable by anyone, the original N1 hole).
+        if (ev.author && claim.by !== ev.author) {
+          const reason = claim.by
+            ? `author "${ev.author}" does not own claim "${surface}" (by="${claim.by}")`
+            : `author "${ev.author}" cannot prune claim "${surface}" with unverifiable owner (no by)`;
+          idx.warnings.push(`[fold] line ${ev.lineIndex} PRUNE: ${reason} — prune rejected (R-c)`);
           continue;
         }
         idx.claims.set(surface, { ...claim, pruned: true });

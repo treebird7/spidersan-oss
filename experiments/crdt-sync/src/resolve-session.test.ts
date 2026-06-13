@@ -28,6 +28,17 @@ function assert(label: string, condition: boolean, detail?: string): void {
   }
 }
 
+function assertThrows(label: string, fn: () => void): void {
+  try {
+    fn();
+    console.error(`  ❌ ${label}: expected throw, got none`);
+    failed++;
+  } catch {
+    console.log(`  ✅ ${label}`);
+    passed++;
+  }
+}
+
 /** Parse a single line into a TagEvent, optionally stamping the T6 `author`. */
 function ev(line: string, lineIndex: number, author?: string | null): TagEvent {
   const e = parseLine(line, lineIndex);
@@ -269,6 +280,49 @@ console.log('\n--- G2b. verifyAt supersede + determinism ---');
   assert('re-fold determinism: votes equal', split.votes.get('spidersan')?.action === whole.votes.get('spidersan')?.action);
   assert('re-fold determinism: sessionId equal', split.sessionId === whole.sessionId);
   assert('re-fold determinism: event count equal', split.events.length === whole.events.length);
+}
+
+// ---------------------------------------------------------------------------
+// N1 — by-less CLAIM warns + is unprunable by another author; PRUNE files= path
+// ---------------------------------------------------------------------------
+console.log('\n--- N1 + PRUNE files= path ---');
+{
+  // CLAIM with no `by` → warns, and a different authed actor cannot prune it
+  const s = ResolveSession.from([
+    ev('[CLAIM surface=feat/x extra=""]', 0, 'spidersan'),  // no by=
+    ev('[PRUNE branch=feat/x extra=""]', 1, 'mallory'),
+  ]);
+  assert('by-less CLAIM warns', s.warnings.some(w => w.includes('CLAIM') && w.includes('by')));
+  assert('by-less claim NOT prunable by other author (N1)', s.claims.get('feat/x')?.pruned !== true);
+  assert('N1 prune rejection warns unverifiable owner', s.warnings.some(w => w.includes('unverifiable owner')));
+}
+{
+  // PRUNE by files= path: non-owner rejected, owner succeeds
+  const nonOwner = ResolveSession.from([
+    ev('[CLAIM by=spidersan surface=src/x.ts extra=""]', 0, 'spidersan'),
+    ev('[PRUNE files=src/x.ts extra=""]', 1, 'mallory'),
+  ]);
+  assert('PRUNE files= by non-owner rejected', nonOwner.claims.get('src/x.ts')?.pruned !== true);
+  const owner = ResolveSession.from([
+    ev('[CLAIM by=spidersan surface=src/x.ts extra=""]', 0, 'spidersan'),
+    ev('[PRUNE files=src/x.ts extra=""]', 1, 'spidersan'),
+  ]);
+  assert('PRUNE files= by owner prunes', owner.claims.get('src/x.ts')?.pruned === true);
+}
+
+// ---------------------------------------------------------------------------
+// N2 — diff() rejects a non-prefix prev instead of silently returning wrong window
+// ---------------------------------------------------------------------------
+console.log('\n--- N2. diff() prefix contract enforced ---');
+{
+  const base = ResolveSession.from([ev('[SESSION id=a repo=r incident=merge-order opened_by=human extra=""]', 0)]);
+  const longerPrev = base.append([ev('[VOTE agent=x action=merge confidence=high extra=""]', 1, 'x')]);
+  // prev longer than this → throw
+  assertThrows('diff throws when prev longer than this', () => base.diff(longerPrev));
+  // unrelated same-length prev (different boundary event) → throw
+  const unrelated = ResolveSession.from([ev('[SESSION id=b repo=r2 incident=merge-conflict opened_by=human extra=""]', 0)]);
+  const next = base.append([ev('[GO from=human session=a step=1 extra=""]', 1, 'human')]);
+  assertThrows('diff throws on non-prefix (unrelated) prev', () => next.diff(unrelated));
 }
 
 // ---------------------------------------------------------------------------
