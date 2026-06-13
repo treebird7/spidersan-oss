@@ -152,6 +152,59 @@ function buildRepoMap(explicitPaths: string[]): Map<string, string[]> {
 }
 
 /**
+ * Number of tracked-but-missing files in a working tree before we alarm. A few
+ * is normal (an intentional `rm`); whole directories missing is the signature of
+ * a stale-revert / branch-juggle that stranded the working tree behind HEAD
+ * (see coord-tree/patterns/shared-checkout-collision.md — the 2026-06-13 incident
+ * where a mixed `git reset` advanced HEAD past a stale tree, wiping node-tree/
+ * ci-tree/TREES.md from the working copy while .git stayed current).
+ */
+const WT_INTEGRITY_THRESHOLD = 5;
+
+/**
+ * Detect the stale-revert signature in one repo: many tracked files DELETED in
+ * the working tree (HEAD/index intact). This is recoverable and non-destructive
+ * — `git restore` brings the files back — so we only warn, loudly, with the fix.
+ * Returns true if an alarm fired.
+ */
+export function checkWorkingTreeIntegrity(repoPath: string, log: (m: string) => void): boolean {
+    let deleted: string[];
+    try {
+        const out = execFileSync('git', ['ls-files', '--deleted'], {
+            cwd: repoPath,
+            encoding: 'utf-8',
+            stdio: ['ignore', 'pipe', 'ignore'],
+        }).trim();
+        if (!out) return false;
+        deleted = out.split('\n').filter(Boolean);
+    } catch {
+        return false; // not a git repo / git unavailable — skip silently
+    }
+    if (deleted.length < WT_INTEGRITY_THRESHOLD) return false;
+
+    const sample = deleted.slice(0, 5).join(', ');
+    log(
+        `🚨 working-tree integrity: ${deleted.length} tracked file(s) MISSING from the working tree in ` +
+        `${repoPath} (e.g. ${sample}${deleted.length > 5 ? ', …' : ''}). This is the stale-revert / ` +
+        `branch-juggle signature — HEAD likely advanced past a stranded working tree. Nothing is lost ` +
+        `(.git is intact). Recover with:  cd ${repoPath} && git ls-files -z --deleted | xargs -0 git restore --`
+    );
+    return true;
+}
+
+/** Run the working-tree integrity check across every watched local path. */
+function sweepWorkingTreeIntegrity(repoMap: Map<string, string[]>, log: (m: string) => void): void {
+    const seen = new Set<string>();
+    for (const paths of repoMap.values()) {
+        for (const p of paths) {
+            if (seen.has(p)) continue;
+            seen.add(p);
+            checkWorkingTreeIntegrity(p, log);
+        }
+    }
+}
+
+/**
  * Discover repo paths from all .spidersan registries visible from ~/.spidersan.
  * Falls back to scanning ~/Dev/* for .spidersan directories.
  */
@@ -842,6 +895,9 @@ export async function startGitWatch(opts: GitWatchOptions = {}): Promise<GitWatc
     const repoMap = buildRepoMap(opts.repoPaths ?? []);
     log(`Watching ${repoMap.size} repo(s): ${[...repoMap.keys()].join(', ')}`);
 
+    // Working-tree integrity sweep on startup (catches a stranded/stale-reverted tree)
+    sweepWorkingTreeIntegrity(repoMap, log);
+
     // Shared high-water mark (monotonic seq dedup between realtime + poll paths)
     const highWaterMark = { seq: readCursor() };
 
@@ -861,6 +917,7 @@ export async function startGitWatch(opts: GitWatchOptions = {}): Promise<GitWatc
     // Safety-sweep poll (5 min when realtime active, else use configured interval)
     const sweepMs = realtimeHandle ? Math.max(pollMs, 5 * 60_000) : pollMs;
     const pollTimer = setInterval(async () => {
+        sweepWorkingTreeIntegrity(repoMap, log);
         await catchUp(cfg, repoMap, opts);
         await consumePendingTreePairs(log);
     }, sweepMs);
@@ -883,6 +940,7 @@ export async function catchUpOnce(opts: GitWatchOptions = {}): Promise<void> {
 
     const repoMap = buildRepoMap(opts.repoPaths ?? []);
     const log = opts.logger ?? (opts.quiet ? () => {} : (m: string) => console.log(`[git-watch] ${m}`));
+    sweepWorkingTreeIntegrity(repoMap, log);
     await catchUp(cfg, repoMap, opts);
     await consumePendingTreePairs(log);
 }
