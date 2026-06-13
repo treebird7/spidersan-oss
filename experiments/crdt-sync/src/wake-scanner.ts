@@ -71,7 +71,10 @@ export function mentionsPredicate(name: string): WakePredicate {
 
 /** Build a WakeEvent from a parsed TagEvent + its transport author. */
 export function toWakeEvent(tag: TagEvent, author: string | null): WakeEvent {
-  return { tagName: tag.tagName, fields: tag.fields, raw: tag.raw, lineIndex: tag.lineIndex, author };
+  // Contract (spidersan #224 review): author is null, never "". An empty-string
+  // author makes the T3 reducer skip its §14.3 mismatch-reject — so coerce ""→null
+  // here, the single WakeEvent constructor, regardless of what authorOf returned.
+  return { tagName: tag.tagName, fields: tag.fields, raw: tag.raw, lineIndex: tag.lineIndex, author: author || null };
 }
 
 /**
@@ -81,7 +84,9 @@ export function toWakeEvent(tag: TagEvent, author: string | null): WakeEvent {
  */
 export function flatAuthor(raw: string): string | null {
   const m = raw.match(/^\[(?:\d{4}-\d{2}-\d{2} )?\d{2}:\d{2} ([^\]#]+?)(?:#\d+)?\]/);
-  return m ? m[1].trim() : null;
+  if (!m) return null;
+  const a = m[1].trim();
+  return a === '' ? null : a; // all-whitespace prefix → null, never "" (see toWakeEvent)
 }
 
 export interface ScanOptions<S = unknown> {
@@ -130,7 +135,7 @@ export function scanForWake<S = unknown>(
     }
     if (tag === null) continue;
 
-    const author = authorOf(lines[i]);
+    const author = authorOf(lines[i]) || null; // normalize ""→null before any comparison
     if (opts.selfAuthor != null && author != null && author === opts.selfAuthor) {
       continue; // no-self-echo
     }

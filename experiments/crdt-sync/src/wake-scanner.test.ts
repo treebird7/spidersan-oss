@@ -123,6 +123,13 @@ const line = (author: string, tag: string) => `[15:00 ${author}] ${tag}`;
   // a raw tag log (no transport prefix) still wakes; author is null
   eq('raw tag (no prefix) still wakes', scanForWake(['[GO from=bob]'], 0).length, 1);
   eq('raw tag author is null', scanForWake(['[GO from=bob]'], 0)[0].author, null);
+  // §14.3 contract (spidersan #224): author is null, NEVER "" — an empty author
+  // makes the T3 reducer skip enforcement. All-whitespace prefix must give null,
+  // and a custom authorOf returning "" must be coerced.
+  eq('all-whitespace prefix → null, not ""', flatAuthor('[15:00     ] [GO]'), null);
+  eq('scanForWake never stamps "" author (raw)', scanForWake(['[GO from=bob]'], 0)[0].author, null);
+  eq('custom authorOf returning "" coerced to null',
+    scanForWake(['[GO from=bob]'], 0, { authorOf: () => '' })[0].author, null);
 }
 
 // ── carries fields.from for the T3 reducer's §14.3 mismatch-reject ──────────
