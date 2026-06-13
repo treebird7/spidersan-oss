@@ -16,4 +16,6 @@ preview_id = "d05e42b679db41249eb9934a21cc2c78"
 [vars]
 TURNSTILE_SITE_KEY = "0x4AAAAAADjcO1zH8xDkZP_x"
 
-# Secrets (set via: wrangler secret put TURNSTILE_SECRET_KEY)
+# Secrets (set via: wrangler secret put <NAME>)
+#   TURNSTILE_SECRET_KEY  — CF Turnstile secret (required; issuance fails closed without it)
+#   ADMIN_SECRET          — bearer token for POST /keys/revoke (required; revocation fails closed without it)
