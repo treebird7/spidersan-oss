@@ -160,6 +160,118 @@ console.log('\n--- G3. diff() wake-8 transitions ---');
 }
 
 // ---------------------------------------------------------------------------
+// G1b — CLAIM / PRUNE ownership (R-c) — rubberduck findings #1, #2
+// ---------------------------------------------------------------------------
+console.log('\n--- G1b. CLAIM/PRUNE ownership (R-c) ---');
+{
+  // Spoofed CLAIM: author != by → rejected, not registered
+  const s = ResolveSession.from([
+    ev('[CLAIM by=spidersan surface=feat/x extra=""]', 0, 'mallory'),
+  ]);
+  assert('spoofed CLAIM not registered', s.claims.size === 0);
+  assert('spoofed CLAIM warns', s.warnings.some(w => w.includes('spoofed')));
+}
+{
+  // Honest CLAIM then NON-OWNER PRUNE (authed honestly as mallory) → prune rejected
+  const s = ResolveSession.from([
+    ev('[CLAIM by=spidersan surface=feat/x extra=""]', 0, 'spidersan'),
+    ev('[PRUNE branch=feat/x extra=""]', 1, 'mallory'),
+  ]);
+  assert('claim registered by owner', s.claimOn('feat/x') !== undefined);
+  assert('non-owner PRUNE did NOT prune', s.claimOn('feat/x')?.pruned !== true);
+  assert('non-owner PRUNE warns (R-c)', s.warnings.some(w => w.includes('does not own')));
+}
+{
+  // Owner PRUNE → succeeds
+  const s = ResolveSession.from([
+    ev('[CLAIM by=spidersan surface=feat/x extra=""]', 0, 'spidersan'),
+    ev('[PRUNE branch=feat/x extra=""]', 1, 'spidersan'),
+  ]);
+  assert('owner PRUNE marks claim pruned', s.claims.get('feat/x')?.pruned === true);
+}
+{
+  // Pre-T6 (no author) PRUNE → back-compat, prunes
+  const s = ResolveSession.from([
+    ev('[CLAIM by=spidersan surface=feat/x extra=""]', 0),
+    ev('[PRUNE branch=feat/x extra=""]', 1),
+  ]);
+  assert('no-author PRUNE prunes (back-compat)', s.claims.get('feat/x')?.pruned === true);
+}
+
+// ---------------------------------------------------------------------------
+// G5b — confidence edge cases — rubberduck finding #3
+// ---------------------------------------------------------------------------
+console.log('\n--- G5b. confidence edge cases ---');
+for (const bad of ['62.5', '62abc', '-5', '', 'abc']) {
+  const s = ResolveSession.from([
+    ev(`[ADVICE from=sangit verdict=hold confidence=${bad || '""'} salt=high extra=""]`, 0),
+  ]);
+  assert(`confidence "${bad}" rejected (undefined)`, s.advice[0].confidence === undefined);
+}
+{
+  const s = ResolveSession.from([ev('[ADVICE from=sangit verdict=hold confidence=0 salt=high extra=""]', 0)]);
+  assert('confidence boundary 0 accepted', s.advice[0].confidence === 0);
+}
+{
+  const s = ResolveSession.from([ev('[ADVICE from=sangit verdict=hold confidence=100 salt=high extra=""]', 0)]);
+  assert('confidence boundary 100 accepted', s.advice[0].confidence === 100);
+}
+
+// ---------------------------------------------------------------------------
+// G1c — author="" footgun — rubberduck finding #4
+// ---------------------------------------------------------------------------
+console.log('\n--- G1c. author="" skips enforcement ---');
+{
+  const s = ResolveSession.from([
+    ev('[VOTE agent=spidersan action=merge confidence=high extra=""]', 0, ''),
+  ]);
+  assert('empty-string author skips enforcement (vote applied)', s.votes.get('spidersan')?.action === 'merge');
+  assert('empty-string author does not warn spoof', !s.warnings.some(w => w.includes('spoofed')));
+}
+
+// ---------------------------------------------------------------------------
+// G3b — diff edge cases — rubberduck finding #5
+// ---------------------------------------------------------------------------
+console.log('\n--- G3b. diff edge cases ---');
+{
+  const empty = ResolveSession.from([]);
+  const s = empty.append([
+    ev('[VOTE agent=spidersan action=merge confidence=high extra=""]', 0, 'spidersan'),
+  ]);
+  assert('diff against empty prev returns the new wake-8 event', s.diff(empty).length === 1);
+}
+{
+  // Spoofed second vote must NOT replace the honest first
+  const s = ResolveSession.from([
+    ev('[VOTE agent=spidersan action=merge confidence=high extra=""]', 0, 'spidersan'),
+    ev('[VOTE agent=spidersan action=abandon confidence=high extra=""]', 1, 'mallory'),
+  ]);
+  assert('spoofed second vote did not replace honest first', s.votes.get('spidersan')?.action === 'merge');
+}
+
+// ---------------------------------------------------------------------------
+// G2b — verifyAt supersede + re-fold determinism
+// ---------------------------------------------------------------------------
+console.log('\n--- G2b. verifyAt supersede + determinism ---');
+{
+  const s = ResolveSession.from([
+    ev('[VERIFY n=1 agent=a checks="x" result=pass extra=""]', 0),
+    ev('[VERIFY n=1 agent=b checks="x" result=fail extra=""]', 1),
+  ]);
+  assert('verifyAt(1) returns the latest (fail supersedes)', s.verifyAt(1)?.result === 'fail');
+}
+{
+  // from(a).append(b) must equal from([...a,...b]) for derived state
+  const a = [ev('[SESSION id=z repo=r incident=merge-order opened_by=human extra=""]', 0)];
+  const b = [ev('[VOTE agent=spidersan action=merge confidence=high extra=""]', 1, 'spidersan')];
+  const split = ResolveSession.from(a).append(b);
+  const whole = ResolveSession.from([...a, ...b]);
+  assert('re-fold determinism: votes equal', split.votes.get('spidersan')?.action === whole.votes.get('spidersan')?.action);
+  assert('re-fold determinism: sessionId equal', split.sessionId === whole.sessionId);
+  assert('re-fold determinism: event count equal', split.events.length === whole.events.length);
+}
+
+// ---------------------------------------------------------------------------
 console.log('\n──────────────────────────────────────────────────');
 console.log(`Results: ${passed} passed, ${failed} failed`);
 if (failed > 0) {

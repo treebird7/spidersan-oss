@@ -146,8 +146,11 @@ export interface Transition {
  */
 const CLAIMED_EMITTER_FIELD: Readonly<Record<string, string>> = {
   JOIN: 'agent', LEAVE: 'agent', VOTE: 'agent',
-  CLAIM: 'by', DECISION: 'by', PRUNE: 'by',
-  GO: 'from', ADVICE: 'from', CORRECT: 'by',
+  CLAIM: 'by', DECISION: 'by',
+  GO: 'from', ADVICE: 'from', CORRECT: 'agent',
+  // PRUNE is intentionally absent: the grammar registry gives it no self-emitter
+  // field (only branch/files). Its R-c ownership is enforced against each
+  // existing claim's `by` inside the PRUNE case, not a self-declared field.
 };
 
 // ---------------------------------------------------------------------------
@@ -271,15 +274,15 @@ export class ResolveSession {
 
   /**
    * Wake-8 transitions appended since `prev` — the subscription surface for the
-   * T6 wake-predicate and the Sangit subscriber. Because the log is append-only
-   * and immutable, "new" = events ordered after prev's last event (G3).
+   * T6 wake-predicate and the Sangit subscriber (G3). `prev` MUST be an earlier
+   * snapshot of THIS session (a prefix). The new events are the suffix beyond
+   * `prev.events.length` — `append()` only ever appends, so this needs no
+   * assumption about `lineIndex` being monotonic or contiguous.
    */
   diff(prev: ResolveSession): Transition[] {
-    const prevMaxLine = prev.events.length
-      ? prev.events[prev.events.length - 1].lineIndex
-      : -1;
     return this.events
-      .filter(e => e.lineIndex > prevMaxLine && WAKE_8.has(e.tagName))
+      .slice(prev.events.length)
+      .filter(e => WAKE_8.has(e.tagName))
       .map(e => ({ tagName: e.tagName, lineIndex: e.lineIndex, event: e }));
   }
 
@@ -352,10 +355,11 @@ function applyEvent(ev: TagEvent, idx: Indexes): void {
   // G1 / Floor-F2 (spec §14.3): if the transport stamped an authenticated
   // `author`, a keyed mutation is applied only when it matches the tag's claimed
   // emitter. A mismatch is a spoofed emitter — drop the mutation but keep the
-  // event in the canonical log (the caller already appended it). When `author`
-  // is absent (pre-T6 transport), enforcement is skipped for back-compat.
+  // event in the canonical log (the caller already appended it). A falsy author
+  // (undefined/null = pre-T6 transport, or "" = transport saw no author) skips
+  // enforcement for back-compat — T6 must stamp null, not "", for "unknown".
   const claimField = CLAIMED_EMITTER_FIELD[ev.tagName];
-  if (claimField && ev.author != null) {
+  if (claimField && ev.author) {
     const claimed = f[claimField];
     if (claimed && claimed !== ev.author) {
       idx.warnings.push(
@@ -469,16 +473,25 @@ function applyEvent(ev: TagEvent, idx: Indexes): void {
     }
 
     case 'PRUNE': {
-      // De-register the merged branch's claims
+      // De-register the merged branch's claims.
       const branch = f['branch'];
       const files = f['files'] ? parsePaths(f['files']).map(normalizePath) : [];
       for (const [surface, claim] of idx.claims) {
         if (claim.pruned) continue;
         const matchesBranch = branch && surface === branch;
         const matchesFile = files.length > 0 && files.includes(normalizePath(surface));
-        if (matchesBranch || matchesFile) {
-          idx.claims.set(surface, { ...claim, pruned: true });
+        if (!matchesBranch && !matchesFile) continue;
+        // R-c: only the claim's owner may prune it. (A gitops-authority override
+        // is a COORD-PROTOCOL policy decision, not yet wired — see scope doc G1.)
+        // When author is unknown (pre-T6), enforcement is skipped for back-compat.
+        if (ev.author && claim.by && claim.by !== ev.author) {
+          idx.warnings.push(
+            `[fold] line ${ev.lineIndex} PRUNE: author "${ev.author}" does not own ` +
+            `claim "${surface}" (by="${claim.by}") — prune rejected (R-c)`,
+          );
+          continue;
         }
+        idx.claims.set(surface, { ...claim, pruned: true });
       }
       break;
     }
@@ -487,11 +500,19 @@ function applyEvent(ev: TagEvent, idx: Indexes): void {
       if (!f['rationale']) {
         idx.warnings.push(`[fold] line ${ev.lineIndex} DECISION: missing required field "rationale"`);
       }
+      let steps: number | undefined;
+      if (f['steps_completed'] !== undefined) {
+        if (/^\d+$/.test(f['steps_completed'])) {
+          steps = +f['steps_completed'];
+        } else {
+          idx.warnings.push(`[fold] line ${ev.lineIndex} DECISION: steps_completed "${f['steps_completed']}" not a non-negative integer`);
+        }
+      }
       idx.decisions.push({
         outcome: f['outcome'] ?? '',
         by: f['by'] ?? '',
         rationale: f['rationale'] ?? '',
-        steps_completed: f['steps_completed'] ? parseInt(f['steps_completed'], 10) : undefined,
+        steps_completed: steps,
         action: f['action'],
         session: f['session'],
         lineIndex: ev.lineIndex,
@@ -527,11 +548,13 @@ function applyEvent(ev: TagEvent, idx: Indexes): void {
       // confidence is an integer 0-100 for ADVICE (vs the VOTE enum) — grammar §6.
       let confidence: number | undefined;
       if (f['confidence'] !== undefined) {
-        const n = parseInt(f['confidence'], 10);
-        if (Number.isFinite(n) && n >= 0 && n <= 100) {
-          confidence = n;
+        const raw = f['confidence'];
+        // Must be a pure non-negative integer 0-100 (grammar §6). parseInt is too
+        // lenient — "62.5"/"62abc" would silently coerce to 62; reject them.
+        if (/^\d+$/.test(raw) && +raw >= 0 && +raw <= 100) {
+          confidence = +raw;
         } else {
-          idx.warnings.push(`[fold] line ${ev.lineIndex} ADVICE: confidence "${f['confidence']}" not an integer 0-100`);
+          idx.warnings.push(`[fold] line ${ev.lineIndex} ADVICE: confidence "${raw}" not an integer 0-100`);
         }
       }
       idx.advice.push({
