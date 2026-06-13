@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "npx tsx src/parser.test.ts && npx tsx src/resolve-session.test.ts && npx tsx src/wake-scanner.test.ts && npx tsx src/resolve-watch.test.ts",
+    "test": "npx tsx src/parser.test.ts && npx tsx src/resolve-session.test.ts && npx tsx src/wake-scanner.test.ts && npx tsx src/resolve-watch.test.ts && npx tsx src/seam-tests/t5-t6-chain.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "keywords": [],
