@@ -7,12 +7,20 @@ workers_dev = false
 pattern = "api.spidersan.net/v1/*"
 zone_name = "spidersan.net"
 
-# KV namespace — VALID_API_KEYS (shared with keys Worker)
+# KV — credentials (api keys + metadata). Shared with keys worker.
 # Created 2026-04-21: wrangler kv namespace create VALID_API_KEYS
 [[kv_namespaces]]
 binding = "VALID_API_KEYS"
 id = "d05e42b679db41249eb9934a21cc2c78"
 preview_id = "d05e42b679db41249eb9934a21cc2c78"
+
+# KV — rate-limit counters only (rl:* prefix). Separate from credentials so
+# counter TTL policy and enumeration can't touch key records.
+# Created 2026-06-13: wrangler kv namespace create SPIDERSAN_COUNTERS_KV
+[[kv_namespaces]]
+binding = "COUNTERS_KV"
+id = "72d00766b0c846a88e2e9048e2756bbf"
+preview_id = "72d00766b0c846a88e2e9048e2756bbf"
 
 # Secrets (set via: wrangler secret put <NAME>)
 #   MODEL_BACKEND_URL      = https://spidersan-model.treebird.uk

@@ -16,11 +16,20 @@
  *  B3 — GET ?key= validated against key regex + HTML-escaped before render
  *  M4 — POST renders success page inline; key never in redirect URL
  *  Hardening — every HTML response carries CSP + nosniff + X-Frame-Options:DENY
+ *
+ * Admin routes (require Authorization: Bearer <ADMIN_SECRET>):
+ *  POST /keys/revoke  → mark a key revoked in KV (api-proxy rejects it on next use)
  *       + Referrer-Policy:no-referrer (see htmlHeaders)
  */
 
+import { KEY_REGEX, IP_KEY_DAILY_LIMIT, FREE_KEY_TTL_DAYS, FREE_KEY_TTL_SECONDS } from '../../lib/constants';
+import { checkDailyLimit } from '../../lib/rate-limit';
+import type { ApiKeyRecord } from '../../lib/types';
+
 export interface Env {
   VALID_API_KEYS: KVNamespace;
+  /** Rate-limit counters (ip_rl:* prefix). Separate from credentials — see wrangler.toml. */
+  COUNTERS_KV: KVNamespace;
   /** CF Turnstile secret key — set via: wrangler secret put TURNSTILE_SECRET_KEY
    *  Create widget at: dash.cloudflare.com → Turnstile → Add site
    *  REQUIRED in production: if unset, POST /keys fails closed (503) — issuance
@@ -29,28 +38,11 @@ export interface Env {
   /** CF Turnstile site key — public, safe in source.
    *  Set via wrangler.toml [vars] once you create the Turnstile widget. */
   TURNSTILE_SITE_KEY?: string;
+  /** Admin secret for POST /keys/revoke. Set via: wrangler secret put ADMIN_SECRET
+   *  If unset, POST /keys/revoke returns 503 (fail-closed — same pattern as Turnstile). */
+  ADMIN_SECRET?: string;
 }
 
-interface KeyRecord {
-  tier: 'free' | 'contributor';
-  created: string;
-  email_hash: string;
-  label?: string;
-  /** M2: ISO expiry. Absent = never expires. validateApiKey lazy-expires on read. */
-  expires_at?: string;
-  /** M2: per-key disable flag. Set true to revoke without deleting (keeps audit record). */
-  revoked?: boolean;
-  revoked_at?: string;
-  revoked_reason?: string;
-}
-
-const KEY_REGEX = /^spk_(free|contributor)_[0-9a-f]{40}$/;
-const IP_KEY_DAILY_LIMIT = 5; // max new keys per IP per day
-// M2: free keys expire after this window — bounds the accumulation of permanent
-// credentials. Written as expires_at in the record AND as the KV expirationTtl so
-// storage auto-cleans; api-proxy lazy-checks expires_at as the authoritative gate.
-const FREE_KEY_TTL_DAYS = 90;
-const FREE_KEY_TTL_SECONDS = FREE_KEY_TTL_DAYS * 24 * 60 * 60;
 const HTML_CONTENT_TYPE = 'text/html;charset=UTF-8';
 // CSP: allows inline styles/scripts (copy button + CSS) and the CF Turnstile
 // frame/script. connect-src is required too — the widget makes its own XHR /
@@ -94,21 +86,6 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
 
-/** B2: per-IP issuance rate limit. Not atomic but sufficient as a friction layer. */
-async function checkIpKeyLimit(env: Env, ip: string): Promise<boolean> {
-  if (!ip) return true; // can't identify IP — allow (Turnstile is the other gate)
-  const today = new Date().toISOString().slice(0, 10);
-  // Counters share the credential KV namespace, distinguished only by the
-  // `ip_rl:` prefix (vs `spk_` for keys). Safe — all reads are exact-match
-  // lookups, never list/scan — but a future KV dump would conflate the two.
-  // If counters grow, split into a dedicated namespace.
-  const kvKey = `ip_rl:${ip}:${today}`;
-  const raw = await env.VALID_API_KEYS.get(kvKey, { type: 'text' });
-  const count = raw ? parseInt(raw, 10) : 0;
-  if (count >= IP_KEY_DAILY_LIMIT) return false;
-  env.VALID_API_KEYS.put(kvKey, String(count + 1), { expirationTtl: 172800 }).catch(() => {});
-  return true;
-}
 
 /** B2: Cloudflare Turnstile server-side verification. */
 async function verifyTurnstile(secretKey: string, token: string, ip: string): Promise<boolean> {
@@ -365,11 +342,101 @@ function copyKey() {
 </html>`;
 }
 
+// ── Admin ─────────────────────────────────────────────────────────────────────
+
+function jsonResponse(status: number, body: Record<string, unknown>): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+/** Constant-time string comparison — guards POST /keys/revoke against timing oracles. */
+function timingSafeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const ab = enc.encode(a);
+  const bb = enc.encode(b);
+  const len = Math.max(ab.length, bb.length);
+  let diff = ab.length ^ bb.length;
+  for (let i = 0; i < len; i++) diff |= (ab[i] ?? 0) ^ (bb[i] ?? 0);
+  return diff === 0;
+}
+
+async function handleRevoke(request: Request, env: Env): Promise<Response> {
+  // Fail-closed: if ADMIN_SECRET is not configured, revocation is unavailable.
+  if (!env.ADMIN_SECRET) {
+    return jsonResponse(503, { error: 'Revocation not configured' });
+  }
+
+  const authHeader = request.headers.get('Authorization') ?? '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!timingSafeEqual(token, env.ADMIN_SECRET)) {
+    return jsonResponse(401, { error: 'Unauthorized' });
+  }
+
+  let body: { key?: unknown; reason?: unknown };
+  try {
+    body = await request.json() as { key?: unknown; reason?: unknown };
+  } catch {
+    return jsonResponse(400, { error: 'Invalid JSON body' });
+  }
+
+  const key = typeof body.key === 'string' ? body.key : '';
+  const reason = typeof body.reason === 'string' ? body.reason : undefined;
+
+  if (!KEY_REGEX.test(key)) {
+    return jsonResponse(400, { error: 'Missing or invalid key' });
+  }
+
+  const raw = await env.VALID_API_KEYS.get(key, { type: 'text' });
+  if (!raw) {
+    return jsonResponse(404, { error: 'Key not found' });
+  }
+
+  let record: ApiKeyRecord;
+  try {
+    record = JSON.parse(raw) as ApiKeyRecord;
+  } catch {
+    return jsonResponse(500, { error: 'Key record corrupt' });
+  }
+
+  // Idempotent: re-revoking an already-revoked key is a no-op success.
+  if (record.revoked) {
+    return jsonResponse(200, { ok: true, already_revoked: true });
+  }
+
+  // KV put resets the TTL unless we re-specify it. Re-derive remaining seconds
+  // from expires_at so the record keeps its original expiry window.
+  let expirationTtl: number | undefined;
+  if (record.expires_at) {
+    const remaining = Math.floor((Date.parse(record.expires_at) - Date.now()) / 1000);
+    if (remaining <= 0) {
+      // Already expired — the api-proxy would have lazy-deleted it; treat as gone.
+      return jsonResponse(404, { error: 'Key not found' });
+    }
+    expirationTtl = remaining;
+  }
+
+  const updated: ApiKeyRecord = {
+    ...record,
+    revoked: true,
+    revoked_at: new Date().toISOString(),
+    ...(reason !== undefined ? { revoked_reason: reason } : {}),
+  };
+
+  await env.VALID_API_KEYS.put(key, JSON.stringify(updated), expirationTtl ? { expirationTtl } : undefined);
+  return jsonResponse(200, { ok: true });
+}
+
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    if (url.pathname === '/keys/revoke' && request.method === 'POST') {
+      return handleRevoke(request, env);
+    }
 
     if (url.pathname !== '/keys' && url.pathname !== '/keys/') {
       return new Response('Not found', { status: 404 });
@@ -440,20 +507,23 @@ export default {
         });
       }
 
-      // B2: per-IP issuance rate limit (always enforced, regardless of Turnstile)
-      const ipAllowed = await checkIpKeyLimit(env, ip);
-      if (!ipAllowed) {
-        return new Response(renderLandingPage(env.TURNSTILE_SITE_KEY, 'Too many keys generated from this IP today. Try again tomorrow.'), {
-          status: 429,
-          headers: htmlHeaders(),
-        });
+      // B2: per-IP issuance rate limit (always enforced, regardless of Turnstile).
+      // If IP is absent, allow — Turnstile is the other gate.
+      if (ip) {
+        const { allowed } = await checkDailyLimit(env.COUNTERS_KV, 'ip_rl', ip, IP_KEY_DAILY_LIMIT);
+        if (!allowed) {
+          return new Response(renderLandingPage(env.TURNSTILE_SITE_KEY, 'Too many keys generated from this IP today. Try again tomorrow.'), {
+            status: 429,
+            headers: htmlHeaders(),
+          });
+        }
       }
 
       const key = generateKey();
       const emailHash = await hashEmail(email);
 
       const now = Date.now();
-      const record: KeyRecord = {
+      const record: ApiKeyRecord = {
         tier: 'free',
         created: new Date(now).toISOString(),
         email_hash: emailHash,

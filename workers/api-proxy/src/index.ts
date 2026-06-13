@@ -22,8 +22,14 @@
  * TODO(P3): Migrate to Durable Object rate limiter for precise enforcement.
  */
 
+import { FREE_TIER_DAILY_LIMIT, MAX_OUTPUT_TOKENS, MAX_REQUEST_BYTES } from '../../lib/constants';
+import { checkDailyLimit, sha256Hex } from '../../lib/rate-limit';
+import type { ApiKeyRecord } from '../../lib/types';
+
 export interface Env {
   VALID_API_KEYS: KVNamespace;
+  /** Rate-limit counters (rl:* prefix). Separate from credentials — see wrangler.toml. */
+  COUNTERS_KV: KVNamespace;
   MODEL_BACKEND_URL: string;
   /** M1: required — Worker returns 503 if unset rather than passing model choice to client. */
   MODEL_ID: string;
@@ -35,30 +41,13 @@ export interface Env {
 }
 
 const ALLOWED_PATHS = new Set(['/v1/chat/completions', '/v1/models']);
-const FREE_TIER_DAILY_LIMIT = 50;
 
-// C1 (cost): hard ceilings so a backend swap to a metered provider can't become
-// an unbounded bill. These are code constants by design — not a property of
-// today's local-MLX wiring. Tune as needed; the point is that a ceiling exists.
-const MAX_OUTPUT_TOKENS = 4096;          // clamp on max_tokens (also the default when unset)
-const MAX_REQUEST_BYTES = 256 * 1024;    // 256 KB cap on request body (prompt size)
-
-interface KeyMetadata {
-  tier: 'free' | 'contributor';
-  created: string;
-  label?: string;
-  /** M2: ISO expiry. Absent = never expires. */
-  expires_at?: string;
-  /** M2: per-key disable flag — revoked keys are rejected without deletion. */
-  revoked?: boolean;
-}
-
-async function validateApiKey(env: Env, key: string): Promise<KeyMetadata | null> {
+async function validateApiKey(env: Env, key: string): Promise<ApiKeyRecord | null> {
   const raw = await env.VALID_API_KEYS.get(key, { type: 'text' });
   if (!raw) return null;
-  let meta: KeyMetadata;
+  let meta: ApiKeyRecord;
   try {
-    meta = JSON.parse(raw) as KeyMetadata;
+    meta = JSON.parse(raw) as ApiKeyRecord;
   } catch {
     return null; // M2: a corrupt record is not a valid credential
   }
@@ -78,27 +67,6 @@ async function validateApiKey(env: Env, key: string): Promise<KeyMetadata | null
   return meta;
 }
 
-/**
- * Advisory per-key daily counter. Not atomic — eventually consistent.
- * Contributor tier is unlimited.
- */
-async function checkRateLimit(
-  env: Env,
-  key: string,
-  tier: 'free' | 'contributor',
-): Promise<{ remaining: number; limited: boolean }> {
-  if (tier === 'contributor') {
-    return { remaining: -1, limited: false };
-  }
-  const bucketKey = `rl:${key}:${new Date().toISOString().slice(0, 10)}`;
-  const raw = await env.VALID_API_KEYS.get(bucketKey, { type: 'text' });
-  const count = raw ? parseInt(raw, 10) : 0;
-  if (count >= FREE_TIER_DAILY_LIMIT) {
-    return { remaining: 0, limited: true };
-  }
-  env.VALID_API_KEYS.put(bucketKey, String(count + 1), { expirationTtl: 172800 }).catch(() => {});
-  return { remaining: FREE_TIER_DAILY_LIMIT - count - 1, limited: false };
-}
 
 function errorResponse(status: number, message: string, headers?: Record<string, string>): Response {
   return new Response(JSON.stringify({ error: { message, type: 'api_error', code: status } }), {
@@ -201,15 +169,24 @@ export default {
       return errorResponse(503, 'Model backend not configured');
     }
 
-    // Rate limiting
-    const { remaining, limited } = await checkRateLimit(env, apiKey, keyMeta.tier);
-    if (limited) {
-      return errorResponse(429, 'Daily limit reached (50 req/day). Upgrade to contributor tier for unlimited.', {
-        'X-RateLimit-Limit': String(FREE_TIER_DAILY_LIMIT),
-        'X-RateLimit-Remaining': '0',
-        'X-RateLimit-Reset': new Date(new Date().setUTCHours(24, 0, 0, 0)).toUTCString(),
-        'Retry-After': String(Math.floor((new Date().setUTCHours(24, 0, 0, 0) - Date.now()) / 1000)),
-      });
+    // Rate limiting — contributor tier is unlimited; free tier gets a daily counter.
+    let remaining = -1;
+    if (keyMeta.tier === 'free') {
+      // Hash the key into the bucket id so plaintext key material never enters
+      // COUNTERS_KV — preserves the credentials/counters isolation boundary.
+      const keyBucketId = await sha256Hex(apiKey);
+      const { allowed, remaining: rem, resetAt } = await checkDailyLimit(
+        env.COUNTERS_KV, 'rl', keyBucketId, FREE_TIER_DAILY_LIMIT,
+      );
+      if (!allowed) {
+        return errorResponse(429, `Daily limit reached (${FREE_TIER_DAILY_LIMIT} req/day). Upgrade to contributor tier for unlimited.`, {
+          'X-RateLimit-Limit': String(FREE_TIER_DAILY_LIMIT),
+          'X-RateLimit-Remaining': '0',
+          'X-RateLimit-Reset': new Date(resetAt).toUTCString(),
+          'Retry-After': String(Math.floor((resetAt - Date.now()) / 1000)),
+        });
+      }
+      remaining = rem;
     }
 
     // M2: /v1/models — return normalized list (never proxy FS model paths to clients)
