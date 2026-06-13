@@ -185,3 +185,6 @@ tools/
 .cursor/
 .gemini/
 .cline/
+
+# wrangler local build artifacts
+workers/**/.wrangler/
