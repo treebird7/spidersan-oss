@@ -142,6 +142,81 @@ async function main() {
     rmSync(dir, { recursive: true, force: true });
   }
 
+  // ── #3 partial-line guard: a torn final tag is NOT folded until completed ──
+  console.log('\n#3 partial-line guard:');
+  {
+    // mid-write: the final line has no trailing newline → it is incomplete.
+    const torn = [L('human', '[SESSION id=s repo=r incident=merge-order opened_by=human extra=""]'),
+                  '[VOTE agent=spi'];            // torn — no closing fields, no newline
+    const r = step(torn, 0);
+    eq('torn final line is NOT consumed (no vote folded)', r.session.votes.size, 0);
+    eq('cursor stops before the partial line', r.cursor, 1);
+    // once the writer finishes the line (trailing '' appears), it folds.
+    const whole = [torn[0], L('spidersan', '[VOTE agent=spidersan action=merge confidence=high extra=""]'), ''];
+    const r2 = step(whole, r.cursor);
+    eq('completed line now folds the vote', r2.session.votes.get('spidersan')?.action, 'merge');
+  }
+
+  // ── #4 incremental fold == full re-fold (determinism) ──────────────────────
+  console.log('\n#4 incremental fold == full re-fold:');
+  {
+    const lines = [
+      L('human', '[SESSION id=s repo=r incident=merge-order opened_by=human extra=""]'),
+      L('spidersan', '[VOTE agent=spidersan action=merge confidence=high extra=""]'),
+      L('mycsan', '[VERIFY n=1 agent=mycsan checks="x" result=pass extra=""]'), '',
+    ];
+    const full = step(lines, 0);                          // one-shot full fold
+    // incremental: fold line-by-line, threading prev session through
+    let prev = step([lines[0], ''], 0).session;
+    prev = step([lines[0], lines[1], ''], 1, {}, prev).session;
+    const incr = step(lines, 2, {}, prev);
+    eq('same votes', incr.session.votes.get('spidersan')?.action, full.session.votes.get('spidersan')?.action);
+    eq('same verify count', incr.session.verifications.length, full.session.verifications.length);
+    eq('same final cursor', incr.cursor, full.cursor);
+  }
+
+  // ── #1 onEnd ALWAYS runs + done RESOLVES even when a handler throws ─────────
+  console.log('\n#1 cleanup contract (error never leaks):');
+  {
+    let ended = false; let errored = false;
+    const h = watchResolve(
+      { read: () => [L('bob', '[GO from=bob session=s step=1 extra=""]'), ''] },
+      {
+        onWake: () => { throw new Error('boom in onWake'); },   // handler throws
+        onError: () => { errored = true; },
+        onEnd: () => { ended = true; },
+      },
+      {}, { pollMs: 10 },
+    );
+    await sleep(40);
+    h.stop();
+    await h.done;                                                // must RESOLVE, not reject
+    check('onError fired on the handler throw', errored);
+    check('onEnd ran despite the throw (cleanup contract)', ended);
+  }
+
+  // ── #2 transient read() error → backoff + recovery, loop survives ──────────
+  console.log('\n#2 backoff recovery:');
+  {
+    let reads = 0;
+    const source: ResolveSource = {
+      read: () => {
+        reads++;
+        if (reads === 1) throw new Error('transient read fail');  // first read throws
+        return [L('bob', '[GO from=bob session=s step=1 extra=""]'), ''];
+      },
+    };
+    const woke: WakeEvent[] = [];
+    let errs = 0;
+    const h = watchResolve(source, { onWake: (e) => { woke.push(...e); }, onError: () => { errs++; } },
+      { predicates: [wake8Predicate] }, { pollMs: 10, maxBackoffMs: 30 });
+    await sleep(80);
+    h.stop();
+    await h.done;
+    check('the transient error was reported', errs >= 1);
+    check('loop survived and still woke on the GO after recovery', woke.some((e) => e.tagName === 'GO'));
+  }
+
   console.log('\n' + '─'.repeat(50));
   console.log(`Results: ${passed} passed, ${failed} failed`);
   if (failed > 0) { console.log('Some tests FAILED ❌'); process.exit(1); }
