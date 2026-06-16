@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-06-16
+
+### Added
+
+- **`spidersan merge-plan`** — ordered merge plan for open PRs; fuses PR merge-state + CI rollup (`src/lib/github.ts`), real `git merge-tree` conflicts (`src/lib/git-merge-analyzer.ts`), staleness (commits behind base), and stacked-base detection into a per-PR verdict (MERGE / BLOCKED / WAIT / VERIFY / STALE / UNKNOWN) plus a topologically-ordered global plan. Fork-safe head via `pull/<n>/head`; advisory (always exit 0). Supports `--json`, `--base`, `--limit`, `--include-drafts`, `--repo`.
+- **`spidersan pr-check <number>`** — check a single PR's merge readiness: stacked-base detection and red/behind/conflict state with failing *required* checks surfaced. Advisory by default; `--exit-code` makes it gate for pre-merge hooks. Supports `--json`, `--repo`.
+- **`spidersan verify-trunk`** — detect (and with `--fix` reset) registry "trunk-poison": the trunk branch (main/master) claiming files in the spidersan registry, which a clean auto-merge can silently re-introduce. `--exit-code` gates for post-merge hooks; `--json` for tooling.
+- **`spidersan conflicts --real`** — compute TRUE merge conflicts via `git merge-tree` (vs registry overlap), distinguishing same-file-different-region (clean) from real conflict. Works with no registry for a single target; `--all` checks every active branch, `--base <ref>` sets trunk, `--exit-code` gates.
+
 ## [0.10.0] - 2026-05-11
 
 ### Added

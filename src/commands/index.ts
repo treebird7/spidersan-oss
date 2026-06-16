@@ -29,6 +29,11 @@ export { loadEcosystemCommands, getEcosystemStatus } from './ecosystem-loader.js
 export { githubSyncCommand } from './github-sync.js';
 export { syncAdvisorCommand } from './sync-advisor.js';
 
+// PR coordination: merge-plan, pr-check, verify-trunk
+export { mergePlanCommand } from './merge-plan.js';
+export { prCheckCommand } from './pr-check.js';
+export { verifyTrunkCommand } from './verify-trunk.js';
+
 // F5: TUI Dashboard
 export { dashboardCommand } from './dashboard.js';
 

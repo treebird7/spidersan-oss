@@ -89,6 +89,7 @@ spidersan merge-order
 | `spidersan list` | List all registered branches and their file ownership |
 | `spidersan conflicts` | Detect file conflicts between branches (tiered: T1/T2/T3) |
 | `spidersan conflicts --ecosystem` | Aggregate conflict scan across all repos in your dev folder |
+| `spidersan conflicts --real` | Compute TRUE merge conflicts via `git merge-tree` (vs registry overlap) |
 | `spidersan merge-order` | Get topologically-sorted optimal merge order |
 | `spidersan ready-check` | Verify branch is ready to merge (no WIP, no conflicts) |
 | `spidersan depends` | Set/show branch dependencies (Supabase only) |
@@ -179,6 +180,9 @@ spidersan bot remove myrepo
 | `spidersan registry-sync --status` | Show sync status across all machines |
 | `spidersan cross-conflicts` | Detect file conflicts across machines via Supabase |
 | `spidersan github-sync` | Fetch branch/PR/CI status from GitHub for configured repos |
+| `spidersan merge-plan` | Ordered merge plan for open PRs (fuses PR + CI + real git conflicts) |
+| `spidersan pr-check <number>` | Check a PR's merge readiness (stacked base, red/behind state) |
+| `spidersan verify-trunk` | Detect registry trunk-poison (main/master must claim no files) |
 | `spidersan pulse` | Sync from Colony then show active conflicts (quick health-check) |
 | `spidersan pulse --remote-drift` | Fetch origin + detect remote drift zone; cross-ref against registry and unstaged files |
 

@@ -262,3 +262,193 @@ export async function getPRDetails(prNumber: number): Promise<GitHubPRDetails> {
         files,
     };
 }
+
+// ---------------------------------------------------------------------------
+// PR merge-state + CI rollup (Feature 3 / A2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Merge readiness of a PR: stacked-base detection, conflict/red state, and a
+ * defensively-parsed CI check rollup. Backs `spidersan pr-check`.
+ */
+export interface PRMergeState {
+    number: number;
+    title: string;
+    /** Base branch the PR merges into. != trunk ⇒ stacked PR. */
+    baseRefName: string;
+    headRefName: string;
+    /** GitHub mergeability (computed async; can briefly be UNKNOWN). */
+    mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN';
+    /** Combined merge-state status from GitHub. */
+    mergeStateStatus:
+        | 'CLEAN' | 'UNSTABLE' | 'DIRTY' | 'BEHIND'
+        | 'BLOCKED' | 'DRAFT' | 'HAS_HOOKS' | 'UNKNOWN';
+    /** Per-check buckets (heterogeneous CheckRun + StatusContext nodes). */
+    checks: { name: string; bucket: 'pass' | 'fail' | 'pending' | 'skipping'; required: boolean }[];
+    /** Aggregate rollup. `failingRequired` = names of failing *required* checks only. */
+    checkRollup: { pass: number; fail: number; pending: number; failingRequired: string[] };
+    /** PR head SHA (for fork-safe conflict analysis in merge-plan). */
+    headRefOid?: string;
+}
+
+/** Raw shape of a single `statusCheckRollup` node (fields are all optional). */
+interface RollupNode {
+    name?: string;
+    context?: string;
+    // CheckRun: status/conclusion. StatusContext: state.
+    status?: string | null;
+    conclusion?: string | null;
+    state?: string | null;
+    isRequired?: boolean;
+}
+
+/** Short delay before re-polling when mergeable is UNKNOWN. Overridable for tests. */
+let unknownRepollDelayMs = 1500;
+
+/** @internal test hook — set the UNKNOWN re-poll delay (keeps the suite fast). */
+export function __setUnknownRepollDelayForTests(ms: number): void {
+    unknownRepollDelayMs = ms;
+}
+
+function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Bucket one rollup node into pass/fail/pending/skipping from whichever of
+ * `conclusion` / `state` / `status` is present (nodes are heterogeneous and
+ * any field may be null/absent). Never throws.
+ */
+function bucketRollupNode(node: RollupNode): 'pass' | 'fail' | 'pending' | 'skipping' {
+    // Prefer the terminal conclusion; CheckRuns report status=COMPLETED + a conclusion,
+    // or status=QUEUED/IN_PROGRESS with a null conclusion. StatusContexts use `state`.
+    const signal = (node.conclusion ?? node.state ?? node.status ?? '')
+        .toString()
+        .toUpperCase();
+
+    switch (signal) {
+        case 'SUCCESS':
+            return 'pass';
+        case 'FAILURE':
+        case 'ERROR':
+        case 'CANCELLED':
+        case 'TIMED_OUT':
+        case 'ACTION_REQUIRED':
+        case 'STARTUP_FAILURE':
+            return 'fail';
+        case 'NEUTRAL':
+        case 'SKIPPED':
+            return 'skipping';
+        case 'PENDING':
+        case 'IN_PROGRESS':
+        case 'QUEUED':
+        case 'REQUESTED':
+        case 'WAITING':
+        case 'EXPECTED':
+            return 'pending';
+        default:
+            // null conclusion on a not-yet-complete run, or an unknown signal → pending.
+            return 'pending';
+    }
+}
+
+function parseRollup(rollup: unknown): Pick<PRMergeState, 'checks' | 'checkRollup'> {
+    const checks: PRMergeState['checks'] = [];
+    const rollupAgg = { pass: 0, fail: 0, pending: 0, failingRequired: [] as string[] };
+
+    const nodes: RollupNode[] = Array.isArray(rollup) ? (rollup as RollupNode[]) : [];
+    for (const node of nodes) {
+        if (!node || typeof node !== 'object') continue;
+        const name = node.name ?? node.context ?? 'unknown';
+        // isRequired is OFTEN ABSENT → default false.
+        const required = node.isRequired === true;
+        const bucket = bucketRollupNode(node);
+
+        checks.push({ name, bucket, required });
+
+        if (bucket === 'pass') rollupAgg.pass++;
+        else if (bucket === 'fail') {
+            rollupAgg.fail++;
+            // Only fail + required feeds failingRequired.
+            if (required) rollupAgg.failingRequired.push(name);
+        } else if (bucket === 'pending') rollupAgg.pending++;
+        // 'skipping' counts toward none of pass/fail/pending.
+    }
+
+    return { checks, checkRollup: rollupAgg };
+}
+
+function normalizeMergeable(v: unknown): PRMergeState['mergeable'] {
+    return v === 'MERGEABLE' || v === 'CONFLICTING' ? v : 'UNKNOWN';
+}
+
+function normalizeMergeStateStatus(v: unknown): PRMergeState['mergeStateStatus'] {
+    const allowed = ['CLEAN', 'UNSTABLE', 'DIRTY', 'BEHIND', 'BLOCKED', 'DRAFT', 'HAS_HOOKS'];
+    return typeof v === 'string' && allowed.includes(v)
+        ? (v as PRMergeState['mergeStateStatus'])
+        : 'UNKNOWN';
+}
+
+/** Single `gh pr view --json …` call. Returns parsed JSON, or null on any failure. */
+function fetchPRMergeJson(prNumber: number, repo?: string): Record<string, unknown> | null {
+    const args = ['pr', 'view'];
+    if (repo) {
+        args.push('--repo', repo);
+    }
+    args.push(
+        '--json',
+        'number,title,baseRefName,headRefName,headRefOid,mergeable,mergeStateStatus,statusCheckRollup',
+        '--',
+        String(prNumber),
+    );
+    try {
+        const out = execFileSync('gh', args, { encoding: 'utf-8', stdio: 'pipe' });
+        return JSON.parse(out) as Record<string, unknown>;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Fetch a PR's merge readiness: base branch (for stacked-PR detection),
+ * mergeable/merge-state status, and a defensively-bucketed CI rollup.
+ *
+ * One `gh pr view --json …` call. When `opts.repo` ("owner/name") is given it
+ * is passed as `--repo`. Re-polls once when `mergeable === 'UNKNOWN'` (GitHub
+ * computes it asynchronously), then reports as-is.
+ *
+ * @returns the merge state, or `null` if gh is unavailable or the PR isn't found.
+ */
+export async function getPRMergeState(
+    prNumber: number,
+    opts?: { repo?: string },
+): Promise<PRMergeState | null> {
+    if (!isGhAvailable()) return null;
+
+    const safePrNumber = validatePRNumber(prNumber);
+    const repo = opts?.repo;
+
+    let data = fetchPRMergeJson(safePrNumber, repo);
+    if (!data) return null;
+
+    // GitHub computes mergeability async — re-poll once if still UNKNOWN.
+    if (normalizeMergeable(data.mergeable) === 'UNKNOWN') {
+        await sleep(unknownRepollDelayMs);
+        const second = fetchPRMergeJson(safePrNumber, repo);
+        if (second) data = second;
+    }
+
+    const { checks, checkRollup } = parseRollup(data.statusCheckRollup);
+
+    return {
+        number: typeof data.number === 'number' ? data.number : safePrNumber,
+        title: typeof data.title === 'string' ? data.title : '',
+        baseRefName: typeof data.baseRefName === 'string' ? data.baseRefName : '',
+        headRefName: typeof data.headRefName === 'string' ? data.headRefName : '',
+        mergeable: normalizeMergeable(data.mergeable),
+        mergeStateStatus: normalizeMergeStateStatus(data.mergeStateStatus),
+        checks,
+        checkRollup,
+        headRefOid: typeof data.headRefOid === 'string' ? data.headRefOid : undefined,
+    };
+}

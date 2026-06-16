@@ -21,6 +21,8 @@ import { loadConfig } from '../lib/config.js';
 import { logActivity } from '../lib/activity.js';
 import { isGhAvailable, getPRDetails } from '../lib/github.js';
 import { classifyWithLabel } from '../lib/conflict-tier.js';
+import { analyzeRealConflicts, type RealConflictReport } from '../lib/git-merge-analyzer.js';
+import { getTrunkBranch } from '../lib/trunk.js';
 
 // Config
 const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
@@ -297,6 +299,90 @@ function runEcosystemScan(repos: string[], asJson: boolean): void {
     console.log(`   Repos scanned: ${results.length} | With conflicts: ${reposWithConflicts}`);
 }
 
+// ── Real (git merge-tree) conflict scan ─────────────────────────────────────────
+
+/**
+ * Render a single real-conflict report (git merge-tree backed) to the console.
+ * `✅ <branch>: clean vs <base>` or `⚠️ <branch>: N real conflict(s) vs <base>`
+ * with the conflicting file list + kind, plus a dim `method` line. On an
+ * environmental `error`, prints it and returns (caller continues to the next target).
+ */
+function renderRealReport(report: RealConflictReport): void {
+    if (report.error) {
+        console.log(`❌ ${report.branch}: ${report.error}`);
+        return;
+    }
+
+    if (report.clean) {
+        console.log(`✅ ${report.branch}: clean vs ${report.base}`);
+    } else {
+        const n = report.conflicts.length;
+        console.log(`⚠️ ${report.branch}: ${n} real conflict${n === 1 ? '' : 's'} vs ${report.base}`);
+        for (const c of report.conflicts) {
+            console.log(`   • ${c.file} (${c.kind})`);
+        }
+    }
+    // Dim trailing line showing which git path produced the result.
+    console.log(`\x1b[2m   method: ${report.method}\x1b[0m`);
+}
+
+/**
+ * `conflicts --real`: compute TRUE merge conflicts via git merge-tree against the
+ * trunk (or `--base`), for the current branch / `--branch` / (with `--all`) every
+ * active registered branch.
+ *
+ * Pure git for the single-target path — works with NO `.spidersan/registry.json`.
+ * Only `--all` (which enumerates registered branches) requires an initialized
+ * registry, and that path is gated here.
+ *
+ * @returns the process exit code (0 always, unless `--exit-code` + conflicts → 1).
+ */
+async function runRealConflicts(options: {
+    base?: string;
+    branch?: string;
+    all?: boolean;
+    json?: boolean;
+    exitCode?: boolean;
+}): Promise<number> {
+    const base = options.base || getTrunkBranch();
+
+    // Determine target branches.
+    let targets: string[];
+    if (options.all) {
+        // --all enumerates registered branches → requires an initialized registry.
+        const storage = await getStorage();
+        if (!(await storage.isInitialized())) {
+            console.error('❌ Spidersan not initialized. Run: spidersan init');
+            console.error('   (--real --all needs the registry; --real alone does not)');
+            return 1;
+        }
+        const branches = await storage.list();
+        targets = branches.filter((b) => b.status === 'active').map((b) => b.name);
+    } else {
+        targets = [options.branch || getCurrentBranch()];
+    }
+
+    const results: RealConflictReport[] = [];
+    for (const branch of targets) {
+        results.push(await analyzeRealConflicts(base, branch));
+    }
+
+    const anyConflicts = results.some((r) => !r.error && !r.clean);
+
+    if (options.json) {
+        console.log(JSON.stringify({ base, results }, null, 2));
+    } else {
+        if (results.length === 0) {
+            console.log(`🕷️ No active branches to check vs ${base}.`);
+        }
+        for (const report of results) {
+            renderRealReport(report);
+        }
+    }
+
+    return options.exitCode && anyConflicts ? 1 : 0;
+}
+
 export const conflictsCommand = new Command('conflicts')
     .description('Detect file conflicts between branches (with tiered blocking)')
     .option('--branch <name>', 'Check conflicts for specific branch')
@@ -312,7 +398,21 @@ export const conflictsCommand = new Command('conflicts')
     .option('--semantic', 'Use semantic (AST) analysis for symbol-level conflict detection')
     .option('--ecosystem', 'Scan all ecosystem repos and aggregate conflict tiers')
     .option('--repos <paths>', 'Comma-separated repo paths for --ecosystem scan')
+    .option('--real', 'Compute TRUE merge conflicts via git merge-tree (vs registry overlap)')
+    .option('--base <ref>', 'Base/trunk ref to merge into for --real (default: detected trunk)')
+    .option('--all', 'With --real: check every active registered branch')
+    .option('--exit-code', 'With --real: exit 1 if any real conflicts found (like git diff)')
     .action(async (options) => {
+        // ── Real (git merge-tree) conflicts ──────────────────────────────────
+        // Runs BEFORE the storage-init guard: a single-target real check is pure
+        // git and must work with no .spidersan/registry.json. Only --real --all
+        // touches the registry, and runRealConflicts gates that path itself.
+        if (options.real) {
+            const code = await runRealConflicts(options);
+            if (code !== 0) process.exit(code);
+            return;
+        }
+
         // ── Ecosystem shortcut ───────────────────────────────────────────────
         if (options.ecosystem) {
             const repos = options.repos
