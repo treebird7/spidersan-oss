@@ -1,0 +1,161 @@
+{
+  "project": "spidersan-pr-coordination",
+  "description": "Fuse GitHub PR + CI state with git-level conflict analysis so spidersan drives the merge train. Today every authoritative merge call bypasses spidersan for raw gh + git merge-tree.",
+  "branch": "feat/pr-coordination",
+  "version": "0.11.0",
+  "targetVersion": "0.11.0",
+  "updated": "2026-06-16",
+  "owner": "spidersan/m5",
+  "specs": {
+    "plan": "specs/PLAN_pr-coordination.md",
+    "merge-plan": "specs/SPEC_merge-plan.md",
+    "conflicts-real": "specs/SPEC_conflicts-real.md",
+    "pr-check-verify-trunk": "specs/SPEC_pr-check-verify-trunk.md"
+  },
+  "nonGoals": [
+    "Auto-classify CI red as flake vs real — surface staleness, human judges",
+    "Reimplement GitHub — reuse gh via src/lib/github.ts",
+    "Require Supabase — features are local-first"
+  ],
+  "phases": [
+    {
+      "id": "A",
+      "name": "Foundations (parallel, disjoint files)",
+      "status": "done",
+      "tasks": [
+        {
+          "id": "A1",
+          "title": "git merge-tree real-conflict analyzer",
+          "status": "done",
+          "writes": ["src/lib/git.ts", "src/lib/git-merge-analyzer.ts", "tests/git-merge-analyzer.test.ts"],
+          "reuses": ["src/lib/git.ts:execGit", "src/lib/git.ts:GitError"],
+          "consumedBy": ["B1", "B3"],
+          "spec": "specs/SPEC_conflicts-real.md#a1"
+        },
+        {
+          "id": "A2",
+          "title": "PR merge-state + CI rollup fetch",
+          "status": "done",
+          "writes": ["src/lib/github.ts", "tests/github-merge-state.test.ts"],
+          "reuses": ["src/lib/github.ts:isGhAvailable", "src/lib/github.ts:listPullRequests"],
+          "consumedBy": ["B2", "B3"],
+          "spec": "specs/SPEC_pr-check-verify-trunk.md#a2"
+        },
+        {
+          "id": "A3",
+          "title": "trunk detection helper",
+          "status": "done",
+          "writes": ["src/lib/trunk.ts", "tests/trunk.test.ts"],
+          "reuses": ["src/lib/git.ts:execGit"],
+          "consumedBy": ["B2", "B3"],
+          "spec": "specs/SPEC_pr-check-verify-trunk.md#a3"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "Commands (parallel, disjoint files; NO command-registry.ts edits)",
+      "status": "done",
+      "tasks": [
+        {
+          "id": "B1",
+          "title": "conflicts --real flag",
+          "status": "done",
+          "writes": ["src/commands/conflicts.ts", "tests/conflicts-real.test.ts"],
+          "deps": ["A1", "A3"],
+          "spec": "specs/SPEC_conflicts-real.md#b1"
+        },
+        {
+          "id": "B2",
+          "title": "pr-check + verify-trunk commands",
+          "status": "done",
+          "writes": ["src/commands/pr-check.ts", "src/commands/verify-trunk.ts", "tests/pr-check.test.ts", "tests/verify-trunk.test.ts"],
+          "deps": ["A2", "A3"],
+          "spec": "specs/SPEC_pr-check-verify-trunk.md#b2"
+        },
+        {
+          "id": "B3",
+          "title": "merge-plan command",
+          "status": "done",
+          "writes": ["src/commands/merge-plan.ts", "tests/merge-plan.test.ts"],
+          "deps": ["A1", "A2", "A3"],
+          "spec": "specs/SPEC_merge-plan.md"
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "name": "Integration (single agent, owns shared files + green build)",
+      "status": "done",
+      "tasks": [
+        {
+          "id": "C1",
+          "title": "register commands, barrel, changelog, version, build/typecheck/lint/test green",
+          "status": "done",
+          "writes": ["src/bin/command-registry.ts", "src/commands/index.ts", "src/lib/ai/reasoner.ts", "CHANGELOG.md", "package.json", "package-lock.json", "STATE.json", "README.md"],
+          "registrationPoints": ["src/bin/command-registry.ts COMMANDS array (ROUTES)", "src/commands/index.ts barrel (cosmetic)", "src/lib/ai/reasoner.ts KNOWN_SPIDERSAN_COMMANDS Set (parity-tested by tests/reasoner.validator.test.ts — discovered during Phase B; add merge-plan/pr-check/verify-trunk)"],
+          "deps": ["B1", "B2", "B3"],
+          "registers": [
+            {"name": "merge-plan", "description": "Ordered merge plan for open PRs (fuses PR + CI + real git conflicts)"},
+            {"name": "pr-check", "description": "Check a PR's merge readiness (stacked base, red/behind state)"},
+            {"name": "verify-trunk", "description": "Detect registry trunk-poison (main/master must claim no files)"}
+          ],
+          "gate": "npm run build && npm run typecheck && npm run lint && npm run test:run"
+        }
+      ]
+    }
+  ],
+  "acceptance": [
+    "build + typecheck + lint + test:run all green on feat/pr-coordination",
+    "tests/bin-command-registry.test.ts passes with 3 new commands (descriptions synced verbatim)",
+    "merge-plan reproduces the 2026-06-16 golden verdicts: #175 MERGE, #179 BLOCKED (CheckoutScreen.tsx), #181 WAIT stacked-on-#179",
+    "conflicts --real distinguishes same-file-different-region (clean) from real conflict",
+    "pr-check flags stacked/red; verify-trunk flags + --fix resets trunk poison",
+    "no edits to main; CHANGELOG + version bump present; this STATE.json updated to done",
+    "getMergeConflicts treats merge-tree exit-1 (conflict) as a RESULT via thrown-error stdout, not a failure; only bad-ref/not-a-repo become error",
+    "parser fixtures cover modern + legacy merge-tree: content, add/add, delete/modify, rename, paths-with-spaces",
+    "conflicts --real (no --all) works with NO .spidersan/registry.json; only --all requires an initialized registry; existing conflicts options unregressed",
+    "merge-plan threads repo into every gh call; filters open PRs; fork-safe head via pull/<n>/head or headRefOid; topo edges parent->child with a test that #179 precedes #181",
+    "version bump updates BOTH package.json and package-lock.json",
+    "bin-command-registry.test.ts green with 3 new COMMANDS entries (descriptions verbatim)"
+  ],
+  "orchestration": {
+    "mode": "workflow",
+    "preStep": "A0 (DONE): execGit exported from src/lib/git.ts so A3 (trunk.ts) is independent of A1.",
+    "collisionRule": "Phase A/B agents write ONLY their listed files; ALL shared-file edits happen in Phase C. No per-agent worktrees needed.",
+    "barriers": ["A before B (B imports A exports)", "B before C (C wires B modules)"]
+  },
+  "risks": [
+    "gh not authed in agent env -> isGhAvailable guard + degrade gracefully",
+    "old git without --write-tree -> dual-path analyzer legacy fallback",
+    "mergeStateStatus UNKNOWN async -> re-poll once then report honestly",
+    "registry description drift -> Phase C copies .description() verbatim"
+  ],
+  "knownIssues": [
+    {
+      "id": "BUG-2",
+      "severity": "major-but-legacy-only",
+      "where": "src/lib/git.ts parseLegacyConflicts",
+      "summary": "Legacy git merge-tree parser (git<2.38 only) under-reports marker-less conflict classes (modify/delete, rename/*) -> false-negative. Modern --write-tree path is always taken on git>=2.38 and is correct. Fleet is on git 2.50, so impact ~nil. Fix deferred; would need legacy modify/delete + rename semantics.",
+      "foundBy": "Phase-A QA (claude code-reviewer, 2026-06-16)",
+      "status": "tracked"
+    }
+  ],
+  "qaLog": [
+    {
+      "phase": "A",
+      "reviewer": "code reviewer",
+      "date": "2026-06-16",
+      "verdict": "yes-with-minor-fixes",
+      "fixed": "BUG-1 parseWriteTreeConflicts path truncation (regex now terminates on multi-word phrases) + 2 regression tests (modify/delete keyword path, rename/delete)",
+      "deferred": "BUG-2 (legacy-only, tracked)"
+    },
+    {
+      "phase": "C",
+      "reviewer": "Phase-C integration agent",
+      "date": "2026-06-16",
+      "verdict": "green",
+      "note": "Integration complete and fully green. Registered merge-plan/pr-check/verify-trunk in command-registry.ts (descriptions copied verbatim from each command's .description()), added barrel exports to commands/index.ts, and added all three to KNOWN_SPIDERSAN_COMMANDS in reasoner.ts (reasoner.validator.test.ts parity now passes). Version bumped 0.10.0 -> 0.11.0 in package.json + package-lock.json. CHANGELOG [0.11.0] and README updated. Gate: build + typecheck + lint + test:run all green; --help shows the 3 new commands and each loads cleanly."
+    }
+  ]
+}
