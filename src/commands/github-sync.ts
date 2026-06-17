@@ -21,6 +21,7 @@ import {
     getCommitInfo,
     getAheadBehind,
     type GitHubRepoConfig,
+    type AheadBehind,
 } from '../lib/github.js';
 import type { MachineIdentity } from '../types/cloud.js';
 
@@ -32,7 +33,8 @@ interface GitHubBranchRow {
     author: string;
     last_commit_sha: string;
     last_commit_date: string;
-    ahead_behind: { ahead: number; behind: number };
+    /** null = comparison could not be determined (NOT the same as in-sync {0,0}). */
+    ahead_behind: AheadBehind | null;
     pr_number: number | null;
     pr_status: string | null;
     is_default: boolean;
@@ -105,7 +107,7 @@ async function scanRepository(
             author: commit.author,
             last_commit_sha: commit.sha,
             last_commit_date: commit.date,
-            ahead_behind: { ahead: 0, behind: 0 },
+            ahead_behind: null,
             pr_number: pr?.number || null,
             pr_status: pr?.state || null,
             is_default: false,
@@ -113,10 +115,13 @@ async function scanRepository(
             scanned_by_machine: options.machine.id,
         };
 
-        try {
-            row.ahead_behind = await getAheadBehind(config, branch.name);
-        } catch {
-            // fallback already set above
+        const aheadBehind = await getAheadBehind(config, branch.name);
+        if (aheadBehind) {
+            row.ahead_behind = aheadBehind;
+        } else {
+            // Comparison failed (rate-limit / auth / network). Leave it null rather
+            // than recording {0,0}, which would mislabel a diverged branch as in-sync.
+            console.warn(`  ⚠️  ${branch.name}: could not determine ahead/behind (left as unknown)`);
         }
 
         // Suppress unused var warning for ciStatus until Supabase table exists
