@@ -255,13 +255,10 @@ async function gatherOne(
     }
 
     // Staleness: how many commits behind the base. (head vs base ahead/behind.)
-    let behind = 0;
-    try {
-        const ab = await getAheadBehind(config, head, base);
-        behind = ab.behind;
-    } catch {
-        behind = 0;
-    }
+    // getAheadBehind returns null when the compare couldn't be determined; treat
+    // that as "unknown staleness" (0) — mergeStateStatus=BEHIND is the primary signal.
+    const ab = await getAheadBehind(config, head, base);
+    const behind = ab?.behind ?? 0;
 
     return {
         number: pr.number,

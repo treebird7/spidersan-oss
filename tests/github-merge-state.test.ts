@@ -7,6 +7,7 @@ vi.mock('child_process', () => ({
 
 import {
     getPRMergeState,
+    getAheadBehind,
     __setUnknownRepollDelayForTests,
     type PRMergeState,
 } from '../src/lib/github.js';
@@ -279,5 +280,54 @@ describe('getPRMergeState', () => {
         // StatusContext surfaced under its `context` value as the name.
         expect(state.checks.some(c => c.name === 'legacy/status-context' && c.bucket === 'pass')).toBe(true);
         expect(state.checks.some(c => c.name === 'legacy/failing' && c.bucket === 'fail')).toBe(true);
+    });
+});
+
+describe('getAheadBehind', () => {
+    const config = { owner: 'treebird7', repo: 'spidersan' };
+
+    /** Route the `gh api …/compare/…` call to a single payload (string) or thrown Error. */
+    function routeCompare(payload: string | Error) {
+        mockExecFileSync.mockImplementation(((_cmd: string, args: unknown) => {
+            const a = args as string[];
+            if (Array.isArray(a) && a[0] === 'api' && String(a[1]).includes('/compare/')) {
+                if (payload instanceof Error) throw payload;
+                return payload;
+            }
+            throw new Error(`unexpected gh call: ${JSON.stringify(args)}`);
+        }) as unknown as typeof execFileSync);
+    }
+
+    it('returns parsed counts when the branch is diverged', async () => {
+        routeCompare(JSON.stringify({ ahead: 3, behind: 5 }));
+        expect(await getAheadBehind(config, 'feat/x')).toEqual({ ahead: 3, behind: 5 });
+    });
+
+    it('returns {0,0} only when the branch is GENUINELY in sync', async () => {
+        routeCompare(JSON.stringify({ ahead: 0, behind: 0 }));
+        expect(await getAheadBehind(config, 'feat/x')).toEqual({ ahead: 0, behind: 0 });
+    });
+
+    it('returns null (NOT {0,0}) on a gh failure — e.g. rate-limit / 403', async () => {
+        routeCompare(new Error('HTTP 403: API rate limit exceeded'));
+        // The whole point of the fix: a failed compare must be distinguishable
+        // from an in-sync branch so callers never mislabel a diverged branch.
+        expect(await getAheadBehind(config, 'feat/x')).toBeNull();
+    });
+
+    it('returns null on unparseable output', async () => {
+        routeCompare('not json');
+        expect(await getAheadBehind(config, 'feat/x')).toBeNull();
+    });
+
+    it('returns null on a non-numeric compare result', async () => {
+        routeCompare(JSON.stringify({ ahead: null, behind: null }));
+        expect(await getAheadBehind(config, 'feat/x')).toBeNull();
+    });
+
+    it('returns null on an invalid branch name without spawning gh', async () => {
+        routeCompare(new Error('should not be called'));
+        expect(await getAheadBehind(config, 'evil; rm -rf ~')).toBeNull();
+        expect(mockExecFileSync).not.toHaveBeenCalled();
     });
 });

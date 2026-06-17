@@ -8,6 +8,19 @@
 import { execFileSync } from 'child_process';
 import { validateBranchName, validatePRNumber } from './security.js';
 
+/**
+ * Env-gated debug breadcrumb (mirrors the DEBUG_COLONY convention). Off by
+ * default so normal runs stay quiet; set DEBUG_GITHUB=1 to surface the reason a
+ * gh call failed instead of having it swallowed into a benign-looking default.
+ */
+function debugGitHub(message: string, detail?: unknown): void {
+    if (!process.env.DEBUG_GITHUB) return;
+    const suffix = detail instanceof Error
+        ? `: ${detail.message}`
+        : detail !== undefined ? `: ${String(detail)}` : '';
+    console.error(`[github] ${message}${suffix}`);
+}
+
 export interface GitHubRepoConfig {
     owner: string;
     repo: string;
@@ -196,25 +209,53 @@ export async function getCIStatus(config: GitHubRepoConfig, branch: string): Pro
 
 /**
  * Compare a branch to main (or specified base) and get ahead/behind counts.
+ *
+ * Returns `null` when the comparison could not be determined — an invalid
+ * branch name, a gh transport/auth/rate-limit failure, or unparseable output.
+ * This is deliberately distinct from `{ ahead: 0, behind: 0 }`, which means the
+ * branch is genuinely in sync. Callers MUST NOT treat `null` as "in sync": a
+ * rate-limited or 403'd compare would otherwise mislabel a diverged branch as
+ * clean. Set DEBUG_GITHUB=1 to see the underlying failure.
  */
-export async function getAheadBehind(config: GitHubRepoConfig, branch: string, baseBranch = 'main'): Promise<AheadBehind> {
+export async function getAheadBehind(config: GitHubRepoConfig, branch: string, baseBranch = 'main'): Promise<AheadBehind | null> {
+    let safeBranch: string;
+    let safeBaseBranch: string;
     try {
-        const safeBranch = validateBranchName(branch);
-        const safeBaseBranch = validateBranchName(baseBranch);
-        const output = execFileSync('gh', [
+        safeBranch = validateBranchName(branch);
+        safeBaseBranch = validateBranchName(baseBranch);
+    } catch (error) {
+        debugGitHub('getAheadBehind: invalid branch name', error);
+        return null;
+    }
+
+    const range = `${safeBaseBranch}...${safeBranch}`;
+    let output: string;
+    try {
+        output = execFileSync('gh', [
             'api',
-            `repos/${config.owner}/${config.repo}/compare/${safeBaseBranch}...${safeBranch}`,
+            `repos/${config.owner}/${config.repo}/compare/${range}`,
             '--jq',
             '{ahead: .ahead_by, behind: .behind_by}',
-        ], { encoding: 'utf-8' });
-        try {
-            const data = JSON.parse(output);
-            return { ahead: data.ahead || 0, behind: data.behind || 0 };
-        } catch {
-            return { ahead: 0, behind: 0 };
+        ], { encoding: 'utf-8', stdio: 'pipe' });
+    } catch (error) {
+        // Transport / auth / rate-limit failure — surface as "unknown", NOT {0,0}.
+        debugGitHub(`getAheadBehind(${range}): gh compare failed`, error);
+        return null;
+    }
+
+    try {
+        const data = JSON.parse(output);
+        // jq emits `null` for a missing ahead_by/behind_by — treat that as
+        // "couldn't determine", not 0. (Number(null) === 0 would mask it.)
+        if (typeof data.ahead !== 'number' || typeof data.behind !== 'number'
+            || !Number.isFinite(data.ahead) || !Number.isFinite(data.behind)) {
+            debugGitHub(`getAheadBehind(${range}): non-numeric compare result`, output.trim());
+            return null;
         }
-    } catch {
-        return { ahead: 0, behind: 0 };
+        return { ahead: data.ahead, behind: data.behind };
+    } catch (error) {
+        debugGitHub(`getAheadBehind(${range}): unparseable compare output`, error);
+        return null;
     }
 }
 
