@@ -24,6 +24,21 @@ import type { Interface as ReadlineInterface } from 'readline';
 import type { SpiderContext } from './ai/types.js';
 import type { ReasoningResult, ReasoningMode } from './ai/index.js';
 
+/**
+ * Env-gated debug breadcrumb (mirrors DEBUG_COLONY). The logging functions below
+ * deliberately never throw — a failed write must not crash `spidersan ask`. But
+ * "never throw" silently dropped a session/outcome with zero trace, so a disk-full
+ * or permission error meant lost gold pairs that looked like they were captured.
+ * Set DEBUG_SESSIONS=1 to surface the reason. Off by default.
+ */
+function debugSession(message: string, detail?: unknown): void {
+  if (!process.env.DEBUG_SESSIONS) return;
+  const suffix = detail instanceof Error
+    ? `: ${detail.message}`
+    : detail !== undefined ? `: ${String(detail)}` : '';
+  console.error(`[sessions] ${message}${suffix}`);
+}
+
 // ─── Types ────────────────────────────────────────────────────
 
 export type SessionOutcome =
@@ -89,8 +104,10 @@ export function logSession(
       outcome_captured_at: null,
     };
     appendFileSync(dateFile(), JSON.stringify(entry) + '\n', { encoding: 'utf-8' });
-  } catch {
-    // Silent — logging must never crash the main command
+  } catch (error) {
+    // Never crash the main command — but leave a trace so a silently-lost
+    // session (disk full, bad perms) is diagnosable instead of invisible.
+    debugSession(`logSession(${mode}): failed to append session ${session_id}`, error);
   }
   return session_id;
 }
@@ -120,8 +137,10 @@ export function captureOutcome(session_id: string, outcome: SessionOutcome): voi
       writeFileSync(filePath, lines.join('\n') + '\n', { encoding: 'utf-8' });
       return;
     }
-  } catch {
-    // Silent
+  } catch (error) {
+    // Never throw — but a dropped outcome is exactly the field that turns a
+    // session into a gold pair, so make the loss diagnosable under DEBUG_SESSIONS.
+    debugSession(`captureOutcome: failed to record outcome for ${session_id}`, error);
   }
 }
 
