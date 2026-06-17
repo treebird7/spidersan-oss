@@ -8,6 +8,15 @@
 import { Project, SyntaxKind } from 'ts-morph';
 import { existsSync } from 'fs';
 
+/** Env-gated debug breadcrumb (mirrors DEBUG_COLONY). Off by default. */
+function debugSymbols(message: string, detail?: unknown): void {
+  if (!process.env.DEBUG_SYMBOLS) return;
+  const suffix = detail instanceof Error
+    ? `: ${detail.message}`
+    : detail !== undefined ? `: ${String(detail)}` : '';
+  console.error(`[symbols] ${message}${suffix}`);
+}
+
 export interface ExtractedSymbol {
   name: string;
   kind: 'function' | 'class' | 'type' | 'interface' | 'const' | 'enum' | 'other';
@@ -17,11 +26,22 @@ export interface ExtractedSymbol {
 export interface FileSymbols {
   file: string;
   symbols: ExtractedSymbol[];
+  /**
+   * Set when the file could NOT be parsed (ts-morph threw). An empty `symbols`
+   * with `parseError` set is fundamentally different from a genuinely empty
+   * file: callers MUST NOT conclude "no symbols here" — the truth is unknown.
+   * Conflating the two is a false negative (e.g. a branch wrongly reported as
+   * fully superseded by main). Left undefined on the happy path.
+   */
+  parseError?: string;
 }
 
 /**
  * Extract all exported symbols from a TypeScript file.
- * Returns an empty symbols array if the file doesn't exist or isn't parseable.
+ *
+ * Returns an empty `symbols` array when the file genuinely has no exports OR
+ * doesn't exist. When the file exists but FAILS TO PARSE, `symbols` is empty
+ * AND `parseError` is set — callers must distinguish these (see FileSymbols).
  */
 export function extractSymbols(filePath: string): FileSymbols {
   if (!existsSync(filePath)) {
@@ -45,9 +65,23 @@ export function extractSymbols(filePath: string): FileSymbols {
       }
     }
 
+    // ts-morph is lenient: it does NOT throw on broken TS — it silently drops
+    // the unparseable declarations and returns a partial (often empty) set.
+    // So a syntactically broken branch file would otherwise be indistinguishable
+    // from a genuinely empty one. Surface SYNTACTIC errors (not type errors —
+    // those parse fine and their symbols are real) as parseError so callers
+    // treat the symbol set as unreliable rather than authoritative.
+    const syntaxErrors = project.getProgram().getSyntacticDiagnostics(sourceFile);
+    if (syntaxErrors.length > 0) {
+      debugSymbols(`extractSymbols(${filePath}): ${syntaxErrors.length} syntax error(s)`);
+      return { file: filePath, symbols, parseError: `${syntaxErrors.length} syntax error(s)` };
+    }
+
     return { file: filePath, symbols };
-  } catch {
-    return { file: filePath, symbols: [] };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    debugSymbols(`extractSymbols(${filePath}): parse failed`, error);
+    return { file: filePath, symbols: [], parseError: message };
   }
 }
 
@@ -88,12 +122,22 @@ export function findSymbolOverlaps(
   left: { branch: string; symbols: FileSymbols },
   right: { branch: string; symbols: FileSymbols },
 ): SymbolOverlap[] {
-  const leftMap = new Map(left.symbols.symbols.map(s => [s.name, s]));
-  const overlaps: SymbolOverlap[] = [];
+  // Group by name (a file can legitimately export several declarations under
+  // one name — overload signatures, declaration merges). A plain
+  // `new Map(…map(s => [s.name, s]))` keeps only the LAST, silently dropping
+  // the other locations from the overlap report.
+  const leftByName = new Map<string, ExtractedSymbol[]>();
+  for (const s of left.symbols.symbols) {
+    const bucket = leftByName.get(s.name);
+    if (bucket) bucket.push(s);
+    else leftByName.set(s.name, [s]);
+  }
 
+  const overlaps: SymbolOverlap[] = [];
   for (const rs of right.symbols.symbols) {
-    const ls = leftMap.get(rs.name);
-    if (ls) {
+    const matches = leftByName.get(rs.name);
+    if (!matches) continue;
+    for (const ls of matches) {
       overlaps.push({
         name: rs.name,
         kind: rs.kind,
