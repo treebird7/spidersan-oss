@@ -99,10 +99,16 @@ async function getRegistryContext(currentBranch: string): Promise<ContextSource<
       commitsBehindMain: 0,
     }));
 
-    const activeBranches = branches.filter(b => b.status === 'active');
-    const staleBranches = branches.filter(
-      b => b.status === 'active' && new Date(b.lastUpdated).getTime() < staleThreshold,
-    );
+    // ⚡ Bolt: Single pass O(N) loop to count active and stale branches instead of multiple O(N) Array.filter() allocations.
+    let active = 0, stale = 0;
+    for (const b of branches) {
+      if (b.status === 'active') {
+        active++;
+        if (new Date(b.lastUpdated).getTime() < staleThreshold) {
+          stale++;
+        }
+      }
+    }
 
     // Compute conflicts: find file overlaps between current branch and others
     const currentEntry = allBranches.find((b: Branch) => b.name === currentBranch);
@@ -133,8 +139,8 @@ async function getRegistryContext(currentBranch: string): Promise<ContextSource<
     return {
       available: true,
       data: {
-        active: activeBranches.length,
-        stale: staleBranches.length,
+        active,
+        stale,
         branches,
         conflicts,
       },
@@ -264,6 +270,14 @@ export async function buildContext(options: BuildContextOptions = {}): Promise<S
 
   const conflicts = registryCtx.data.conflicts;
 
+  // ⚡ Bolt: Single pass O(N) over conflicts to count tiers, avoiding three O(N) traversals and array allocations.
+  let tier1 = 0, tier2 = 0, tier3 = 0;
+  for (const c of conflicts) {
+    if (c.tier === 1) tier1++;
+    else if (c.tier === 2) tier2++;
+    else if (c.tier === 3) tier3++;
+  }
+
   const context: SpiderContext = {
     timestamp: new Date().toISOString(),
     repo: gitInfo.data.repo,
@@ -274,9 +288,9 @@ export async function buildContext(options: BuildContextOptions = {}): Promise<S
       branches: registryCtx.data.branches,
     },
     conflicts: {
-      tier1: conflicts.filter(c => c.tier === 1).length,
-      tier2: conflicts.filter(c => c.tier === 2).length,
-      tier3: conflicts.filter(c => c.tier === 3).length,
+      tier1,
+      tier2,
+      tier3,
       details: conflicts,
     },
     gitStatus: {
