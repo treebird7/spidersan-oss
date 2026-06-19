@@ -264,7 +264,11 @@ function runEcosystemScan(repos: string[], asJson: boolean): void {
         (acc, r) => ({ tier3: acc.tier3 + r.tier3, tier2: acc.tier2 + r.tier2, tier1: acc.tier1 + r.tier1 }),
         { tier3: 0, tier2: 0, tier1: 0 },
     );
-    const reposWithConflicts = results.filter(r => r.tier3 + r.tier2 + r.tier1 > 0).length;
+    // Performance Optimization: Count manually to avoid O(N) intermediate array allocation
+    let reposWithConflicts = 0;
+    for (const r of results) {
+        if (r.tier3 + r.tier2 + r.tier1 > 0) reposWithConflicts++;
+    }
 
     if (asJson) {
         console.log(JSON.stringify({

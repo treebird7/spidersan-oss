@@ -1,0 +1,3 @@
+## 2024-05-24 - Avoid `.filter(...).length` for array counting
+**Learning:** In TypeScript/JavaScript, chaining `.filter(condition).length` requires an unnecessary O(N) memory allocation to create an intermediate array before discarding it for its length. This causes performance overhead, especially in hot loops or with large datasets, and can be further amplified when doing multiple subsequent `.filter().length` checks on the same dataset.
+**Action:** Replace `.filter(condition).length` with a simple `let count = 0; for(const x of arr) { if(condition(x)) count++; }` to avoid intermediate array allocation and ensure O(1) memory usage. For multiple related counts, compute them inside a single shared loop.

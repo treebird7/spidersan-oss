@@ -169,12 +169,18 @@ export const pulseCommand = new Command('pulse')
             }
         }
 
+        // Performance Optimization: Count active branches manually to avoid O(N) array allocation
+        let activeBranchCount = 0;
+        for (const branch of allBranches) {
+            if (branch.status === 'active') activeBranchCount++;
+        }
+
         console.log(renderPulseReport({
             branch: currentBranch,
             registered: true,
             colonySynced,
             colonyOffline,
-            activeBranches: allBranches.filter((branch) => branch.status === 'active').length,
+            activeBranches: activeBranchCount,
             conflicts,
             drift,
         }));
