@@ -83,8 +83,15 @@ describe('conflicts --real', () => {
         logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
         errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
         (getTrunkBranch as Mock).mockReturnValue('main');
-        // getCurrentBranch() → execFileSync('git', ['rev-parse', ...])
-        (execFileSync as Mock).mockReturnValue('feat/current\n');
+        // getCurrentBranch() → execFileSync('git', ['rev-parse', ...]).
+        // reconcile-on-read also probes `merge-base --is-ancestor`; throw there
+        // so registered branches read as NOT merged (still in flight).
+        (execFileSync as Mock).mockImplementation((_cmd: string, args?: string[]) => {
+            if (Array.isArray(args) && args.includes('--is-ancestor')) {
+                throw new Error('not an ancestor');
+            }
+            return 'feat/current\n';
+        });
     });
 
     it('clean current branch → exit 0 and prints "clean vs <base>"', async () => {

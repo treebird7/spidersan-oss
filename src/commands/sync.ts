@@ -1,29 +1,21 @@
 /**
  * spidersan sync
- * 
- * Sync local registry with git state.
+ *
+ * Reconcile the local registry against git truth and prune dead entries.
+ *
+ * Prunes BOTH:
+ *   - orphaned — branch ref gone from local and remote
+ *   - merged   — branch tip is an ancestor of trunk (or status `completed`)
+ *
+ * Previously sync only removed orphans, so a merged branch lingered in the
+ * registry forever and kept producing phantom conflicts (tb-8sa.1 / §1.2).
+ * Merged entries are now deleted, not just marked.
  */
 
 import { Command } from 'commander';
-import { execFileSync } from 'child_process';
 import { getStorage } from '../storage/index.js';
 import { logActivity } from '../lib/activity.js';
-
-function getGitBranches(): string[] {
-    const branches = new Set<string>();
-    try {
-        const local = execFileSync('git', ['branch', '--format=%(refname:short)'], { encoding: 'utf-8' });
-        local.trim().split('\n').filter(Boolean).forEach(b => branches.add(b));
-    } catch { /* no local branches */ }
-    try {
-        const remote = execFileSync('git', ['branch', '-r', '--format=%(refname:short)'], { encoding: 'utf-8' });
-        remote.trim().split('\n').filter(Boolean)
-            .map(b => b.replace(/^origin\//, ''))
-            .filter(b => b !== 'HEAD')
-            .forEach(b => branches.add(b));
-    } catch { /* no remote branches */ }
-    return Array.from(branches);
-}
+import { reconcileBranches } from '../lib/reconcile.js';
 
 export const syncCommand = new Command('sync')
     .description('Sync registry with actual git branches')
@@ -36,27 +28,27 @@ export const syncCommand = new Command('sync')
             process.exit(1);
         }
 
-        const gitBranches = new Set(getGitBranches());
-        const registeredBranches = await storage.list();
+        const { merged, orphaned } = reconcileBranches(await storage.list());
+        const stale = [
+            ...merged.map(name => ({ name, reason: 'merged' as const })),
+            ...orphaned.map(name => ({ name, reason: 'orphaned' as const })),
+        ];
 
-        // Find branches in registry but not in git
-        const orphaned = registeredBranches.filter(b => !gitBranches.has(b.name));
-
-        if (orphaned.length === 0) {
+        if (stale.length === 0) {
             console.log('🕷️ Registry is in sync with git.');
-            logActivity({ event: 'sync', details: { orphaned: 0, action: 'clean' } });
+            logActivity({ event: 'sync', details: { merged: 0, orphaned: 0, action: 'clean' } });
             return;
         }
 
-        console.log(`🕷️ Found ${orphaned.length} orphaned branch(es):\n`);
+        console.log(`🕷️ Found ${stale.length} stale entr${stale.length === 1 ? 'y' : 'ies'} (${merged.length} merged, ${orphaned.length} orphaned):\n`);
 
-        for (const branch of orphaned) {
+        for (const { name, reason } of stale) {
             if (options.dryRun) {
-                console.log(`  Would remove: ${branch.name}`);
+                console.log(`  Would remove (${reason}): ${name}`);
             } else {
-                await storage.unregister(branch.name);
-                console.log(`  🗑️  Removed: ${branch.name}`);
-                logActivity({ event: 'sync', branch: branch.name, details: { action: 'removed_orphan' } });
+                await storage.unregister(name);
+                console.log(`  🗑️  Removed (${reason}): ${name}`);
+                logActivity({ event: 'sync', branch: name, details: { action: `removed_${reason}` } });
             }
         }
 

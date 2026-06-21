@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Reconcile-on-read** (`src/lib/reconcile.ts`) — `conflicts`, `ready-check`, and `merge-order` now fold git truth over the registry's `status` before answering: a branch already merged into trunk (`git merge-base --is-ancestor`, or registry status `completed`) is dropped from conflict detection. Retires the phantom-conflict class where a fully-merged branch kept showing as conflicting from a stale worktree. New git primitives `resolveBranchRef` / `isMergedInto` (`src/lib/git.ts`). Orphaned (no-ref) branches are deliberately KEPT on the read path — a missing ref can mean "unfetched on another machine", and dropping it would miss a real conflict.
+
+### Fixed
+
+- **`spidersan sync`** now prunes **merged** registry entries (is-ancestor / status `completed`), not just orphans. Previously a merged branch whose ref still existed lingered forever and kept phantom-conflicting; merged entries are now deleted, not just marked.
+
 ## [0.11.0] - 2026-06-16
 
 ### Added

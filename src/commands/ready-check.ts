@@ -10,6 +10,7 @@ import { readFile } from 'fs/promises';
 import { getStorage } from '../storage/index.js';
 import { loadConfig, getWipPatterns } from '../lib/config.js';
 import { getChangedFiles, getCurrentBranch } from '../lib/git.js';
+import { activeBranches } from '../lib/reconcile.js';
 import { Minimatch } from 'minimatch';
 
 export function shouldExcludeFile(file: string, excludePatterns: Minimatch[]): boolean {
@@ -93,8 +94,9 @@ export const readyCheckCommand = new Command('ready-check')
             }
         }
 
-        // Check for conflicts
-        const allBranches = await storage.list();
+        // Check for conflicts — reconcile-on-read drops branches already merged
+        // into trunk so a stale registry can't report a phantom conflict (tb-8sa.1).
+        const allBranches = activeBranches(await storage.list());
         const conflicts: string[] = [];
 
         if (branch) {
