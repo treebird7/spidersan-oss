@@ -557,3 +557,57 @@ export function getAheadBehind(remote?: string, branch?: string): { ahead: numbe
         throw toGitError(error, `Failed to determine ahead/behind for ${upstreamRef}`, 'EXEC_FAILED');
     }
 }
+
+/**
+ * Resolve a usable git ref for a branch name, preferring the remote-tracking
+ * ref (`refs/remotes/<remote>/<name>`) over the local ref (`refs/heads/<name>`).
+ *
+ * Returns the resolved ref string, or `null` if neither a remote nor a local
+ * ref exists — i.e. the branch is gone from this checkout AND the remote
+ * (an orphan). Preferring the remote ref means a stale local branch doesn't
+ * mask a delete, and vice-versa.
+ *
+ * Invalid branch names resolve to `null` rather than throwing, so a poisoned
+ * registry entry degrades to "orphan" instead of crashing reconcile-on-read.
+ */
+export function resolveBranchRef(name: string, remote = 'origin'): string | null {
+    let branch: string;
+    try {
+        branch = validateBranchName(name);
+    } catch {
+        return null;
+    }
+    for (const ref of [`refs/remotes/${remote}/${branch}`, `refs/heads/${branch}`]) {
+        try {
+            execGit(['rev-parse', '--verify', '--quiet', ref], {
+                stdio: ['pipe', 'pipe', 'ignore'],
+            });
+            return ref;
+        } catch {
+            // Ref doesn't exist — try the next candidate.
+        }
+    }
+    return null;
+}
+
+/**
+ * True if `ref` is an ancestor of `ancestorOf` — i.e. `ref` is fully merged
+ * into it. Backed by `git merge-base --is-ancestor` (exit 0 = ancestor,
+ * exit 1 = not). Any failure (not-an-ancestor, bad ref, not a repo) returns
+ * `false`, so the caller treats "can't prove merged" as "still live" — the
+ * safe default for conflict detection.
+ *
+ * NOTE: detects merge-commit / fast-forward merges, where the branch tip is
+ * an ancestor of trunk. Squash merges rewrite history, so the tip is NOT an
+ * ancestor — those are handled by the registry's `completed` status instead.
+ */
+export function isMergedInto(ref: string, ancestorOf: string): boolean {
+    try {
+        execGit(['merge-base', '--is-ancestor', ref, ancestorOf], {
+            stdio: ['pipe', 'pipe', 'ignore'],
+        });
+        return true;
+    } catch {
+        return false;
+    }
+}

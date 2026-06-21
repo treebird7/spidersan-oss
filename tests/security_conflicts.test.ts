@@ -72,6 +72,16 @@ describe('Security Vulnerability Reproduction: Command Injection', () => {
             return '';
         });
 
+        // reconcile-on-read probes `merge-base --is-ancestor` via execFileSync;
+        // throw there so registered branches read as NOT merged and are still
+        // checked for conflicts (keeps this injection assertion meaningful).
+        (execFileSync as any).mockImplementation((_cmd: string, args?: string[]) => {
+            if (Array.isArray(args) && args.includes('--is-ancestor')) {
+                throw new Error('not an ancestor');
+            }
+            return '';
+        });
+
         // Invoke the command action via parseAsync
         // We simulate running: spidersan conflicts --semantic --branch current-branch
         // This triggers the semantic analysis path where execSync is called with file names

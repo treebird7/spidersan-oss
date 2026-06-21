@@ -42,7 +42,14 @@ describe('conflicts command security config', () => {
     beforeEach(() => {
         vi.clearAllMocks();
 
-        mocks.execFileSync.mockReturnValue(currentBranch);
+        // reconcile-on-read probes `merge-base --is-ancestor`; throw there so
+        // `otherBranch` reads as NOT merged and is still checked for conflicts.
+        mocks.execFileSync.mockImplementation((_cmd: string, args?: string[]) => {
+            if (Array.isArray(args) && args.includes('--is-ancestor')) {
+                throw new Error('not an ancestor');
+            }
+            return currentBranch;
+        });
 
         mocks.get.mockImplementation(async (name) => {
             if (name === currentBranch) {

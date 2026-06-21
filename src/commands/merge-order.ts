@@ -8,6 +8,7 @@
 import { Command } from 'commander';
 import { getStorage } from '../storage/index.js';
 import { buildConflictGraph, calculateBlockingCounts, topologicalSort } from '../lib/graph.js';
+import { activeBranches } from '../lib/reconcile.js';
 
 interface MergeOrderOptions {
     json?: boolean;
@@ -26,7 +27,9 @@ export const mergeOrderCommand = new Command('merge-order')
             process.exit(1);
         }
 
-        const branches = await storage.list();
+        // Reconcile-on-read: don't order branches already merged into trunk —
+        // they drop out of the merge plan (tb-8sa.1).
+        const branches = activeBranches(await storage.list());
 
         if (branches.length === 0) {
             console.log('🕷️ No branches registered.');

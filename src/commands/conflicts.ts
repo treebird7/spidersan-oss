@@ -23,6 +23,7 @@ import { isGhAvailable, getPRDetails } from '../lib/github.js';
 import { classifyWithLabel } from '../lib/conflict-tier.js';
 import { analyzeRealConflicts, type RealConflictReport } from '../lib/git-merge-analyzer.js';
 import { getTrunkBranch } from '../lib/trunk.js';
+import { activeBranches } from '../lib/reconcile.js';
 
 // Config
 const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
@@ -356,8 +357,9 @@ async function runRealConflicts(options: {
             console.error('   (--real --all needs the registry; --real alone does not)');
             return 1;
         }
-        const branches = await storage.list();
-        targets = branches.filter((b) => b.status === 'active').map((b) => b.name);
+        // Reconcile-on-read: fold git truth over stale `active` status so a
+        // branch already merged into trunk isn't checked for conflicts (tb-8sa.1).
+        targets = activeBranches(await storage.list()).map((b) => b.name);
     } else {
         targets = [options.branch || getCurrentBranch()];
     }
@@ -478,7 +480,9 @@ export const conflictsCommand = new Command('conflicts')
             targetFiles = target.files;
         }
 
-        const allBranches = await storage.list();
+        // Reconcile-on-read: branches already merged into trunk drop out before
+        // overlap detection, so a stale `active` entry can't phantom-conflict (tb-8sa.1).
+        const allBranches = activeBranches(await storage.list());
         const conflicts: Array<{ branch: string; files: string[]; tier: number; tierInfo: ConflictTierInfo }> = [];
 
         // Performance Optimization: Convert target files to Set for O(1) lookup
