@@ -186,6 +186,8 @@ spidersan bot remove myrepo
 | `spidersan pulse` | Sync from Colony then show active conflicts (quick health-check) |
 | `spidersan pulse --remote-drift` | Fetch origin + detect remote drift zone; cross-ref against registry and unstaged files |
 
+> **Note:** `registry-sync`, `cross-conflicts`, and `git-watch` require a **`service_role`** key in `SUPABASE_KEY` — anon writes are denied by RLS. See `.env.example` for the required credential format.
+
 ### 📡 Remote Drift Detection
 
 `spidersan pulse --remote-drift` closes the gap between registry-level conflict detection and single-agent divergence:
@@ -316,12 +318,12 @@ Cross-machine push/delete notifications via a GitHub org webhook → Supabase ed
 ```bash
 # One-shot catch-up (useful for cron / CI)
 SUPABASE_URL=https://<runtime-ref>.supabase.co \
-SUPABASE_KEY=<anon-key> \
+SUPABASE_KEY=<service-role-key> \
 spidersan git-watch --once
 
 # Persistent daemon (poll every 30s)
 SUPABASE_URL=https://<runtime-ref>.supabase.co \
-SUPABASE_KEY=<anon-key> \
+SUPABASE_KEY=<service-role-key> \
 spidersan git-watch --interval 30000
 ```
 

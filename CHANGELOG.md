@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Reconcile-on-read** (`src/lib/reconcile.ts`) — `conflicts`, `ready-check`, and `merge-order` now fold git truth over the registry's `status` before answering: a branch already merged into trunk (`git merge-base --is-ancestor`, or registry status `completed`) is dropped from conflict detection. Retires the phantom-conflict class where a fully-merged branch kept showing as conflicting from a stale worktree. New git primitives `resolveBranchRef` / `isMergedInto` (`src/lib/git.ts`). Orphaned (no-ref) branches are deliberately KEPT on the read path — a missing ref can mean "unfetched on another machine", and dropping it would miss a real conflict.
 
+### Security
+
+- **Consolidate `spider_registries` to runtime + harden RLS** (PR #247) — fixed silent cross-project drift where `spider_registries` lived on the vault Supabase project (`dknahxavnrtaqlatflot`) while `branch_registry` lives on runtime (`ruvwundetxnzesrbkdzr`). Registry-sync uses a single `SUPABASE_URL` client, so the `spider_registries` half of every runtime-pointed sync was silently 404-ing. Canonical = runtime. Also closes wide-open anon RLS on the public project: `spider_registries` and `branch_registry` both had anon `INSERT/UPDATE/SELECT` open; views used owner-rights that bypassed base-table RLS. Hardening: service_role writes, authenticated agent-JWT reads, anon denied, views `security_invoker`.
+- **Migrations** — `20260219_spider_registries.sql` (hardened CREATE + GIN index, runtime), `20260623_harden_spidersan_rls.sql` (branch_registry + views, runtime), `20260623_decommission_vault_spider_registries.sql` (vault teardown, manual, gated on parity), `supabase/migrations/CONSOLIDATION.md` (ordered deploy runbook).
+
+### Removed
+
+- **`auto-register.yml` CI workflow** — retired. It ran `spidersan register` on every push using an anon `SUPABASE_KEY` from Actions secrets, writing `branch_registry` as anon. The RLS hardening above denies anon writes, making this workflow both broken and a security risk (promoting the key to service_role in a public repo's CI secrets is worse). Machine-side `registry-sync` with the service key is the correct sync path.
+
 ### Fixed
 
 - **`spidersan sync`** now prunes **merged** registry entries (is-ancestor / status `completed`), not just orphans. Previously a merged branch whose ref still existed lingered forever and kept phantom-conflicting; merged entries are now deleted, not just marked.
