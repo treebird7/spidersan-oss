@@ -21,6 +21,7 @@ import { renderPulseReport } from '../lib/pulse-renderer.js';
 import { computeDriftResult } from '../lib/remote-drift.js';
 import type { ConflictTier } from '../lib/conflict-tier.js';
 import { isOfflineError } from '../lib/remote-drift.js';
+import { probeSmalltoak } from '../lib/smalltoak.js';
 
 function resolveCurrentBranch(): string {
     try {
@@ -64,6 +65,10 @@ export const pulseCommand = new Command('pulse')
             console.log('ℹ  Colony sync skipped (--no-sync)');
         }
 
+        // ── Smalltoak bridge health (proactive down-detection, tb-r9s) ────────
+        // No-op unless SMALLTOAK_SERVER_URL is set; never throws.
+        const smalltoak = await probeSmalltoak();
+
         // ── Local conflict detection ──────────────────────────────────────────
         const currentBranch = resolveCurrentBranch();
         const allBranches = await storage.list();
@@ -71,7 +76,7 @@ export const pulseCommand = new Command('pulse')
 
         if (!target) {
             if (options.json) {
-                const jsonOut: Record<string, unknown> = { branch: currentBranch, registered: false, conflicts: [], colonySynced, colonyOffline };
+                const jsonOut: Record<string, unknown> = { branch: currentBranch, registered: false, conflicts: [], colonySynced, colonyOffline, smalltoak };
                 if (options.remoteDrift) {
                     const drift = await computeDriftResult([], { remote: 'origin', branch: currentBranch });
                     jsonOut.remoteDrift = 'skipped' in drift ? { skipped: true, reason: drift.reason } : drift;
@@ -88,6 +93,7 @@ export const pulseCommand = new Command('pulse')
                     colonyOffline,
                     conflicts: [],
                     drift,
+                    smalltoak,
                 }));
             }
             return;
@@ -134,6 +140,7 @@ export const pulseCommand = new Command('pulse')
                 conflicts,
                 colonySynced,
                 colonyOffline,
+                smalltoak,
             };
 
             if (options.remoteDrift) {
@@ -177,6 +184,7 @@ export const pulseCommand = new Command('pulse')
             activeBranches: allBranches.filter((branch) => branch.status === 'active').length,
             conflicts,
             drift,
+            smalltoak,
         }));
 
         if (drift && !('skipped' in drift) && options.strict && (drift.registeredInDrift.length > 0 || drift.unstagedInDrift.length > 0)) {
