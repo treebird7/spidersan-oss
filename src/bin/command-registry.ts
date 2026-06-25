@@ -51,6 +51,7 @@ export const COMMANDS: CommandEntry[] = [
     { name: 'bot', description: 'Message-driven git operations daemon via smalltoak', load: async p => p.addCommand((await import('../commands/bot.js')).botCommand) },
     { name: 'github-sync', description: 'Fetch branch/PR/CI status from GitHub for configured repos', load: async p => p.addCommand((await import('../commands/github-sync.js')).githubSyncCommand) },
     { name: 'merge-plan', description: 'Ordered merge plan for open PRs (fuses PR + CI + real git conflicts)', load: async p => p.addCommand((await import('../commands/merge-plan.js')).mergePlanCommand) },
+    { name: 'mq', description: 'Merge queue v1 — speculative merge + CI oracle, land if green (private repos only)', load: async p => p.addCommand((await import('../commands/mq.js')).mqCommand) },
     { name: 'pr-check', description: 'Check a PR\'s merge readiness (stacked base, red/behind state)', load: async p => p.addCommand((await import('../commands/pr-check.js')).prCheckCommand) },
     { name: 'verify-trunk', description: 'Detect registry trunk-poison (main/master must claim no files)', load: async p => p.addCommand((await import('../commands/verify-trunk.js')).verifyTrunkCommand) },
     { name: 'sync-advisor', description: 'Scan repositories and recommend push/pull/cleanup actions', load: async p => p.addCommand((await import('../commands/sync-advisor.js')).syncAdvisorCommand()) },
