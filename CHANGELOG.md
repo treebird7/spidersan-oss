@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`spidersan pulse` smalltoak health probe** (tb-r9s) — `pulse` now proactively probes the smalltoak comms bridge (`SMALLTOAK_SERVER_URL`) that `spidersan bot` depends on, surfacing an outage before message-driven git ops silently stall. New `src/lib/smalltoak.ts` `probeSmalltoak()`: GETs `/health` with a 2s timeout; **any HTTP response = reachable** (a missing `/health` route never false-alarms), only a network error/timeout = DOWN. No-op when `SMALLTOAK_SERVER_URL` is unset. Shown in the human report (`Smalltoak: ✅ up` / `🔴 DOWN`) and JSON (`smalltoak` field).
+
 ### Tests
 
 - **`merge-plan` fused-verdict integration test** (tb-uvy) — `tests/merge-plan.integration.test.ts` drives a real temp-git train (genuine `git merge-tree` conflict + a real stacked base) through `analyzeRealConflicts` → `buildMergePlan`, asserting BLOCKED (real conflict file surfaced), WAIT (stacked, parent-before-child order), and MERGE. Closes the dogfood gap from tb-bi2, whose live RT train was disjoint and only exercised MERGE/STALE/ordering.

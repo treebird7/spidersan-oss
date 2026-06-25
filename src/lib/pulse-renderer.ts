@@ -1,4 +1,5 @@
 import type { DriftResult, DriftSkipped } from './remote-drift.js';
+import type { SmalltoakHealth } from './smalltoak.js';
 
 export interface PulseRenderOptions {
     branch: string;
@@ -8,6 +9,7 @@ export interface PulseRenderOptions {
     activeBranches?: number;
     conflicts: Array<{ tier: number; branch: string; files: string[]; agent?: string }>;
     drift?: DriftResult | DriftSkipped | null;
+    smalltoak?: SmalltoakHealth;
     verbose?: boolean;
 }
 
@@ -23,6 +25,7 @@ export function renderPulseReport(opts: PulseRenderOptions): string {
             lines.push(`   Colony: synced ${opts.colonySynced ?? 0} claim(s)`);
         }
 
+        appendSmalltoak(lines, opts.smalltoak);
         appendDrift(lines, opts.drift);
         return lines.join('\n').trimEnd();
     }
@@ -34,6 +37,8 @@ export function renderPulseReport(opts: PulseRenderOptions): string {
     lines.push(`🕷️ SPIDERSAN PULSE — "${opts.branch}"`);
     lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     lines.push(`Colony:    ${colonyStatus}`);
+    const smalltoakStatus = renderSmalltoakStatus(opts.smalltoak);
+    if (smalltoakStatus) lines.push(`Smalltoak: ${smalltoakStatus}`);
     lines.push(`Branches:  ${opts.activeBranches ?? 1} active`);
     lines.push('');
 
@@ -71,6 +76,21 @@ export function renderPulseReport(opts: PulseRenderOptions): string {
 
     appendDrift(lines, opts.drift);
     return lines.join('\n').trimEnd();
+}
+
+/** One-line smalltoak status, or null when unconfigured (probe is a no-op). */
+function renderSmalltoakStatus(health?: SmalltoakHealth): string | null {
+    if (!health || !health.configured) return null;
+    return health.reachable
+        ? `✅ up (HTTP ${health.status})`
+        : `🔴 DOWN — ${health.error ?? 'unreachable'}`;
+}
+
+/** Used by the not-registered branch, which has no status header to hang it on. */
+function appendSmalltoak(lines: string[], health?: SmalltoakHealth): void {
+    if (health?.configured && !health.reachable) {
+        lines.push(`🔗⚠️ Smalltoak bridge DOWN — ${health.error ?? 'unreachable'} (${health.url})`);
+    }
 }
 
 function appendDrift(lines: string[], drift?: DriftResult | DriftSkipped | null): void {
