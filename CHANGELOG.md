@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Tests
+
+- **`merge-plan` fused-verdict integration test** (tb-uvy) — `tests/merge-plan.integration.test.ts` drives a real temp-git train (genuine `git merge-tree` conflict + a real stacked base) through `analyzeRealConflicts` → `buildMergePlan`, asserting BLOCKED (real conflict file surfaced), WAIT (stacked, parent-before-child order), and MERGE. Closes the dogfood gap from tb-bi2, whose live RT train was disjoint and only exercised MERGE/STALE/ordering.
+
 ### Added
 
 - **Reconcile-on-read** (`src/lib/reconcile.ts`) — `conflicts`, `ready-check`, and `merge-order` now fold git truth over the registry's `status` before answering: a branch already merged into trunk (`git merge-base --is-ancestor`, or registry status `completed`) is dropped from conflict detection. Retires the phantom-conflict class where a fully-merged branch kept showing as conflicting from a stale worktree. New git primitives `resolveBranchRef` / `isMergedInto` (`src/lib/git.ts`). Orphaned (no-ref) branches are deliberately KEPT on the read path — a missing ref can mean "unfetched on another machine", and dropping it would miss a real conflict.
