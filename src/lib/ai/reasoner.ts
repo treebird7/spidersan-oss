@@ -23,7 +23,7 @@ const KNOWN_SPIDERSAN_COMMANDS = new Set([
   'bot', 'check-opt-out', 'cleanup', 'collab', 'config', 'conflicts', 'context',
   'cross-conflicts', 'daily', 'dashboard', 'depends', 'doctor', 'explain',
   'fleet-status', 'git-watch', 'github-sync', 'init', 'list', 'log', 'merge-order',
-  'merge-plan', 'merged', 'pr-check', 'pulse', 'queen', 'ready-check', 'rebase-helper',
+  'merge-plan', 'merged', 'mq', 'pr-check', 'pulse', 'queen', 'ready-check', 'rebase-helper',
   'register', 'registry-sync', 'rescue', 'stale', 'sync', 'sync-advisor', 'torrent',
   'verify-trunk', 'watch', 'welcome',
 ]);
