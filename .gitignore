@@ -188,3 +188,7 @@ tools/
 
 # wrangler local build artifacts
 workers/**/.wrangler/
+
+# Repo is npm-based; block stray pnpm artifacts (machine-local wrangler symlink)
+pnpm-lock.yaml
+pnpm-workspace.yaml
