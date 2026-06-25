@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`merge-plan` fused verdict is additive, not lossy** (tb-cdz) — a PR that is both behind base and has non-required checks red (`STALE` + `UNSTABLE`) now keeps the `STALE` headline **and** annotates the suppressed check axis (`↳ non-required checks red`). Previously the `UNSTABLE` signal was silently dropped on the STALE path. Ref coord-tree pair `fused_verdict_must_be_additive_not_lossy`.
 - **`spidersan sync`** now prunes **merged** registry entries (is-ancestor / status `completed`), not just orphans. Previously a merged branch whose ref still existed lingered forever and kept phantom-conflicting; merged entries are now deleted, not just marked.
 
 ## [0.11.0] - 2026-06-16

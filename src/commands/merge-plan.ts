@@ -358,7 +358,12 @@ function assignVerdict(
     }
 
     // 5. Behind base but otherwise fine → STALE (paired verdict).
+    //    STALE outranks UNSTABLE, but a fused verdict must be additive, not lossy:
+    //    annotate the suppressed check axis instead of dropping it (tb-cdz).
     if (stale) {
+        if (f.mergeStateStatus === 'UNSTABLE') {
+            advisories.push('non-required checks red');
+        }
         return {
             verdict: 'STALE',
             reason: `${f.behind} commit(s) behind base`,

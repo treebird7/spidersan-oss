@@ -298,6 +298,22 @@ describe('buildMergePlan (pure) — verdict + staleness edges', () => {
         expect(plan.plan[0].verdict).toBe('MERGE');
     });
 
+    it('STALE + UNSTABLE → STALE headline but annotates the suppressed check axis (tb-cdz)', () => {
+        const facts = [makeFacts({
+            number: 10,
+            behind: 4,
+            mergeStateStatus: 'UNSTABLE',
+            failingRequired: [],
+        })];
+        const plan = buildMergePlan(facts, 'main', 'r/x');
+        const e = plan.plan[0];
+        // STALE outranks UNSTABLE for the headline...
+        expect(e.verdict).toBe('STALE');
+        // ...but the red-check signal must not be dropped (additive, not lossy).
+        expect(e.advisories.some((a) => a.includes('4 commit'))).toBe(true);
+        expect(e.advisories.some((a) => a.includes('non-required checks red'))).toBe(true);
+    });
+
     it('a clean PR sorts ahead of a stale one', () => {
         const facts = [
             makeFacts({ number: 20, behind: 5, mergeStateStatus: 'CLEAN', head: 'feat/stale' }),
