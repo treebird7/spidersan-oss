@@ -24,6 +24,7 @@ import {
   type SpeculativeMergeResult,
   type GateResult,
 } from '../lib/merge-queue.js';
+import { buildConflictGraph, topologicalSort, calculateBlockingCounts } from '../lib/graph.js';
 
 const TEMP_BRANCH = 'spidersan/mq-integration';
 const DEFAULT_LABEL = 'mq:ready';
@@ -58,6 +59,48 @@ function listReadyPRs(repoSlug: string, label: string): QueuedPR[] {
   return rows
     .filter((r) => !r.isDraft)
     .map((r) => ({ number: r.number, headRef: r.headRefName, title: r.title }));
+}
+
+/** Changed-file paths for a PR (input to conflict-graph ordering). Empty on failure. */
+function listChangedFiles(repoSlug: string, prNumber: number): string[] {
+  try {
+    const out = execFileSync(
+      'gh',
+      ['pr', 'view', String(prNumber), '--repo', repoSlug, '--json', 'files', '-q', '.files[].path'],
+      { encoding: 'utf-8', stdio: 'pipe' },
+    );
+    return out.split('\n').map((s) => s.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/** Fetch changed files for every queued PR (one `gh pr view` each). */
+function buildFilesByPr(repoSlug: string, prs: QueuedPR[]): Map<number, string[]> {
+  const filesByPr = new Map<number, string[]>();
+  for (const pr of prs) filesByPr.set(pr.number, listChangedFiles(repoSlug, pr.number));
+  return filesByPr;
+}
+
+/**
+ * Order PRs to minimise ejections (tb-y121). spidersan's conflict graph ranks the
+ * most-blocking (most file-overlapping) PRs first via topological sort, so a "hub"
+ * PR lands before the PRs it overlaps. Non-conflicting PRs and ties fall back to
+ * oldest-first (numeric PR number). Pure over `filesByPr` — no IO — so plan,
+ * status, and execute all produce the same order. Correctness still rests on the
+ * speculative merge + CI gate; this only reduces churn.
+ */
+export function conflictOrder(prs: QueuedPR[], filesByPr: Map<number, string[]>): QueuedPR[] {
+  if (prs.length < 2) return [...prs];
+  // Zero-pad ids so topologicalSort's lexicographic tie-break equals oldest-first.
+  const pad = (n: number) => String(n).padStart(12, '0');
+  const branches = prs.map((p) => ({ name: pad(p.number), files: filesByPr.get(p.number) ?? [] }));
+  const nodes = branches.map((b) => b.name);
+  const graph = buildConflictGraph(branches);
+  const counts = calculateBlockingCounts(nodes, graph);
+  const order = topologicalSort(nodes, graph, counts);
+  const byId = new Map(prs.map((p) => [pad(p.number), p]));
+  return order.map((id) => byId.get(id)).filter((p): p is QueuedPR => p !== undefined);
 }
 
 /** Reset the integration branch to the latest trunk and merge the queue in
@@ -145,7 +188,8 @@ mqCommand
     const gateCmd = options.gateCmd || DEFAULT_GATE;
 
     const ready = listReadyPRs(repoSlug, label);
-    const ordered = [...ready].sort((a, b) => a.number - b.number); // v1: oldest-first
+    const filesByPr = buildFilesByPr(repoSlug, ready);
+    const ordered = conflictOrder(ready, filesByPr); // v1.5: conflict-graph, most-blocking first
 
     console.log(`🕷️  Merge queue — ${repoSlug} → ${base} (label ${label})`);
     if (ordered.length === 0) {
@@ -164,7 +208,7 @@ mqCommand
     const originalBranch = execGit(['rev-parse', '--abbrev-ref', 'HEAD']).trim();
     const deps: MergeQueueDeps = {
       listReadyPRs: async () => ready,
-      order: (prs) => [...prs].sort((a, b) => a.number - b.number),
+      order: (prs) => conflictOrder(prs, filesByPr),
       speculativeMerge: makeSpeculativeMerge(),
       runGate: makeRunGate(gateCmd),
       landPR: makeLandPR(repoSlug),
@@ -201,11 +245,12 @@ mqCommand
       process.exit(1);
     }
     const label = options.label || DEFAULT_LABEL;
-    const ready = listReadyPRs(repoSlug, label).sort((a, b) => a.number - b.number);
+    const ready = listReadyPRs(repoSlug, label);
+    const ordered = conflictOrder(ready, buildFilesByPr(repoSlug, ready));
     console.log(`🕷️  Merge queue status — ${repoSlug} (label ${label})`);
-    if (ready.length === 0) {
+    if (ordered.length === 0) {
       console.log('   Queue empty.');
       return;
     }
-    ready.forEach((p, i) => console.log(`   ${i + 1}. #${p.number}  ${p.title}`));
+    ordered.forEach((p, i) => console.log(`   ${i + 1}. #${p.number}  ${p.title}`));
   });
