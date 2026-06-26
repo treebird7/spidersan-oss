@@ -30,6 +30,7 @@ const TEMP_BRANCH = 'spidersan/mq-integration';
 const DEFAULT_LABEL = 'mq:ready';
 const DEFAULT_GATE = 'npm ci && npm run build && npm test';
 const GATE_TIMEOUT_MS = 15 * 60 * 1000;
+const FILES_FETCH_TIMEOUT_MS = 30 * 1000; // gh pr view hits the network; don't let one hang stall the queue
 
 interface RunOptions {
   repo?: string;
@@ -67,10 +68,13 @@ function listChangedFiles(repoSlug: string, prNumber: number): string[] {
     const out = execFileSync(
       'gh',
       ['pr', 'view', String(prNumber), '--repo', repoSlug, '--json', 'files', '-q', '.files[].path'],
-      { encoding: 'utf-8', stdio: 'pipe' },
+      { encoding: 'utf-8', stdio: 'pipe', timeout: FILES_FETCH_TIMEOUT_MS },
     );
     return out.split('\n').map((s) => s.trim()).filter(Boolean);
-  } catch {
+  } catch (err) {
+    // Degrade to "no files" (PR treated as non-conflicting) — but say so, or a
+    // systematic gh failure silently collapses ordering back to oldest-first.
+    console.error(`   ⚠️  could not fetch files for #${prNumber}; treating as non-conflicting (${err instanceof Error ? err.message.split('\n')[0] : 'gh failed'})`);
     return [];
   }
 }
