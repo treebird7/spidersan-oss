@@ -19,7 +19,8 @@ import { validateBranchName, getCLIPath } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
 import { logActivity } from '../lib/activity.js';
-import { isGhAvailable, getPRDetails, listOpenPRs, getPRChangedFiles } from '../lib/github.js';
+import { isGhAvailable, getPRDetails, getPRLabels, listOpenPRs, getPRChangedFiles } from '../lib/github.js';
+import { analyzeCarries, type CarriesReport } from '../lib/carries.js';
 import { classifyWithLabel } from '../lib/conflict-tier.js';
 import { analyzeRealConflicts, type RealConflictReport } from '../lib/git-merge-analyzer.js';
 import { getTrunkBranch } from '../lib/trunk.js';
@@ -338,6 +339,32 @@ function renderRealReport(report: RealConflictReport): void {
  *
  * @returns the process exit code (0 always, unless `--exit-code` + conflicts → 1).
  */
+/** precondition(pr): `needs-<kind>:<resource>` labels gate a PR until they're cleared. */
+const NEEDS_LABEL = /^needs-[a-z0-9]+:/i;
+function preconditionLabels(labels: string[]): string[] {
+    return labels.filter((l) => NEEDS_LABEL.test(l));
+}
+
+function renderGate(gate: { labels: string[]; unmet: boolean }): void {
+    if (gate.unmet) {
+        console.log(`\n🛑 precondition UNMET: ${gate.labels.join(', ')} — resource not satisfied; clear the label to merge.`);
+    } else {
+        console.log('\n✅ precondition: no unmet needs-* gate.');
+    }
+}
+
+function renderCarries(report: CarriesReport): void {
+    const total = report.own.length + report.inherited.length;
+    console.log(`\n🧬 carries: ${total} commit(s) — ${report.own.length} own, ${report.inherited.length} inherited`);
+    for (const c of report.own) console.log(`   • ${c.sha.slice(0, 7)} ${c.subject}  (own)`);
+    for (const c of report.inherited) {
+        console.log(`   🚩 ${c.sha.slice(0, 7)} ${c.subject}  — also on ${c.branches.join(', ')}`);
+    }
+    if (report.flagged) {
+        console.log('   ⚠️ provenance: this PR carries commits from another open branch — merging lands them too.');
+    }
+}
+
 async function runRealConflicts(options: {
     base?: string;
     branch?: string;
@@ -345,16 +372,19 @@ async function runRealConflicts(options: {
     all?: boolean;
     json?: boolean;
     exitCode?: boolean;
+    carries?: boolean;
+    gate?: boolean;
 }): Promise<number> {
     let base = options.base || getTrunkBranch();
 
     // Determine target branches.
     let targets: string[];
+    let prNumber: number | undefined;
     if (options.pr) {
         // --pr in real mode: the PR head isn't a local ref, so fetch it. Without
         // this, --real fell through to getCurrentBranch() and silently checked
         // trunk-vs-trunk → a false "clean" (tb-57fr).
-        const prNumber = parseInt(options.pr, 10);
+        prNumber = parseInt(options.pr, 10);
         if (isNaN(prNumber) || prNumber <= 0) {
             console.error('❌ Invalid PR number. Provide a positive integer, e.g. --pr 42');
             return 1;
@@ -399,8 +429,26 @@ async function runRealConflicts(options: {
 
     const anyConflicts = results.some((r) => !r.error && !r.clean);
 
+    // --pr extras: precondition() gate + carries() provenance (opt-in, compose).
+    let gate: { labels: string[]; unmet: boolean } | undefined;
+    let carries: CarriesReport | undefined;
+    if (prNumber !== undefined) {
+        const ref = `refs/spidersan/pr-${prNumber}`;
+        if (options.gate) {
+            const needs = isGhAvailable() ? preconditionLabels(await getPRLabels(prNumber)) : [];
+            gate = { labels: needs, unmet: needs.length > 0 };
+        }
+        if (options.carries) {
+            const self = [base]; // exclude base + the PR's own remote head from "other branch"
+            try {
+                self.push(`origin/${(await getPRDetails(prNumber)).headBranch}`);
+            } catch { /* best-effort self-exclusion */ }
+            carries = analyzeCarries(base, ref, self);
+        }
+    }
+
     if (options.json) {
-        console.log(JSON.stringify({ base, results }, null, 2));
+        console.log(JSON.stringify({ base, results, carries, gate }, null, 2));
     } else {
         if (results.length === 0) {
             console.log(`🕷️ No active branches to check vs ${base}.`);
@@ -408,9 +456,11 @@ async function runRealConflicts(options: {
         for (const report of results) {
             renderRealReport(report);
         }
+        if (gate) renderGate(gate);
+        if (carries) renderCarries(carries);
     }
 
-    return options.exitCode && anyConflicts ? 1 : 0;
+    return options.exitCode && (anyConflicts || gate?.unmet === true) ? 1 : 0;
 }
 
 export const conflictsCommand = new Command('conflicts')
@@ -433,12 +483,18 @@ export const conflictsCommand = new Command('conflicts')
     .option('--base <ref>', 'Base/trunk ref to merge into for --real (default: detected trunk)')
     .option('--all', 'With --real: check every active registered branch')
     .option('--exit-code', 'With --real: exit 1 if any real conflicts found (like git diff)')
+    .option('--carries', 'With --pr: show carries() provenance (own vs inherited commits)')
+    .option('--gate', 'With --pr: check precondition() needs-* labels; --exit-code blocks if unmet')
     .action(async (options) => {
         // ── Real (git merge-tree) conflicts ──────────────────────────────────
         // Runs BEFORE the storage-init guard: a single-target real check is pure
         // git and must work with no .spidersan/registry.json. Only --real --all
         // touches the registry, and runRealConflicts gates that path itself.
-        if (options.real) {
+        //
+        // --pr defaults to the real merge-tree path (tb-8hgg): "will this PR merge
+        // into trunk" is the common question and file-overlap false-positives it
+        // (see #80/identity.ts). Opt into the legacy file-overlap check with --vs-prs.
+        if (options.real || (options.pr && !options.vsPrs)) {
             const code = await runRealConflicts(options);
             if (code !== 0) process.exit(code);
             return;
