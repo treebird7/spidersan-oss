@@ -19,7 +19,7 @@ import { validateBranchName, getCLIPath } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
 import { logActivity } from '../lib/activity.js';
-import { isGhAvailable, getPRDetails } from '../lib/github.js';
+import { isGhAvailable, getPRDetails, listOpenPRs, getPRChangedFiles } from '../lib/github.js';
 import { classifyWithLabel } from '../lib/conflict-tier.js';
 import { analyzeRealConflicts, type RealConflictReport } from '../lib/git-merge-analyzer.js';
 import { getTrunkBranch } from '../lib/trunk.js';
@@ -389,6 +389,7 @@ export const conflictsCommand = new Command('conflicts')
     .description('Detect file conflicts between branches (with tiered blocking)')
     .option('--branch <name>', 'Check conflicts for specific branch')
     .option('--pr <number>', 'Check conflicts for a GitHub pull request by number')
+    .option('--vs-prs', 'Also detect conflicts against other open PRs (not just registered branches)')
     .option('--json', 'Output as JSON')
     .option('--tier <level>', 'Filter by minimum tier (1, 2, or 3)', '1')
     .option('--strict', 'Strict mode: exit with error if TIER 2+ conflicts found')
@@ -483,6 +484,28 @@ export const conflictsCommand = new Command('conflicts')
         // Reconcile-on-read: branches already merged into trunk drop out before
         // overlap detection, so a stale `active` entry can't phantom-conflict (tb-8sa.1).
         const allBranches = activeBranches(await storage.list());
+
+        // --vs-prs: pull other open PRs as conflict targets too, so two simultaneous
+        // PRs touching the same files flag each other even when neither branch is in
+        // the local registry. PRs become synthetic active "branches" (no agent → wake
+        // skips them). Self (same headBranch) is excluded.
+        // ponytail: 1 + N gh calls (list + per-PR diff); fine for typical open-PR counts,
+        // parallelise if a repo ever carries hundreds of open PRs.
+        if (options.vsPrs) {
+            if (!isGhAvailable()) {
+                console.error('⚠️  --vs-prs needs gh (unavailable/unauthenticated); checking registered branches only.');
+            } else {
+                const openPRs = (await listOpenPRs()).filter(pr => pr.headBranch !== targetBranch);
+                const prBranches = await Promise.all(openPRs.map(async pr => ({
+                    name: `PR #${pr.number} (${pr.headBranch})`,
+                    files: await getPRChangedFiles(pr.number),
+                    registeredAt: new Date(),
+                    status: 'active' as const,
+                    description: pr.title,
+                })));
+                allBranches.push(...prBranches.filter(b => b.files.length > 0));
+            }
+        }
         const conflicts: Array<{ branch: string; files: string[]; tier: number; tierInfo: ConflictTierInfo }> = [];
 
         // Performance Optimization: Convert target files to Set for O(1) lookup
