@@ -195,6 +195,30 @@ describe('conflicts --real', () => {
         expect(analyzeRealConflicts).toHaveBeenCalledWith('main', 'feat/other');
     });
 
+    it('--pr fetches the PR head + remote trunk and checks the right pair (tb-57fr)', async () => {
+        // Regression: --pr X --real used to ignore --pr and silently check
+        // trunk-vs-trunk (current checkout) → false "clean". It must now resolve
+        // the PR head ref AND compare against the REMOTE trunk, not stale local.
+        (analyzeRealConflicts as Mock).mockResolvedValue(
+            makeReport({ branch: 'refs/spidersan/pr-81', clean: false, conflicts: [{ file: 'src/lib/colony-client.ts', kind: 'content' }] }),
+        );
+
+        const code = await run(['--real', '--pr', '81']);
+
+        expect(analyzeRealConflicts).toHaveBeenCalledWith('origin/main', 'refs/spidersan/pr-81');
+        // fetched PR head + the trunk (not just relied on a local ref)
+        expect(execFileSync).toHaveBeenCalledWith('git', ['fetch', '--quiet', 'origin', 'pull/81/head:refs/spidersan/pr-81'], expect.anything());
+        expect(execFileSync).toHaveBeenCalledWith('git', ['fetch', '--quiet', 'origin', 'main'], expect.anything());
+        expect(code).toBe(0);
+    });
+
+    it('--pr rejects a non-numeric PR (no fetch, no analysis)', async () => {
+        const code = await run(['--real', '--pr', 'abc']);
+        expect(code).toBe(1);
+        expect(execFileSync).not.toHaveBeenCalled();
+        expect(analyzeRealConflicts).not.toHaveBeenCalled();
+    });
+
     it('--all iterates only active registered branches', async () => {
         const mockStorage = {
             isInitialized: vi.fn().mockResolvedValue(true),
