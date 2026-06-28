@@ -341,15 +341,43 @@ function renderRealReport(report: RealConflictReport): void {
 async function runRealConflicts(options: {
     base?: string;
     branch?: string;
+    pr?: string;
     all?: boolean;
     json?: boolean;
     exitCode?: boolean;
 }): Promise<number> {
-    const base = options.base || getTrunkBranch();
+    let base = options.base || getTrunkBranch();
 
     // Determine target branches.
     let targets: string[];
-    if (options.all) {
+    if (options.pr) {
+        // --pr in real mode: the PR head isn't a local ref, so fetch it. Without
+        // this, --real fell through to getCurrentBranch() and silently checked
+        // trunk-vs-trunk → a false "clean" (tb-57fr).
+        const prNumber = parseInt(options.pr, 10);
+        if (isNaN(prNumber) || prNumber <= 0) {
+            console.error('❌ Invalid PR number. Provide a positive integer, e.g. --pr 42');
+            return 1;
+        }
+        const ref = `refs/spidersan/pr-${prNumber}`;
+        try {
+            // pull/<n>/head exists on the base repo even for fork PRs.
+            execFileSync('git', ['fetch', '--quiet', 'origin', `pull/${prNumber}/head:${ref}`], { stdio: 'pipe' });
+            // Check against the REMOTE trunk, not a possibly-stale local one — a PR
+            // merges into origin's HEAD. Falling back to local `main` (which can lag)
+            // is the same false-confidence class as tb-57fr.
+            if (!options.base) {
+                const trunk = getTrunkBranch();
+                execFileSync('git', ['fetch', '--quiet', 'origin', trunk], { stdio: 'pipe' });
+                base = `origin/${trunk}`;
+            }
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`❌ Could not fetch PR #${prNumber} head: ${msg}`);
+            return 1;
+        }
+        targets = [ref];
+    } else if (options.all) {
         // --all enumerates registered branches → requires an initialized registry.
         const storage = await getStorage();
         if (!(await storage.isInitialized())) {
