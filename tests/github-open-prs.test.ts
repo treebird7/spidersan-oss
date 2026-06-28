@@ -5,7 +5,7 @@ vi.mock('child_process', () => ({
     execFileSync: vi.fn(),
 }));
 
-import { listOpenPRs, getPRChangedFiles } from '../src/lib/github.js';
+import { listOpenPRs, getPRChangedFiles, getPRLabels } from '../src/lib/github.js';
 
 const mockExecFileSync = vi.mocked(execFileSync);
 
@@ -41,5 +41,21 @@ describe('getPRChangedFiles', () => {
     it('returns [] when the diff call fails', async () => {
         mockExecFileSync.mockImplementation((() => { throw new Error('no diff'); }) as never);
         expect(await getPRChangedFiles(7)).toEqual([]);
+    });
+});
+
+describe('getPRLabels', () => {
+    it('extracts label names from gh pr view --json labels', async () => {
+        mockExecFileSync.mockReturnValue(JSON.stringify({
+            labels: [{ name: 'needs-grant:memoak/URL' }, { name: 'enhancement' }],
+        }) as never);
+        expect(await getPRLabels(80)).toEqual(['needs-grant:memoak/URL', 'enhancement']);
+    });
+
+    it('returns [] when there are no labels or gh fails', async () => {
+        mockExecFileSync.mockReturnValue(JSON.stringify({}) as never);
+        expect(await getPRLabels(80)).toEqual([]);
+        mockExecFileSync.mockImplementation((() => { throw new Error('boom'); }) as never);
+        expect(await getPRLabels(80)).toEqual([]);
     });
 });

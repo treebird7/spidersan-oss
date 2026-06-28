@@ -16,6 +16,7 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { conflictsCommand } from '../src/commands/conflicts';
 import { analyzeRealConflicts } from '../src/lib/git-merge-analyzer';
+import { getPRLabels } from '../src/lib/github';
 import { getTrunkBranch } from '../src/lib/trunk';
 import { getStorage } from '../src/storage/index';
 import { execFileSync } from 'child_process';
@@ -36,6 +37,16 @@ vi.mock('../src/storage/index', () => ({
 vi.mock('child_process', () => ({
     execFileSync: vi.fn(),
     spawnSync: vi.fn(),
+}));
+
+vi.mock('../src/lib/github', () => ({
+    isGhAvailable: vi.fn(() => true),
+    getPRLabels: vi.fn(async () => []),
+    getPRDetails: vi.fn(async () => ({ number: 0, title: '', headBranch: 'feat/x', files: [] })),
+}));
+
+vi.mock('../src/lib/carries', () => ({
+    analyzeCarries: vi.fn(() => ({ own: [], inherited: [], flagged: false })),
 }));
 
 // Capture console output instead of cluttering the run.
@@ -217,6 +228,34 @@ describe('conflicts --real', () => {
         expect(code).toBe(1);
         expect(execFileSync).not.toHaveBeenCalled();
         expect(analyzeRealConflicts).not.toHaveBeenCalled();
+    });
+
+    it('--pr --gate --exit-code blocks (exit 1) when a needs-* label is present', async () => {
+        (analyzeRealConflicts as Mock).mockResolvedValue(makeReport({ branch: 'refs/spidersan/pr-80', clean: true }));
+        (getPRLabels as Mock).mockResolvedValue(['needs-grant:memoak/URL', 'enhancement']);
+
+        const code = await run(['--pr', '80', '--gate', '--exit-code']);
+
+        expect(code).toBe(1); // clean merge, but precondition UNMET → blocked
+        expect(logged()).toContain('precondition UNMET');
+        expect(logged()).toContain('needs-grant:memoak/URL');
+    });
+
+    it('--pr --gate passes (exit 0) when no needs-* label', async () => {
+        (analyzeRealConflicts as Mock).mockResolvedValue(makeReport({ branch: 'refs/spidersan/pr-80', clean: true }));
+        (getPRLabels as Mock).mockResolvedValue(['enhancement']);
+
+        const code = await run(['--pr', '80', '--gate', '--exit-code']);
+
+        expect(code).toBe(0);
+        expect(logged()).toContain('no unmet needs-* gate');
+    });
+
+    it('--pr defaults to the real merge-tree path (no --real flag needed)', async () => {
+        (analyzeRealConflicts as Mock).mockResolvedValue(makeReport({ branch: 'refs/spidersan/pr-81', clean: true }));
+
+        await run(['--pr', '81']); // note: no --real
+        expect(analyzeRealConflicts).toHaveBeenCalledWith('origin/main', 'refs/spidersan/pr-81');
     });
 
     it('--all iterates only active registered branches', async () => {
