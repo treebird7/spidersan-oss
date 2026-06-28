@@ -1,6 +1,7 @@
 # PR Grammar Predicates — carries() + precondition()
 
-> **Status:** DRAFT for review (birdsan). **Bead:** tb-8hgg.
+> **Status:** APPROVED (birdsan, #257) — direction ratified, review fixes applied
+> (carries() flag = ∩≠∅ not ⊃; own/inherited split; label vocab). Ready to build. **Bead:** tb-8hgg.
 > **Origin:** Envoak git-grammar dogfood, 2026-06-28 (`CHAT_envoak_gitgrammar_2026-06-28`).
 > Two predicates minted live against real PRs (#78/#80/#81); this specs them into
 > `spidersan conflicts`.
@@ -27,8 +28,17 @@ file-overlap can never express.
 
 ```
 carries(pr) = commits(pr.head) \ commits(main)        # git log main..<head>
-FLAG when  carries(A) ⊃ commits_of(another open branch/PR)
+FLAG when  carries(A) ∩ commits_of(another open branch/PR) ≠ ∅
 ```
+
+> **Why intersection, not superset** (birdsan review, #257). An earlier draft wrote
+> `carries(A) ⊃ commits_of(B)`. That under-fires on the exact case it exists for:
+> `carries(#78) = {a285fa0, 629b5f8, cddfd0a, d5cad9f}`, but `commits_of(sherlock2)`
+> *also* held §3/§5 commits #78 never inherited — so #78 is **not** a superset of
+> sherlock2 and `⊃` is false, even though the two genuinely share `cddfd0a`. The signal
+> is *any* shared commit (entanglement), so the condition is **∩ ≠ ∅**. (The per-commit
+> `git branch -r --contains` implementation already computes this; only the formal
+> notation was wrong.)
 
 Pure git, no network beyond a fetch:
 
@@ -44,8 +54,10 @@ not accidental**. Squash-vs-merge matters here: squashing A erases those SHAs fr
 so B's later rebase re-encounters them. The tool should warn when a provenance-carrying
 PR is about to be squashed.
 
-**Output:** for each PR, list `carries()` commits, and for any shared with an open
-branch, emit `🚩 provenance: <sha> also on <branch>`.
+**Output:** split `carries()` into **own** (the PR author's commits) vs **inherited**
+(commits also reachable from another open branch) — so the merge unit reads at a glance.
+For each inherited commit emit `🚩 provenance: <sha> also on <branch>`. (#78 → own:
+`d5cad9f`; inherited: `a285fa0, 629b5f8, cddfd0a` from sherlock2.)
 
 ## Predicate 2 — `precondition(pr)`  (activation gate)
 
@@ -66,6 +78,17 @@ Why label, not checklist line: the tool gates deterministically on
 needs regex and silently drifts. The tool does **not** verify the resource itself (that's
 domain-specific); it enforces that a declared gate blocks until a human/owner clears the
 label. "Mergeable" then never auto-reads as "functional".
+
+**Ratified label vocabulary** (birdsan review, #257) — extensible, not closed:
+
+| Label | Gate |
+|-------|------|
+| `needs-grant:<svc/name>` | a vault secret must be stored + granted (e.g. tb-4qrr / #80) |
+| `needs-deploy:<target>` | an edge fn / worker / service must be deployed first |
+| `needs-migration:<id>` | a DB migration must be applied first |
+
+The tool matches the `needs-<kind>:` prefix generically, so new kinds need no code change —
+just agree on the kind and label the PR.
 
 ## CLI surface
 
