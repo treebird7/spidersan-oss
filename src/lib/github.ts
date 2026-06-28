@@ -304,6 +304,43 @@ export async function getPRDetails(prNumber: number): Promise<GitHubPRDetails> {
     };
 }
 
+/** A lightweight open-PR entry (no file list — fetch that via getPRChangedFiles). */
+export interface OpenPR {
+    number: number;
+    title: string;
+    headBranch: string;
+    draft: boolean;
+}
+
+/**
+ * Open PRs in the current repo. cwd-based `gh` (same convention as getPRDetails,
+ * so no GitHubRepoConfig plumbing needed). Empty array on any failure.
+ */
+export async function listOpenPRs(): Promise<OpenPR[]> {
+    try {
+        const out = execFileSync('gh', [
+            'pr', 'list', '--state', 'open',
+            '--json', 'number,title,headRefName,isDraft',
+            '--limit', '200',
+        ], { encoding: 'utf-8' });
+        const data = JSON.parse(out) as Array<{ number: number; title: string; headRefName: string; isDraft: boolean }>;
+        return data.map(p => ({ number: p.number, title: p.title, headBranch: p.headRefName, draft: p.isDraft }));
+    } catch {
+        return [];
+    }
+}
+
+/** Changed file paths for a PR (diff only — leaner than getPRDetails). Empty on failure. */
+export async function getPRChangedFiles(prNumber: number): Promise<string[]> {
+    const safePrNumber = validatePRNumber(prNumber);
+    try {
+        const out = execFileSync('gh', ['pr', 'diff', '--name-only', '--', String(safePrNumber)], { encoding: 'utf-8' });
+        return out.trim().split('\n').filter(f => f.length > 0);
+    } catch {
+        return [];
+    }
+}
+
 // ---------------------------------------------------------------------------
 // PR merge-state + CI rollup (Feature 3 / A2)
 // ---------------------------------------------------------------------------
