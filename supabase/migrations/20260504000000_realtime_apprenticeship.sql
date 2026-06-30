@@ -3,7 +3,7 @@
 -- Migration: 20260504000000_realtime_apprenticeship
 -- Author:    mycsan-m2
 -- Target:    spidersan-model  (bpucgrzfklvdakmcqulf) — prod (applied 2026-05-10)
---            treebird-runtime (ruvwundetxnzesrbkdzr) — was incorrectly applied; cleaned up 2026-05-10
+--            treebird-runtime (<runtime-project-ref>) — was incorrectly applied; cleaned up 2026-05-10
 --
 -- Dream:     walt-san/dreams/DREAM_spidersan_realtime_apprenticeship.md
 -- Plan:      walt-san/realism/PLAN_spidersan_realtime_apprenticeship.md

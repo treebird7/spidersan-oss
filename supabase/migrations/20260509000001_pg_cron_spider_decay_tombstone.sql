@@ -11,7 +11,7 @@
 -- Spec:    walt-san/realism/PLAN_spidersan_realtime_apprenticeship.md
 -- Author:  watsan-m5  (2026-05-09)
 -- Depends: 20260504000000_realtime_apprenticeship.sql (function defs)
--- Targets: treebird-runtime (ruvwundetxnzesrbkdzr) — staging first
+-- Targets: treebird-runtime (<runtime-project-ref>) — staging first
 --          treebird-prod    (iopbbsjdphgctfbqljcf) — apply separately
 --
 -- ROLLBACK:

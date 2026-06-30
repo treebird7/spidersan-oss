@@ -2,10 +2,10 @@
 -- Part of F1 (Supabase Registry Sync). Each row = one branch registered on one machine.
 -- UNIQUE(machine_id, repo_name, branch_name) ensures no duplicates per machine.
 --
--- DEPLOYMENT TARGET: treebird_runtime (ruvwundetxnzesrbkdzr) — the canonical home of the
+-- DEPLOYMENT TARGET: treebird_runtime (<runtime-project-ref>) — the canonical home of the
 --   whole spidersan table family (branch_registry, active/stale_branches, spider_activity_log,
 --   spider_intents, spidersan_git_events). Config drift earlier created this table on the
---   vault project (dknahxavnrtaqlatflot) instead; it is being consolidated back onto runtime.
+--   vault project (<vault-project-ref>) instead; it is being consolidated back onto runtime.
 --   Vault teardown: 20260623_decommission_vault_spider_registries.sql (after the data move).
 --
 -- ROLLBACK:
