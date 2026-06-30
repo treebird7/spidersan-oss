@@ -1,4 +1,4 @@
--- Harden the LIVE spidersan tables on treebird_runtime (ruvwundetxnzesrbkdzr).
+-- Harden the LIVE spidersan tables on treebird_runtime (<runtime-project-ref>).
 --
 -- Audit (2026-06-23, mycsan) on the PUBLIC runtime project (Toak app's anon key is publishable):
 --   • branch_registry (TABLE): anon INSERT + UPDATE + SELECT, all `true` — anyone with the
@@ -10,7 +10,7 @@
 -- only (authenticated JWT carrying an agent_id claim — not plain app users); anon denied.
 -- Pattern matches spider_activity_log and 20260219_spider_registries.sql.
 --
--- DEPLOYMENT TARGET: treebird_runtime (ruvwundetxnzesrbkdzr).
+-- DEPLOYMENT TARGET: treebird_runtime (<runtime-project-ref>).
 -- ⚠️ PREREQUISITE: switch registry-sync's SUPABASE_KEY to the service_role key BEFORE applying —
 --    the sync writes branch_registry as anon today, so these DROPs deny it until the key is switched.
 -- ROLLBACK: re-create the dropped policies (NOT recommended — they were the hole).

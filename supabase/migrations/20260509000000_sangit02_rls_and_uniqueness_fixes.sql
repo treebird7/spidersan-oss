@@ -2,7 +2,7 @@
 -- Spidersan Real-Time Apprenticeship — sql-review fixes
 -- Migration: 20260509000000_sangit02_rls_and_uniqueness_fixes
 -- Author:    mycsan-m5
--- Target:    treebird-runtime (ruvwundetxnzesrbkdzr) — staging
+-- Target:    treebird-runtime (<runtime-project-ref>) — staging
 --            treebird-prod    (iopbbsjdphgctfbqljcf) — prod (apply separately)
 --
 -- Fixes from /sql-review of 20260504000000_realtime_apprenticeship.sql:

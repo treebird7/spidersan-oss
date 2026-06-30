@@ -104,7 +104,7 @@ The interface all storage backends implement. Key methods: `getBranches()`, `reg
 ---
 
 ### Colony
-The Supabase-backed signal bus (MycToak project `dknahxavnrtaqlatflot`) used for cross-machine awareness. Spidersan polls Colony via `src/lib/colony-subscriber.ts` on `spidersan pulse`. Colony signals are *advisory* — Spidersan falls back gracefully if Colony is unavailable.
+The Supabase-backed signal bus (MycToak project `<vault-project-ref>`) used for cross-machine awareness. Spidersan polls Colony via `src/lib/colony-subscriber.ts` on `spidersan pulse`. Colony signals are *advisory* — Spidersan falls back gracefully if Colony is unavailable.
 
 ---
 
