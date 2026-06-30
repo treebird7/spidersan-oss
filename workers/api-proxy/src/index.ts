@@ -123,7 +123,9 @@ function scrubModelIdStream(modelId: string, alias: string): TransformStream<Uin
       if (cut > 0) controller.enqueue(enc.encode(text.slice(0, cut)));
     },
     flush(controller) {
-      const tail = carry.split(modelId).join(alias);
+      // Drain any bytes still held in the streaming decoder (a multibyte char
+      // split across the final chunk boundary) before the last scrub — #221 nit.
+      const tail = (carry + dec.decode()).split(modelId).join(alias);
       if (tail) controller.enqueue(enc.encode(tail));
     },
   });
@@ -273,7 +275,13 @@ export default {
     try {
       const data = await backendResp.json() as Record<string, unknown>;
       if (typeof data['model'] === 'string') data['model'] = 'spidersan-v1';
-      return new Response(JSON.stringify(data), { status: 200, headers: respHeaders });
+      // M3 (leak) / #221 gap-2: make the non-streaming path SYMMETRIC with the
+      // streaming scrub — replace every residual MODEL_ID across the whole
+      // serialized body, not just the top-level `model` field. Catches an id
+      // echoed in system_fingerprint, a nested/usage field, etc. Belt-and-
+      // suspenders with the field rewrite above.
+      const serialized = JSON.stringify(data).split(env.MODEL_ID).join('spidersan-v1');
+      return new Response(serialized, { status: 200, headers: respHeaders });
     } catch {
       return errorResponse(502, 'Backend error');
     }
