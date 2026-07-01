@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`mq` conflict-graph ordering** (tb-y121, merge queue phase 1.5, PR #254 + #255) — `mq run`/`mq status` order the ready-PR queue with the existing `buildConflictGraph` + `topologicalSort` (`src/lib/graph.ts`, already used by `merge-order`) instead of plain PR-number order: the most-blocking (most file-overlapping) PRs sort first so a "hub" PR lands before the PRs it conflicts with. Non-conflicting PRs and ties fall back to oldest-first. Pure `conflictOrder` over a pre-fetched `filesByPr` map — no IO — so `mq run`'s plan, `mq status`, and the actual `--execute` all agree on the same order. `listChangedFiles` (one `gh pr view` per PR, 30s timeout) degrades to "no files" on fetch failure with a visible stderr warning, rather than silently collapsing back to oldest-first. Correctness still rests on the speculative-merge + CI gate, not this ordering.
 - **`spidersan pulse` smalltoak health probe** (tb-r9s) — `pulse` now proactively probes the smalltoak comms bridge (`SMALLTOAK_SERVER_URL`) that `spidersan bot` depends on, surfacing an outage before message-driven git ops silently stall. New `src/lib/smalltoak.ts` `probeSmalltoak()`: GETs `/health` with a 2s timeout; **any HTTP response = reachable** (a missing `/health` route never false-alarms), only a network error/timeout = DOWN. No-op when `SMALLTOAK_SERVER_URL` is unset. Shown in the human report (`Smalltoak: ✅ up` / `🔴 DOWN`) and JSON (`smalltoak` field).
 
 ### Tests
