@@ -45,6 +45,21 @@ describe('addDependencyEdges', () => {
         expect(order).toEqual(['z-parent', 'a-child']);
     });
 
+    it('wins over the symmetric conflict edge for stacked branches (file overlap + dep)', () => {
+        // stacked branches ALWAYS file-overlap → symmetric 2-cycle in the
+        // conflict graph. The declared dep must break the cycle, not join it.
+        // (Live repro 2026-07-11: spider2/cloud-branch-state sorted BEFORE its
+        // base spider2/study-improve-core because 'c' < 's' in cycle-breaking.)
+        const branches = [
+            { name: 'a-stacked', files: ['src/shared.ts'], dependsOn: ['z-base'] },
+            { name: 'z-base', files: ['src/shared.ts'] },
+        ];
+        const graph = addDependencyEdges(buildConflictGraph(branches), branches);
+        const order = topologicalSort(branches.map(b => b.name), graph);
+
+        expect(order).toEqual(['z-base', 'a-stacked']);
+    });
+
     it('does not mutate the input graph and ignores unknown deps', () => {
         const branches = [{ name: 'a', files: [], dependsOn: ['ghost'] }];
         const base = buildConflictGraph(branches);
