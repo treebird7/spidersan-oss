@@ -38,6 +38,8 @@ interface SpiderRegistryRow {
     files: string[] | null;
     agent: string | null;
     description: string | null;
+    depends_on: string[] | null;
+    pr_number: number | null;
     created_at: string;
     synced_at: string;
     machine_id: string;
@@ -87,6 +89,8 @@ export class SupabaseRegistrySyncClientImpl implements SupabaseRegistrySyncClien
             files: branch.files,
             agent: branch.agent || machine.name,
             description: branch.description || null,
+            depends_on: branch.dependsOn?.length ? branch.dependsOn : null,
+            pr_number: branch.prNumber ?? null,
             synced_at: now,
             project_id: this.projectId,
         }));
@@ -181,6 +185,8 @@ export class SupabaseRegistrySyncClientImpl implements SupabaseRegistrySyncClien
                 files: row.files ?? [],
                 agent: row.agent ?? undefined,
                 description: row.description ?? undefined,
+                dependsOn: row.depends_on ?? undefined,
+                prNumber: row.pr_number ?? undefined,
                 status: row.status === 'merged' ? 'completed' : (row.status as Branch['status']),
                 registeredAt: new Date(row.created_at),
             });

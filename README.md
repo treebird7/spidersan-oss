@@ -92,7 +92,7 @@ spidersan merge-order
 | `spidersan conflicts --real` | Compute TRUE merge conflicts via `git merge-tree` (vs registry overlap) |
 | `spidersan merge-order` | Get topologically-sorted optimal merge order |
 | `spidersan ready-check` | Verify branch is ready to merge (no WIP, no conflicts) |
-| `spidersan depends` | Set/show branch dependencies (Supabase only) |
+| `spidersan depends` | Set/show branch dependencies (deps merge first; synced cross-machine) |
 | `spidersan stale` | Find stale branches |
 | `spidersan cleanup` | Remove stale branches from registry |
 | `spidersan rescue` | Rescue mode — scan for and salvage rogue/unregistered work |
