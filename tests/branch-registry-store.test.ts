@@ -65,10 +65,15 @@ describe('MemoryBranchRegistryStore', () => {
         expect(matches.map((branch) => branch.name).sort()).toEqual(['feature-a', 'feature-c']);
     });
 
-    it('cleans up only branches older than the threshold', async () => {
+    it('cleans up only old non-active branches by default', async () => {
         await store.register({
             name: 'stale-branch',
             files: ['src/old.ts'],
+            status: 'completed',
+        });
+        await store.register({
+            name: 'stale-but-active',
+            files: ['src/wip.ts'],
             status: 'active',
         });
         await store.register({
@@ -80,11 +85,17 @@ describe('MemoryBranchRegistryStore', () => {
         const staleDate = new Date('2026-04-01T00:00:00.000Z');
         const freshDate = new Date('2026-05-10T00:00:00.000Z');
         await store.update('stale-branch', { registeredAt: staleDate });
+        await store.update('stale-but-active', { registeredAt: staleDate });
         await store.update('fresh-branch', { registeredAt: freshDate });
 
         const removed = await store.cleanup(new Date('2026-05-01T00:00:00.000Z'));
 
+        // old ACTIVE registration = in-flight work — kept unless includeActive
         expect(removed).toEqual(['stale-branch']);
-        expect((await store.list()).map((branch) => branch.name)).toEqual(['fresh-branch']);
+        expect((await store.list()).map((branch) => branch.name).sort())
+            .toEqual(['fresh-branch', 'stale-but-active']);
+
+        const forced = await store.cleanup(new Date('2026-05-01T00:00:00.000Z'), true);
+        expect(forced).toEqual(['stale-but-active']);
     });
 });

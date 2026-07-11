@@ -26,12 +26,13 @@ export function updatePendingTaskFile(agentId: string, branches: { name: string;
             validateBranchName(b.name);
         }
 
-        // Try common locations for .pending_task.md
+        // Agent-OWNED locations only. The cwd's .pending_task.md belongs to
+        // whoever runs `stale --notify`, not to `agentId` — writing there
+        // "delivers" every agent's notifications to the wrong file.
         const possiblePaths = [
-            resolve(process.cwd(), '.pending_task.md'),
+            resolve(process.env.HOME || '~', `Dev/treebird/agents/${agentId}/.pending_task.md`),
             resolve(process.cwd(), `../${agentId}/.pending_task.md`),
             resolve(process.env.HOME || '~', `Dev/${agentId}/.pending_task.md`),
-            resolve(process.env.HOME || '~', 'Dev/treebird-internal/.pending_task.md')
         ];
 
         let taskFilePath: string | null = null;
@@ -81,6 +82,10 @@ export const staleCommand = new Command('stale')
         }
 
         const days = parseInt(options.days, 10);
+        if (!Number.isFinite(days) || days < 0) {
+            console.error(`❌ Invalid --days value: ${options.days}`);
+            process.exit(1);
+        }
         const threshold = new Date();
         threshold.setDate(threshold.getDate() - days);
 

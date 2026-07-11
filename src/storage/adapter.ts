@@ -68,5 +68,5 @@ export interface StorageAdapter {
     /**
      * Clean up old branches
      */
-    cleanup(olderThan: Date): Promise<string[]>;
+    cleanup(olderThan: Date, includeActive?: boolean): Promise<string[]>;
 }

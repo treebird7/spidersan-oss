@@ -17,7 +17,7 @@
  * already marked `completed` / `abandoned` are honoured without a git probe.
  */
 
-import { resolveBranchRef, isMergedInto } from './git.js';
+import { resolveBranchRef, resolveLocalBranchRef, isMergedInto } from './git.js';
 import { getTrunkBranch } from './trunk.js';
 import type { Branch } from '../storage/adapter.js';
 
@@ -37,6 +37,13 @@ export interface ReconcileResult {
 export interface ReconcileDeps {
     /** Resolve a branch name to a usable ref, or `null` if no ref exists. */
     resolveRef: (name: string) => string | null;
+    /**
+     * Resolve the LOCAL ref (`refs/heads/<name>`), or `null` if none. When the
+     * primary ref is the remote-tracking one, a stale `origin/<name>` can be an
+     * ancestor of trunk while fresh unpushed local commits are not — both must
+     * be merged before the branch is reconciled away. Optional for injectors.
+     */
+    resolveLocalRef?: (name: string) => string | null;
     /** True if `ref` is fully merged into `trunkRef`. */
     isMerged: (ref: string, trunkRef: string) => boolean;
     /** Bare trunk branch name (e.g. `main`) — never reconciled away. */
@@ -51,6 +58,7 @@ export function defaultReconcileDeps(): ReconcileDeps {
     const trunkRef = resolveBranchRef(trunkName) ?? trunkName;
     return {
         resolveRef: (name) => resolveBranchRef(name),
+        resolveLocalRef: (name) => resolveLocalBranchRef(name),
         isMerged: (ref, trunk) => isMergedInto(ref, trunk),
         trunkName,
         trunkRef,
@@ -96,8 +104,14 @@ export function reconcileBranches(
             continue;
         }
         if (deps.isMerged(ref, deps.trunkRef)) {
-            merged.push(branch.name);
-            continue;
+            // The primary ref may be a stale origin/<name> while unpushed local
+            // commits exist — only reconcile away if the local tip (when it
+            // exists and differs) is merged too.
+            const localRef = deps.resolveLocalRef?.(branch.name) ?? null;
+            if (localRef === null || localRef === ref || deps.isMerged(localRef, deps.trunkRef)) {
+                merged.push(branch.name);
+                continue;
+            }
         }
         live.push(branch);
     }

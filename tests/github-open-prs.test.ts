@@ -52,10 +52,11 @@ describe('getPRLabels', () => {
         expect(await getPRLabels(80)).toEqual(['needs-grant:memoak/URL', 'enhancement']);
     });
 
-    it('returns [] when there are no labels or gh fails', async () => {
+    it('returns [] when there are no labels, null when gh fails', async () => {
         mockExecFileSync.mockReturnValue(JSON.stringify({}) as never);
         expect(await getPRLabels(80)).toEqual([]);
+        // gh failure is "couldn't determine", not "no labels" — gates fail closed on null
         mockExecFileSync.mockImplementation((() => { throw new Error('boom'); }) as never);
-        expect(await getPRLabels(80)).toEqual([]);
+        expect(await getPRLabels(80)).toBeNull();
     });
 });

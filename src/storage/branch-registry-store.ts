@@ -9,5 +9,5 @@ export interface BranchRegistryStore {
     unregister(name: string): Promise<boolean>;
     get(name: string): Promise<Branch | null>;
     findByFiles(files: string[]): Promise<Branch[]>;
-    cleanup(olderThan: Date): Promise<string[]>;
+    cleanup(olderThan: Date, includeActive?: boolean): Promise<string[]>;
 }

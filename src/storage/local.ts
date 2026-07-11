@@ -46,7 +46,7 @@ export class LocalStorage implements StorageAdapter {
         return this.store.findByFiles(files);
     }
 
-    async cleanup(olderThan: Date): Promise<string[]> {
-        return this.store.cleanup(olderThan);
+    async cleanup(olderThan: Date, includeActive = false): Promise<string[]> {
+        return this.store.cleanup(olderThan, includeActive);
     }
 }

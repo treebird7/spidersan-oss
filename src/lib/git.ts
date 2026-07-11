@@ -94,13 +94,12 @@ export function getChangedFiles(options?: { base?: string }): string[] {
 
     for (const strategy of strategies) {
         try {
-            const output = execGit(['diff', '--name-only', strategy], {
+            const output = execGit(['-c', 'core.quotepath=off', 'diff', '--name-only', strategy], {
                 stdio: ['pipe', 'pipe', 'ignore'],
             });
-            const files = output.trim().split('\n').filter(Boolean);
-            if (files.length > 0) {
-                return files;
-            }
+            // A successful diff is authoritative — an empty result means no changes,
+            // not "try the next strategy" (HEAD~1 would report already-merged files).
+            return output.trim().split('\n').filter(Boolean);
         } catch (error) {
             if (isNotRepoError(error)) {
                 throw new GitError('Not in a git repository', 'NOT_A_REPO');
@@ -145,15 +144,19 @@ export function getRemoteHead(remote: string, branch: string): string | null {
     const safeBranch = validateBranchName(branch);
 
     try {
-        const output = execGit(['ls-remote', '--heads', remote, safeBranch], {
+        // ls-remote patterns match ref suffixes ("main" also matches "feature/main"),
+        // so query the full refname and match the exact line.
+        const refName = `refs/heads/${safeBranch}`;
+        const output = execGit(['ls-remote', '--heads', remote, refName], {
             stdio: ['pipe', 'pipe', 'ignore'],
         }).trim();
 
-        if (!output) {
+        const line = output.split('\n').find((l) => l.endsWith(`\t${refName}`));
+        if (!line) {
             return null;
         }
 
-        const [sha] = output.split(/\s+/, 1);
+        const [sha] = line.split(/\s+/, 1);
         return sha || null;
     } catch {
         return null;
@@ -588,6 +591,25 @@ export function resolveBranchRef(name: string, remote = 'origin'): string | null
         }
     }
     return null;
+}
+
+/** Resolve only the LOCAL ref (`refs/heads/<name>`), or `null` if none. */
+export function resolveLocalBranchRef(name: string): string | null {
+    let branch: string;
+    try {
+        branch = validateBranchName(name);
+    } catch {
+        return null;
+    }
+    const ref = `refs/heads/${branch}`;
+    try {
+        execGit(['rev-parse', '--verify', '--quiet', ref], {
+            stdio: ['pipe', 'pipe', 'ignore'],
+        });
+        return ref;
+    } catch {
+        return null;
+    }
 }
 
 /**
