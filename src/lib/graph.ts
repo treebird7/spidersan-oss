@@ -87,6 +87,34 @@ export function buildConflictGraph(
 }
 
 /**
+ * Fold declared dependencies into a conflict graph as DIRECTED edges.
+ * An edge u→v gives v in-degree, so v sorts after u: "A depends on B"
+ * becomes edge B→A (B merges first). Unknown/self deps are dropped by
+ * topologicalSort's normalization. Returns a new map; inputs untouched.
+ */
+export function addDependencyEdges(
+    graph: Map<NodeId, NodeId[]>,
+    branches: Array<{ name: string; dependsOn?: string[] }>
+): Map<NodeId, NodeId[]> {
+    const merged = new Map<NodeId, NodeId[]>();
+    for (const [node, neighbors] of graph.entries()) {
+        merged.set(node, [...neighbors]);
+    }
+
+    for (const branch of branches) {
+        for (const dep of branch.dependsOn ?? []) {
+            const out = merged.get(dep) ?? [];
+            if (!out.includes(branch.name)) {
+                out.push(branch.name);
+            }
+            merged.set(dep, out);
+        }
+    }
+
+    return merged;
+}
+
+/**
  * Topological sort with tie-breaking by blocking count.
  * Returns branches in recommended merge order.
  * Cycles are broken by inserting branches at earliest valid position.

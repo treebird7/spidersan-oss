@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`spidersan depends` actually works now** (tb-5h9b) — it was a stub that always printed "requires Supabase storage" and stored nothing. Dependencies (`dependsOn`) and the merged PR (`prNumber`, via `merged --pr N`) now live on the registry `Branch` entry itself, so they work with **local** storage too. `merge-order` folds declared dependencies into its sort as directed edges (new `addDependencyEdges` in `src/lib/graph.ts`): "A depends on B" puts B first regardless of file overlap. `registry-sync` pushes/pulls both fields (`depends_on`, `pr_number` on `spider_registries` — canonical table, not the dead `branch_registry` path removed above). **Deploy order:** apply migration `treebird/supabase/migrations/20260711000000_spider_registries_depends_pr.sql` before shipping this, or cloud pushes will reject the unknown columns.
+
 ### Fixed
 
 - **Registry store: crash-safe writes + no silent wipe** (`src/storage/json-branch-registry-store.ts`) — `save()` now writes temp-then-rename (atomic), and `load()` only falls back to an empty registry on ENOENT. Previously a corrupt/truncated `registry.json` (crash mid-write) parsed as "empty" and the next `register` **silently destroyed every agent's registrations**; now it fails loudly and never saves over the corrupt file.
