@@ -29,8 +29,9 @@ export { loadEcosystemCommands, getEcosystemStatus } from './ecosystem-loader.js
 export { githubSyncCommand } from './github-sync.js';
 export { syncAdvisorCommand } from './sync-advisor.js';
 
-// PR coordination: merge-plan, pr-check, verify-trunk
+// PR coordination: merge-plan, pr-check, verify-trunk, mq
 export { mergePlanCommand } from './merge-plan.js';
+export { mqCommand } from './mq.js';
 export { prCheckCommand } from './pr-check.js';
 export { verifyTrunkCommand } from './verify-trunk.js';
 

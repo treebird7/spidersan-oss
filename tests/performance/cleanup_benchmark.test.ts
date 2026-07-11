@@ -28,7 +28,7 @@ describe('Cleanup Performance', () => {
             name: `stale-branch-${i}`,
             registeredAt: oldDate,
             files: [],
-            status: 'active',
+            status: 'completed',
         }));
         const freshBranch = { name: 'fresh', registeredAt: new Date(), files: [], status: 'active' };
         mockStorage.list.mockResolvedValue([...staleBranches, freshBranch]);
@@ -40,7 +40,7 @@ describe('Cleanup Performance', () => {
 
         // cleanup called once with a Date threshold
         expect(mockStorage.cleanup).toHaveBeenCalledOnce();
-        expect(mockStorage.cleanup).toHaveBeenCalledWith(expect.any(Date));
+        expect(mockStorage.cleanup).toHaveBeenCalledWith(expect.any(Date), false);
 
         // unregister never called — N+1 pattern eliminated
         expect(mockStorage.unregister).not.toHaveBeenCalled();

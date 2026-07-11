@@ -3,6 +3,7 @@ import { getStorage } from '../storage/index.js';
 import * as readline from 'readline';
 import { loadConfig } from '../lib/config.js';
 import { getChangedFiles, getCurrentBranch } from '../lib/git.js';
+import { getTrunkBranch } from '../lib/trunk.js';
 import { validateAgentId, sanitizeFilePaths, validateFilePath } from '../lib/security.js';
 import { logActivity } from '../lib/activity.js';
 import { renderRegisterResult } from '../lib/register-renderer.js';
@@ -33,7 +34,7 @@ export function validateRegistrationFiles(files: string[]): void {
 }
 
 function getRelevantChangedFiles(): string[] {
-    return getChangedFiles().filter((file) => !isExcludedPath(file));
+    return getChangedFiles({ base: getTrunkBranch() }).filter((file) => !isExcludedPath(file));
 }
 
 async function promptForFiles(detectedFiles: string[]): Promise<string[]> {

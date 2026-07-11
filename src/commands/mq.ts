@@ -202,6 +202,15 @@ mqCommand
     }
     console.log(`   Queue: ${ordered.map((p) => `#${p.number}`).join(' → ')}`);
 
+    // The speculative merge + gate run in THIS checkout: fetchPRHead pulls
+    // pull/<n>/head from the cwd's origin. If --repo names a different repo,
+    // we'd test one repo's code and land another's PRs. Refuse the mismatch.
+    const cwdSlug = resolveRepoSlug(undefined);
+    if (options.execute && cwdSlug?.toLowerCase() !== repoSlug.toLowerCase()) {
+      console.error(`❌ --execute requires running inside a checkout of ${repoSlug} (cwd is ${cwdSlug ?? 'not a GitHub repo'}).`);
+      process.exit(1);
+    }
+
     if (!options.execute) {
       console.log('\n   Plan only (no merges). Re-run with --execute to act.');
       console.log(`   Gate: ${gateCmd}`);

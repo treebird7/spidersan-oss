@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildConflictGraph, calculateBlockingCounts, topologicalSort } from '../src/lib/graph.js';
+import { addDependencyEdges, buildConflictGraph, calculateBlockingCounts, topologicalSort } from '../src/lib/graph.js';
 
 describe('buildConflictGraph', () => {
     it('returns empty adjacency lists for branches with no file overlap', () => {
@@ -28,6 +28,47 @@ describe('buildConflictGraph', () => {
         ]);
 
         expect(graph.get('alpha')).toEqual([]);
+    });
+});
+
+describe('addDependencyEdges', () => {
+    it('orders a dependency before its dependent in the sort', () => {
+        // no file overlap, but child declares it depends on parent
+        const branches = [
+            { name: 'a-child', files: ['src/c.ts'], dependsOn: ['z-parent'] },
+            { name: 'z-parent', files: ['src/p.ts'] },
+        ];
+        const graph = addDependencyEdges(buildConflictGraph(branches), branches);
+        const order = topologicalSort(branches.map(b => b.name), graph);
+
+        // alphabetical order would put a-child first; the dep edge overrides
+        expect(order).toEqual(['z-parent', 'a-child']);
+    });
+
+    it('wins over the symmetric conflict edge for stacked branches (file overlap + dep)', () => {
+        // stacked branches ALWAYS file-overlap → symmetric 2-cycle in the
+        // conflict graph. The declared dep must break the cycle, not join it.
+        // (Live repro 2026-07-11: spider2/cloud-branch-state sorted BEFORE its
+        // base spider2/study-improve-core because 'c' < 's' in cycle-breaking.)
+        const branches = [
+            { name: 'a-stacked', files: ['src/shared.ts'], dependsOn: ['z-base'] },
+            { name: 'z-base', files: ['src/shared.ts'] },
+        ];
+        const graph = addDependencyEdges(buildConflictGraph(branches), branches);
+        const order = topologicalSort(branches.map(b => b.name), graph);
+
+        expect(order).toEqual(['z-base', 'a-stacked']);
+    });
+
+    it('does not mutate the input graph and ignores unknown deps', () => {
+        const branches = [{ name: 'a', files: [], dependsOn: ['ghost'] }];
+        const base = buildConflictGraph(branches);
+        const merged = addDependencyEdges(base, branches);
+
+        expect(base.get('ghost')).toBeUndefined();
+        expect(merged.get('ghost')).toEqual(['a']);
+        // unknown node is dropped by normalization inside the sort
+        expect(topologicalSort(['a'], merged)).toEqual(['a']);
     });
 });
 

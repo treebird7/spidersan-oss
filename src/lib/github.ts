@@ -330,15 +330,15 @@ export async function listOpenPRs(): Promise<OpenPR[]> {
     }
 }
 
-/** Label names on a PR (cwd-based gh). Empty on failure. Input to precondition()/--gate. */
-export async function getPRLabels(prNumber: number): Promise<string[]> {
+/** Label names on a PR (cwd-based gh). `null` on failure so gates fail closed. */
+export async function getPRLabels(prNumber: number): Promise<string[] | null> {
     const safePrNumber = validatePRNumber(prNumber);
     try {
         const out = execFileSync('gh', ['pr', 'view', '--json', 'labels', '--', String(safePrNumber)], { encoding: 'utf-8' });
         const data = JSON.parse(out) as { labels?: Array<{ name: string }> };
         return (data.labels ?? []).map((l) => l.name).filter(Boolean);
     } catch {
-        return [];
+        return null;
     }
 }
 

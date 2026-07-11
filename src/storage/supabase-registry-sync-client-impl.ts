@@ -38,6 +38,8 @@ interface SpiderRegistryRow {
     files: string[] | null;
     agent: string | null;
     description: string | null;
+    depends_on: string[] | null;
+    pr_number: number | null;
     created_at: string;
     synced_at: string;
     machine_id: string;
@@ -87,6 +89,8 @@ export class SupabaseRegistrySyncClientImpl implements SupabaseRegistrySyncClien
             files: branch.files,
             agent: branch.agent || machine.name,
             description: branch.description || null,
+            depends_on: branch.dependsOn?.length ? branch.dependsOn : null,
+            pr_number: branch.prNumber ?? null,
             synced_at: now,
             project_id: this.projectId,
         }));
@@ -181,6 +185,8 @@ export class SupabaseRegistrySyncClientImpl implements SupabaseRegistrySyncClien
                 files: row.files ?? [],
                 agent: row.agent ?? undefined,
                 description: row.description ?? undefined,
+                dependsOn: row.depends_on ?? undefined,
+                prNumber: row.pr_number ?? undefined,
                 status: row.status === 'merged' ? 'completed' : (row.status as Branch['status']),
                 registeredAt: new Date(row.created_at),
             });
@@ -291,72 +297,6 @@ export class SupabaseRegistrySyncClientImpl implements SupabaseRegistrySyncClien
 
         conflicts.sort((a, b) => b.tier - a.tier);
         return conflicts;
-    }
-
-    async setDependencies(name: string, dependsOn: string[]): Promise<void> {
-        await this.fetchFromSupabase(`branch_registry?branch_name=eq.${encodeURIComponent(name)}`, {
-            method: 'PATCH',
-            body: JSON.stringify({ depends_on: dependsOn, updated_at: new Date().toISOString() }),
-        });
-    }
-
-    async setConflicts(name: string, conflictsWith: string[]): Promise<void> {
-        await this.fetchFromSupabase(`branch_registry?branch_name=eq.${encodeURIComponent(name)}`, {
-            method: 'PATCH',
-            body: JSON.stringify({ conflict_with: conflictsWith, updated_at: new Date().toISOString() }),
-        });
-    }
-
-    async markMerged(name: string, prNumber?: number): Promise<void> {
-        const payload: Record<string, unknown> = { state: 'merged', updated_at: new Date().toISOString() };
-        if (prNumber) {
-            payload.pr_number = prNumber;
-        }
-
-        await this.fetchFromSupabase(`branch_registry?branch_name=eq.${encodeURIComponent(name)}`, {
-            method: 'PATCH',
-            body: JSON.stringify(payload),
-        });
-    }
-
-    async getStale(): Promise<Branch[]> {
-        const response = await this.fetchFromSupabase('stale_branches?select=*');
-        if (!response.ok) {
-            throw new Error(`Failed to get stale: ${await response.text()}`);
-        }
-
-        const rows = await response.json() as SupabaseBranchRow[];
-        return rows.map((row) => this.rowToBranch(row));
-    }
-
-    async getRaw(name: string): Promise<SupabaseBranchRow | null> {
-        const response = await this.fetchFromSupabase(
-            `branch_registry?branch_name=eq.${encodeURIComponent(name)}&limit=1`,
-        );
-        if (!response.ok) {
-            return null;
-        }
-
-        const rows = await response.json() as SupabaseBranchRow[];
-        return rows[0] || null;
-    }
-
-    async pushGitHubBranches(rows: unknown[]): Promise<number> {
-        const response = await this.fetchFromSupabase('spider_github_branches', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' },
-            body: JSON.stringify(rows),
-        });
-
-        if (!response.ok) {
-            const message = await response.text();
-            if (message.includes('does not exist') || message.includes('42P01')) {
-                return 0;
-            }
-            throw new Error(`pushGitHubBranches failed: ${message}`);
-        }
-
-        return rows.length;
     }
 
     async init(): Promise<void> {

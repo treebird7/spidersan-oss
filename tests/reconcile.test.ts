@@ -64,6 +64,34 @@ describe('reconcileBranches', () => {
         expect(live).toEqual([]);
     });
 
+    it('keeps a branch whose stale REMOTE ref is merged but whose local tip has unpushed commits', () => {
+        const d: ReconcileDeps = {
+            trunkName: 'main',
+            trunkRef: 'origin/main',
+            // remote-tracking ref exists (and is merged — the PR landed) …
+            resolveRef: (n) => `refs/remotes/origin/${n}`,
+            // … but the agent kept committing locally on the same branch.
+            resolveLocalRef: (n) => `refs/heads/${n}`,
+            isMerged: (ref) => ref.startsWith('refs/remotes/'),
+        };
+        const { live, merged } = reconcileBranches([branch('feat/continued')], d);
+        expect(live.map(b => b.name)).toEqual(['feat/continued']);
+        expect(merged).toEqual([]);
+    });
+
+    it('still reconciles away when both remote and local tips are merged', () => {
+        const d: ReconcileDeps = {
+            trunkName: 'main',
+            trunkRef: 'origin/main',
+            resolveRef: (n) => `refs/remotes/origin/${n}`,
+            resolveLocalRef: (n) => `refs/heads/${n}`,
+            isMerged: () => true,
+        };
+        const { live, merged } = reconcileBranches([branch('feat/fully-merged')], d);
+        expect(live).toEqual([]);
+        expect(merged).toEqual(['feat/fully-merged']);
+    });
+
     it('passes the trunk branch through as live and never reconciles it away', () => {
         const { live } = reconcileBranches(
             [{ name: 'main', files: [], registeredAt: new Date(0), status: 'active' }],

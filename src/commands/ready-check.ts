@@ -10,6 +10,7 @@ import { readFile } from 'fs/promises';
 import { getStorage } from '../storage/index.js';
 import { loadConfig, getWipPatterns } from '../lib/config.js';
 import { getChangedFiles, getCurrentBranch } from '../lib/git.js';
+import { getTrunkBranch } from '../lib/trunk.js';
 import { activeBranches } from '../lib/reconcile.js';
 import { Minimatch } from 'minimatch';
 
@@ -33,7 +34,7 @@ export const readyCheckCommand = new Command('ready-check')
 
         const branchName = getCurrentBranch();
         const branch = await storage.get(branchName);
-        const changedFiles = getChangedFiles();
+        const changedFiles = getChangedFiles({ base: getTrunkBranch() });
 
         const issues: Array<{ type: string; file: string; line?: number; pattern?: string }> = [];
 

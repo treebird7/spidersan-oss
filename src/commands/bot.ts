@@ -34,7 +34,8 @@ const SYNC_INTERVAL = 90_000;
 const RATE_LIMIT = 10_000; // ms per repo
 
 const VALID_COMMANDS = new Set(['sync', 'pull', 'push', 'status', 'conflicts', 'log']);
-const BRANCH_RE = /^[\w/.-]{1,200}$/;
+// Leading char must not be '-' so args can never be parsed as git options
+const BRANCH_RE = /^[\w/.][\w/.-]{0,199}$/;
 
 // Minimal env for git subprocesses — excludes bot secrets (SMALLTOAK_TOKEN etc.)
 function gitEnv(): NodeJS.ProcessEnv {
@@ -94,9 +95,6 @@ interface RepoConfig {
 
 interface BotConfig {
   repos: Record<string, RepoConfig>;
-  pollInterval: number;
-  syncInterval: number;
-  rateLimit: number;
 }
 
 function loadBotConfig(): BotConfig {
@@ -105,7 +103,7 @@ function loadBotConfig(): BotConfig {
       return JSON.parse(readFileSync(CONFIG_FILE, 'utf-8'));
     } catch { /* fall through */ }
   }
-  return { repos: {}, pollInterval: 15, syncInterval: 90, rateLimit: 10 };
+  return { repos: {} };
 }
 
 function saveBotConfig(cfg: BotConfig): void {
@@ -115,7 +113,7 @@ function saveBotConfig(cfg: BotConfig): void {
 
 // ── Command parser ──────────────────────────────────────────────────────────
 
-function parseCommand(text: string, repos: Record<string, RepoConfig>):
+export function parseCommand(text: string, repos: Record<string, RepoConfig>):
     { cmd: string; repo: string; args: string[] } | null {
   if (!text || !text.startsWith('/')) return null;
   const parts = text.trim().split(/\s+/);
@@ -191,10 +189,12 @@ function executePull(cfg: RepoConfig, branch?: string): string {
   }
 }
 
-function executePush(cfg: RepoConfig): string {
-  registerFiles(cfg);
-  const conflict = checkConflictsBefore(cfg);
-  if (conflict) return conflict;
+function executePush(cfg: RepoConfig, checked = false): string {
+  if (!checked) {
+    registerFiles(cfg);
+    const conflict = checkConflictsBefore(cfg);
+    if (conflict) return conflict;
+  }
   try {
     for (const filePattern of cfg.autoPush) {
       execFileSync('git', ['add', filePattern], { cwd: cfg.path, encoding: 'utf-8', env: gitEnv() });
@@ -238,7 +238,7 @@ function executeSync(cfg: RepoConfig): string {
   const conflict = checkConflictsBefore(cfg);
   if (conflict) return conflict;
   const pull = executePull(cfg);
-  const push = executePush(cfg);
+  const push = executePush(cfg, true);
   return `Pull: ${pull}\nPush: ${push}`;
 }
 
@@ -322,7 +322,7 @@ export const botCommand = new Command('bot')
       pull: (cfg, args) => executePull(cfg, args[0]),
       push: (cfg) => executePush(cfg),
       status: (cfg) => executeStatus(cfg),
-      log: (cfg, args) => executeLog(cfg, args[0] ? parseInt(args[0]) : 10),
+      log: (cfg, args) => executeLog(cfg, parseInt(args[0], 10) || 10),
       conflicts: (cfg) => executeConflicts(cfg),
     };
 

@@ -29,7 +29,11 @@ export const mergedCommand = new Command('merged')
             process.exit(1);
         }
 
-        await storage.update(branchName, { status: 'completed' });
+        const prNumber = options.pr ? parseInt(options.pr, 10) : undefined;
+        await storage.update(branchName, {
+            status: 'completed',
+            ...(Number.isFinite(prNumber) ? { prNumber } : {}),
+        });
         logActivity({ event: 'merge', branch: branchName, agent: branch.agent ?? undefined, details: { pr_number: options.pr } });
 
         console.log(`🕷️ Marked as merged: ${branchName}`);

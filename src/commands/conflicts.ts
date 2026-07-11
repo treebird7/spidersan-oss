@@ -345,8 +345,10 @@ function preconditionLabels(labels: string[]): string[] {
     return labels.filter((l) => NEEDS_LABEL.test(l));
 }
 
-function renderGate(gate: { labels: string[]; unmet: boolean }): void {
-    if (gate.unmet) {
+function renderGate(gate: { labels: string[]; unmet: boolean; unknown?: boolean }): void {
+    if (gate.unknown) {
+        console.log('\n🛑 precondition UNKNOWN: could not read PR labels (gh missing/unauthenticated) — failing closed.');
+    } else if (gate.unmet) {
         console.log(`\n🛑 precondition UNMET: ${gate.labels.join(', ')} — resource not satisfied; clear the label to merge.`);
     } else {
         console.log('\n✅ precondition: no unmet needs-* gate.');
@@ -372,6 +374,7 @@ async function runRealConflicts(options: {
     all?: boolean;
     json?: boolean;
     exitCode?: boolean;
+    strict?: boolean;
     carries?: boolean;
     gate?: boolean;
 }): Promise<number> {
@@ -392,7 +395,9 @@ async function runRealConflicts(options: {
         const ref = `refs/spidersan/pr-${prNumber}`;
         try {
             // pull/<n>/head exists on the base repo even for fork PRs.
-            execFileSync('git', ['fetch', '--quiet', 'origin', `pull/${prNumber}/head:${ref}`], { stdio: 'pipe' });
+            // Leading '+' forces the update — after a PR force-push the stashed
+            // ref is non-fast-forward and a plain refspec would fail forever.
+            execFileSync('git', ['fetch', '--quiet', 'origin', `+pull/${prNumber}/head:${ref}`], { stdio: 'pipe' });
             // Check against the REMOTE trunk, not a possibly-stale local one — a PR
             // merges into origin's HEAD. Falling back to local `main` (which can lag)
             // is the same false-confidence class as tb-57fr.
@@ -430,13 +435,20 @@ async function runRealConflicts(options: {
     const anyConflicts = results.some((r) => !r.error && !r.clean);
 
     // --pr extras: precondition() gate + carries() provenance (opt-in, compose).
-    let gate: { labels: string[]; unmet: boolean } | undefined;
+    let gate: { labels: string[]; unmet: boolean; unknown?: boolean } | undefined;
     let carries: CarriesReport | undefined;
     if (prNumber !== undefined) {
         const ref = `refs/spidersan/pr-${prNumber}`;
         if (options.gate) {
-            const needs = isGhAvailable() ? preconditionLabels(await getPRLabels(prNumber)) : [];
-            gate = { labels: needs, unmet: needs.length > 0 };
+            // Fail closed: if gh is missing or the label fetch errors we cannot
+            // prove the gate is clear, so it stays unmet.
+            const labels = isGhAvailable() ? await getPRLabels(prNumber) : null;
+            if (labels === null) {
+                gate = { labels: [], unmet: true, unknown: true };
+            } else {
+                const needs = preconditionLabels(labels);
+                gate = { labels: needs, unmet: needs.length > 0 };
+            }
         }
         if (options.carries) {
             const self = [base]; // exclude base + the PR's own remote head from "other branch"
@@ -460,7 +472,9 @@ async function runRealConflicts(options: {
         if (carries) renderCarries(carries);
     }
 
-    return options.exitCode && (anyConflicts || gate?.unmet === true) ? 1 : 0;
+    // --strict is the advertised CI flag on the legacy path; honour it here too
+    // instead of silently ignoring it (real conflicts are always tier-blocking).
+    return (options.exitCode || options.strict) && (anyConflicts || gate?.unmet === true) ? 1 : 0;
 }
 
 export const conflictsCommand = new Command('conflicts')
@@ -475,7 +489,6 @@ export const conflictsCommand = new Command('conflicts')
     .option('--wake', 'Wake conflicting agents and send them fix instructions')
     .option('--retry <seconds>', 'After waking, wait N seconds and re-check conflicts')
     .option('--auto', 'Auto mode: skip confirmations (enables Ralph Wiggum loop)')
-    .option('--max-retries <count>', 'Maximum retry attempts in auto mode (default: 5)', '5')
     .option('--semantic', 'Use semantic (AST) analysis for symbol-level conflict detection')
     .option('--ecosystem', 'Scan all ecosystem repos and aggregate conflict tiers')
     .option('--repos <paths>', 'Comma-separated repo paths for --ecosystem scan')

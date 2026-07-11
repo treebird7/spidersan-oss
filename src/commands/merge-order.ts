@@ -7,7 +7,7 @@
 
 import { Command } from 'commander';
 import { getStorage } from '../storage/index.js';
-import { buildConflictGraph, calculateBlockingCounts, topologicalSort } from '../lib/graph.js';
+import { addDependencyEdges, buildConflictGraph, calculateBlockingCounts, topologicalSort } from '../lib/graph.js';
 import { activeBranches } from '../lib/reconcile.js';
 
 interface MergeOrderOptions {
@@ -39,8 +39,9 @@ export const mergeOrderCommand = new Command('merge-order')
         const branchNames = branches.map(branch => branch.name);
         const branchByName = new Map(branches.map(branch => [branch.name, branch] as const));
 
-        // Build conflict graph
-        const conflictGraph = buildConflictGraph(branches);
+        // Build conflict graph, then fold in declared dependencies
+        // (`spidersan depends`) as directed dep-merges-first edges.
+        const conflictGraph = addDependencyEdges(buildConflictGraph(branches), branches);
 
         // Calculate blocking counts (how many branches are blocked by each branch)
         const blockingCounts = options.blockingCount

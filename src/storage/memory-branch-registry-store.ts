@@ -65,9 +65,12 @@ export class MemoryBranchRegistryStore implements BranchRegistryStore {
             .map(cloneBranch);
     }
 
-    async cleanup(olderThan: Date): Promise<string[]> {
+    async cleanup(olderThan: Date, includeActive = false): Promise<string[]> {
         const removed: string[] = [];
         for (const [name, branch] of this.branches.entries()) {
+            if (!includeActive && branch.status === 'active') {
+                continue;
+            }
             if (branch.registeredAt < olderThan) {
                 this.branches.delete(name);
                 removed.push(name);

@@ -23,9 +23,13 @@ describe('SupabaseRegistrySyncClientImpl', () => {
 
             if (url.includes('spider_registries?on_conflict=machine_id,repo_name,branch_name')) {
                 expect(init?.method).toBe('POST');
-                const payload = JSON.parse(String(init?.body)) as Array<{ branch_name: string; project_id: string }>;
+                const payload = JSON.parse(String(init?.body)) as Array<{ branch_name: string; project_id: string; depends_on: string[] | null; pr_number: number | null }>;
                 expect(payload.map((row) => row.branch_name)).toEqual(['feature-a', 'feature-b']);
                 expect(payload.every((row) => row.project_id === 'default')).toBe(true);
+                expect(payload[0].depends_on).toEqual(['feature-b']);
+                expect(payload[0].pr_number).toBeNull();
+                expect(payload[1].depends_on).toBeNull();
+                expect(payload[1].pr_number).toBe(42);
                 return jsonResponse([]);
             }
 
@@ -56,12 +60,14 @@ describe('SupabaseRegistrySyncClientImpl', () => {
                 name: 'feature-a',
                 files: ['src/a.ts'],
                 status: 'active',
+                dependsOn: ['feature-b'],
                 registeredAt: new Date('2026-05-01T00:00:00.000Z'),
             },
             {
                 name: 'feature-b',
                 files: ['src/b.ts'],
                 status: 'completed',
+                prNumber: 42,
                 registeredAt: new Date('2026-05-02T00:00:00.000Z'),
             },
         ];

@@ -12,6 +12,10 @@ export interface Branch {
     agent?: string;
     status: 'active' | 'completed' | 'abandoned';
     description?: string;
+    /** Branches that must merge BEFORE this one (`spidersan depends`). */
+    dependsOn?: string[];
+    /** PR that merged this branch (`spidersan merged --pr`). */
+    prNumber?: number;
 }
 
 export interface BranchRegistry {
@@ -68,5 +72,5 @@ export interface StorageAdapter {
     /**
      * Clean up old branches
      */
-    cleanup(olderThan: Date): Promise<string[]>;
+    cleanup(olderThan: Date, includeActive?: boolean): Promise<string[]>;
 }

@@ -1,5 +1,5 @@
 import { existsSync } from 'fs';
-import { mkdir, readFile, writeFile } from 'fs/promises';
+import { mkdir, readFile, writeFile, rename } from 'fs/promises';
 import { join } from 'path';
 import type { Branch, BranchRegistry } from './adapter.js';
 import type { BranchRegistryStore } from './branch-registry-store.js';
@@ -109,11 +109,16 @@ export class JsonBranchRegistryStore implements BranchRegistryStore {
         return branches.filter((branch) => branch.files.some((file) => fileSet.has(file)));
     }
 
-    async cleanup(olderThan: Date): Promise<string[]> {
+    async cleanup(olderThan: Date, includeActive = false): Promise<string[]> {
         const registry = await this.load();
         const removedNames: string[] = [];
 
         for (const [name, branch] of Object.entries(registry.branches)) {
+            // registeredAt is never refreshed, so an old ACTIVE registration
+            // usually means in-flight work — skip unless explicitly included.
+            if (!includeActive && branch.status === 'active') {
+                continue;
+            }
             if (branch.registeredAt < olderThan) {
                 delete registry.branches[name];
                 removedNames.push(name);
@@ -128,15 +133,25 @@ export class JsonBranchRegistryStore implements BranchRegistryStore {
     }
 
     private async load(): Promise<BranchRegistry> {
+        let data: string;
         try {
-            const data = await readFile(this.registryPath, 'utf-8');
-            return normalizeRegistry(JSON.parse(data) as StoredBranchRegistry);
-        } catch {
-            return { branches: {}, version: REGISTRY_VERSION };
+            data = await readFile(this.registryPath, 'utf-8');
+        } catch (err) {
+            if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+                return { branches: {}, version: REGISTRY_VERSION };
+            }
+            throw err;
         }
+        // A file that EXISTS but doesn't parse must fail loudly — returning an
+        // empty registry here would let the next save() wipe every agent's
+        // registration.
+        return normalizeRegistry(JSON.parse(data) as StoredBranchRegistry);
     }
 
     private async save(registry: BranchRegistry): Promise<void> {
-        await writeFile(this.registryPath, JSON.stringify(registry, null, 2));
+        // Write-then-rename so a crash mid-write can't truncate registry.json.
+        const tmp = `${this.registryPath}.${process.pid}.tmp`;
+        await writeFile(tmp, JSON.stringify(registry, null, 2));
+        await rename(tmp, this.registryPath);
     }
 }

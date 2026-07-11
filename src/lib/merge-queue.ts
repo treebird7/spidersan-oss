@@ -126,6 +126,12 @@ export async function runMergeQueue(
 
     // Red gate — naive culprit is the last-applied PR. Eject and retry smaller.
     const culprit = attempt.applied[attempt.applied.length - 1];
+    if (!culprit) {
+      // Nothing applied yet gate is red: base itself is broken. Retrying the
+      // same queue would spin until maxRounds — bail out instead.
+      deps.log(`Gate red with no PRs applied — base is broken${gate.detail ? ` (${gate.detail})` : ''}. Aborting.`);
+      return { landed, ejected, converged: false };
+    }
     const reason = `combined CI red against ${attempt.applied
       .filter((p) => p.number !== culprit.number)
       .map((p) => `#${p.number}`)

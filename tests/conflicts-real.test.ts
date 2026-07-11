@@ -218,7 +218,7 @@ describe('conflicts --real', () => {
 
         expect(analyzeRealConflicts).toHaveBeenCalledWith('origin/main', 'refs/spidersan/pr-81');
         // fetched PR head + the trunk (not just relied on a local ref)
-        expect(execFileSync).toHaveBeenCalledWith('git', ['fetch', '--quiet', 'origin', 'pull/81/head:refs/spidersan/pr-81'], expect.anything());
+        expect(execFileSync).toHaveBeenCalledWith('git', ['fetch', '--quiet', 'origin', '+pull/81/head:refs/spidersan/pr-81'], expect.anything());
         expect(execFileSync).toHaveBeenCalledWith('git', ['fetch', '--quiet', 'origin', 'main'], expect.anything());
         expect(code).toBe(0);
     });

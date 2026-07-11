@@ -9,7 +9,6 @@ import type { StorageAdapter, Branch } from './adapter.js';
 import { JsonBranchRegistryStore } from './json-branch-registry-store.js';
 import {
     SupabaseRegistrySyncClientImpl,
-    type SupabaseBranchRow,
     type SupabaseRegistrySyncClientConfig,
 } from './supabase-registry-sync-client-impl.js';
 import type {
@@ -61,28 +60,8 @@ export class SupabaseStorage implements StorageAdapter {
         return this.store.findByFiles(files);
     }
 
-    async cleanup(olderThan: Date): Promise<string[]> {
-        return this.store.cleanup(olderThan);
-    }
-
-    async setDependencies(name: string, dependsOn: string[]): Promise<void> {
-        await this.syncClient.setDependencies(name, dependsOn);
-    }
-
-    async setConflicts(name: string, conflictsWith: string[]): Promise<void> {
-        await this.syncClient.setConflicts(name, conflictsWith);
-    }
-
-    async markMerged(name: string, prNumber?: number): Promise<void> {
-        await this.syncClient.markMerged(name, prNumber);
-    }
-
-    async getStale(): Promise<Branch[]> {
-        return this.syncClient.getStale();
-    }
-
-    async getRaw(name: string): Promise<SupabaseBranchRow | null> {
-        return this.syncClient.getRaw(name);
+    async cleanup(olderThan: Date, includeActive = false): Promise<string[]> {
+        return this.store.cleanup(olderThan, includeActive);
     }
 
     async pushRegistry(
@@ -107,9 +86,5 @@ export class SupabaseStorage implements StorageAdapter {
         excludeMachine?: string,
     ): Promise<CrossMachineConflict[]> {
         return this.syncClient.detectCrossMachineConflicts(repoName, excludeMachine);
-    }
-
-    async pushGitHubBranches(rows: unknown[]): Promise<number> {
-        return this.syncClient.pushGitHubBranches(rows);
     }
 }

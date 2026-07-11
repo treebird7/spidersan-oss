@@ -62,7 +62,7 @@ describe('src/lib/git.ts', () => {
         expect(mockExecFileSync).toHaveBeenNthCalledWith(
             1,
             'git',
-            ['diff', '--name-only', 'main...HEAD'],
+            ['-c', 'core.quotepath=off', 'diff', '--name-only', 'main...HEAD'],
             expect.objectContaining({
                 encoding: 'utf-8',
                 env: expect.any(Object),
@@ -72,7 +72,7 @@ describe('src/lib/git.ts', () => {
         expect(mockExecFileSync).toHaveBeenNthCalledWith(
             2,
             'git',
-            ['diff', '--name-only', 'HEAD~1'],
+            ['-c', 'core.quotepath=off', 'diff', '--name-only', 'HEAD~1'],
             expect.objectContaining({
                 encoding: 'utf-8',
                 env: expect.any(Object),
