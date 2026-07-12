@@ -145,7 +145,22 @@ export class JsonBranchRegistryStore implements BranchRegistryStore {
         // A file that EXISTS but doesn't parse must fail loudly — returning an
         // empty registry here would let the next save() wipe every agent's
         // registration.
-        return normalizeRegistry(JSON.parse(data) as StoredBranchRegistry);
+        const parsed = JSON.parse(data) as StoredBranchRegistry;
+        // Same loudness for a WRONG SHAPE: `branches` must be a name-keyed
+        // plain object. An array (e.g. from a stray `jq map()` edit) parses
+        // fine but breaks every keyed lookup — register/update/unregister all
+        // silently miss while list() keeps working (tb-orpt).
+        if (
+            parsed === null || typeof parsed !== 'object' ||
+            parsed.branches === null || typeof parsed.branches !== 'object' ||
+            Array.isArray(parsed.branches)
+        ) {
+            throw new Error(
+                `Corrupt registry at ${this.registryPath}: "branches" must be an object keyed by branch name. ` +
+                'Restore it or re-init; refusing to operate on it.',
+            );
+        }
+        return normalizeRegistry(parsed);
     }
 
     private async save(registry: BranchRegistry): Promise<void> {

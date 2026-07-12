@@ -34,6 +34,22 @@ describe('JsonBranchRegistryStore', () => {
         expect(got?.prNumber).toBe(7);
     });
 
+    it('rejects an array-shaped `branches` loudly instead of silently missing every lookup (tb-orpt)', async () => {
+        await store.register({ name: 'feat/x', files: ['a.ts'], status: 'active' });
+        const registryPath = join(dir, '.spidersan', 'registry.json');
+        // The corruption a stray `jq 'map(...)'` edit produces: object → array.
+        const corrupt = JSON.stringify({
+            version: '1.0',
+            branches: [{ name: 'feat/x', files: ['a.ts'], status: 'active', registeredAt: new Date(0).toISOString() }],
+        });
+        writeFileSync(registryPath, corrupt, 'utf-8');
+
+        await expect(store.list()).rejects.toThrow(/branches.*must be an object/);
+        await expect(store.unregister('feat/x')).rejects.toThrow(/branches.*must be an object/);
+        // the corrupt file is untouched — nothing saved over it
+        expect(readFileSync(registryPath, 'utf-8')).toBe(corrupt);
+    });
+
     it('refuses to operate on a corrupt registry instead of silently wiping it', async () => {
         await store.register({ name: 'feat/x', files: ['a.ts'], status: 'active' });
         const registryPath = join(dir, '.spidersan', 'registry.json');

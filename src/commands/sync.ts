@@ -42,17 +42,27 @@ export const syncCommand = new Command('sync')
 
         console.log(`🕷️ Found ${stale.length} stale entr${stale.length === 1 ? 'y' : 'ies'} (${merged.length} merged, ${orphaned.length} orphaned):\n`);
 
+        let failed = 0;
         for (const { name, reason } of stale) {
             if (options.dryRun) {
                 console.log(`  Would remove (${reason}): ${name}`);
-            } else {
-                await storage.unregister(name);
+            } else if (await storage.unregister(name)) {
                 console.log(`  🗑️  Removed (${reason}): ${name}`);
                 logActivity({ event: 'sync', branch: name, details: { action: `removed_${reason}` } });
+            } else {
+                // Don't claim "Removed" for a no-op — a delete that misses means
+                // the entry vanished mid-sync or the registry is corrupt (tb-orpt).
+                failed++;
+                console.log(`  ⚠️  Could not remove (${reason}): ${name} — not found in registry`);
+                logActivity({ event: 'sync', branch: name, details: { action: `remove_failed_${reason}` } });
             }
         }
 
         if (!options.dryRun) {
+            if (failed > 0) {
+                console.log(`\n⚠️  Synced with ${failed} failed removal${failed === 1 ? '' : 's'} — registry may be corrupt (check .spidersan/registry.json).`);
+                process.exit(1);
+            }
             console.log(`\n✅ Synced registry with git.`);
         }
     });
