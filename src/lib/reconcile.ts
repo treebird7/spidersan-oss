@@ -9,15 +9,16 @@
  *
  * Reconcile-on-read folds git truth in BEFORE conflicts / ready-check /
  * merge-order answer:
- *   - ref gone from local AND remote  → orphaned (drop)
- *   - tip is an ancestor of trunk     → merged   (drop)
- *   - otherwise                        → live    (keep)
+ *   - ref gone from local AND remote           → orphaned (drop)
+ *   - tip is an ancestor of trunk              → merged   (drop)
+ *   - trunk has a patch-id-equivalent squash   → merged   (drop, tb-tr1z)
+ *   - otherwise                                 → live    (keep)
  *
  * It only consults git for entries the registry still calls `active`; entries
  * already marked `completed` / `abandoned` are honoured without a git probe.
  */
 
-import { resolveBranchRef, resolveLocalBranchRef, isMergedInto } from './git.js';
+import { resolveBranchRef, resolveLocalBranchRef, isMergedInto, isSquashMergedInto } from './git.js';
 import { getTrunkBranch } from './trunk.js';
 import type { Branch } from '../storage/adapter.js';
 
@@ -46,6 +47,12 @@ export interface ReconcileDeps {
     resolveLocalRef?: (name: string) => string | null;
     /** True if `ref` is fully merged into `trunkRef`. */
     isMerged: (ref: string, trunkRef: string) => boolean;
+    /**
+     * True if `ref`'s content landed in trunk via a SQUASH merge (tb-tr1z) —
+     * consulted only when `isMerged` says no, since squash merges never make
+     * the tip an ancestor. Optional for injectors.
+     */
+    isSquashMerged?: (ref: string, trunkRef: string) => boolean;
     /** Bare trunk branch name (e.g. `main`) — never reconciled away. */
     trunkName: string;
     /** Ref used as the merge target for is-ancestor (prefers `origin/main`). */
@@ -60,6 +67,7 @@ export function defaultReconcileDeps(): ReconcileDeps {
         resolveRef: (name) => resolveBranchRef(name),
         resolveLocalRef: (name) => resolveLocalBranchRef(name),
         isMerged: (ref, trunk) => isMergedInto(ref, trunk),
+        isSquashMerged: (ref, trunk) => isSquashMergedInto(ref, trunk),
         trunkName,
         trunkRef,
     };
@@ -97,18 +105,22 @@ export function reconcileBranches(
             continue;
         }
 
-        // status === 'active' — fold in git truth.
+        // status === 'active' — fold in git truth. Squash merges never make
+        // the tip an ancestor, so fall back to patch-id equivalence (tb-tr1z).
+        const provenMerged = (r: string) =>
+            deps.isMerged(r, deps.trunkRef) || (deps.isSquashMerged?.(r, deps.trunkRef) ?? false);
+
         const ref = deps.resolveRef(branch.name);
         if (ref === null) {
             orphaned.push(branch.name);
             continue;
         }
-        if (deps.isMerged(ref, deps.trunkRef)) {
+        if (provenMerged(ref)) {
             // The primary ref may be a stale origin/<name> while unpushed local
             // commits exist — only reconcile away if the local tip (when it
             // exists and differs) is merged too.
             const localRef = deps.resolveLocalRef?.(branch.name) ?? null;
-            if (localRef === null || localRef === ref || deps.isMerged(localRef, deps.trunkRef)) {
+            if (localRef === null || localRef === ref || provenMerged(localRef)) {
                 merged.push(branch.name);
                 continue;
             }
