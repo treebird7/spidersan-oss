@@ -12,7 +12,7 @@ export class GitError extends Error {
     }
 }
 
-type GitExecOptions = Pick<ExecFileSyncOptionsWithStringEncoding, 'stdio'>;
+type GitExecOptions = Pick<ExecFileSyncOptionsWithStringEncoding, 'stdio' | 'env'>;
 
 type GitExecError = Error & {
     message?: string;
@@ -621,7 +621,7 @@ export function resolveLocalBranchRef(name: string): string | null {
  *
  * NOTE: detects merge-commit / fast-forward merges, where the branch tip is
  * an ancestor of trunk. Squash merges rewrite history, so the tip is NOT an
- * ancestor — those are handled by the registry's `completed` status instead.
+ * ancestor — use {@link isSquashMergedInto} for those.
  */
 export function isMergedInto(ref: string, ancestorOf: string): boolean {
     try {
@@ -629,6 +629,44 @@ export function isMergedInto(ref: string, ancestorOf: string): boolean {
             stdio: ['pipe', 'pipe', 'ignore'],
         });
         return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * True if `ref`'s content landed in `ancestorOf` via a SQUASH merge (tb-tr1z).
+ *
+ * Squash merges rewrite history, so `merge-base --is-ancestor` can never see
+ * them. Instead we ask whether trunk contains a patch-id-equivalent change:
+ * commit the branch's tree onto its merge-base as one synthetic commit (the
+ * exact diff a squash merge lands), then `git cherry` it against trunk — a
+ * leading `-` means an equivalent patch is already there.
+ *
+ * The synthetic commit is a dangling object git eventually gc's; author and
+ * dates are pinned so repeat probes reuse the identical object instead of
+ * accreting new ones. Any failure returns `false` — "can't prove merged"
+ * stays "live", same as {@link isMergedInto}.
+ */
+export function isSquashMergedInto(ref: string, ancestorOf: string): boolean {
+    const quiet: GitExecOptions = { stdio: ['pipe', 'pipe', 'ignore'] };
+    try {
+        const base = execGit(['merge-base', ancestorOf, ref], quiet).trim();
+        const tree = execGit(['rev-parse', `${ref}^{tree}`], quiet).trim();
+        const probe = execGit(['commit-tree', tree, '-p', base, '-m', 'spidersan squash probe'], {
+            ...quiet,
+            env: {
+                ...gitEnv(),
+                GIT_AUTHOR_NAME: 'spidersan',
+                GIT_AUTHOR_EMAIL: 'probe@spidersan',
+                GIT_COMMITTER_NAME: 'spidersan',
+                GIT_COMMITTER_EMAIL: 'probe@spidersan',
+                GIT_AUTHOR_DATE: '2000-01-01T00:00:00Z',
+                GIT_COMMITTER_DATE: '2000-01-01T00:00:00Z',
+            },
+        }).trim();
+        const cherry = execGit(['cherry', ancestorOf, probe], quiet).trim();
+        return cherry !== '' && cherry.split('\n').every(line => line.startsWith('-'));
     } catch {
         return false;
     }

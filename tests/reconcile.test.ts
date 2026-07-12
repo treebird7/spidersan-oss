@@ -92,6 +92,31 @@ describe('reconcileBranches', () => {
         expect(merged).toEqual(['feat/fully-merged']);
     });
 
+    it('reconciles away a branch proven merged only by the squash probe (tb-tr1z)', () => {
+        const d: ReconcileDeps = {
+            ...deps(),
+            isMerged: () => false,
+            isSquashMerged: (ref) => ref.endsWith('feat/squashed'),
+        };
+        const { live, merged } = reconcileBranches([branch('feat/squashed')], d);
+        expect(live).toEqual([]);
+        expect(merged).toEqual(['feat/squashed']);
+    });
+
+    it('keeps a branch whose remote ref was squash-merged but whose local tip has new commits', () => {
+        const d: ReconcileDeps = {
+            trunkName: 'main',
+            trunkRef: 'origin/main',
+            resolveRef: (n) => `refs/remotes/origin/${n}`,
+            resolveLocalRef: (n) => `refs/heads/${n}`,
+            isMerged: () => false,
+            isSquashMerged: (ref) => ref.startsWith('refs/remotes/'),
+        };
+        const { live, merged } = reconcileBranches([branch('feat/continued')], d);
+        expect(live.map(b => b.name)).toEqual(['feat/continued']);
+        expect(merged).toEqual([]);
+    });
+
     it('passes the trunk branch through as live and never reconciles it away', () => {
         const { live } = reconcileBranches(
             [{ name: 'main', files: [], registeredAt: new Date(0), status: 'active' }],
