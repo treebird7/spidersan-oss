@@ -6,7 +6,8 @@
  */
 
 import { Command } from 'commander';
-import { loadConfig } from '../lib/config.js';
+import { resolveSupabaseCredentials } from '../lib/supabase-credentials.js';
+import { loadMachineIdentity } from '../lib/machine.js';
 import { SupabaseStorage } from '../storage/supabase.js';
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
@@ -42,21 +43,6 @@ interface GitHubBranchRow {
     is_default: boolean;
     scanned_at: string;
     scanned_by_machine: string;
-}
-
-async function loadMachineIdentity(): Promise<MachineIdentity> {
-    const configPath = join(homedir(), '.envoak', 'machine.json');
-    if (existsSync(configPath)) {
-        const raw = await readFile(configPath, 'utf-8');
-        const data = JSON.parse(raw);
-        return {
-            id: data.id || data.machine_id,
-            name: data.name || data.machine_name || 'unknown',
-            hostname: data.hostname || 'unknown',
-        };
-    }
-    const hostname = execFileSync('hostname', [], { encoding: 'utf-8' }).trim();
-    return { id: `fallback-${hostname}`, name: hostname, hostname };
 }
 
 async function loadReposConfig(): Promise<{ repos: { owner: string; name: string }[] } | null> {
@@ -199,10 +185,8 @@ export const githubSyncCommand = new Command('github-sync')
         }
 
         const machine = await loadMachineIdentity();
-        const config = await loadConfig();
-        const url = process.env.SUPABASE_URL || config.storage.supabaseUrl;
-        const key = process.env.SUPABASE_KEY || config.storage.supabaseKey;
-        const supabase = url && key ? new SupabaseStorage({ url, key }) : null;
+        const creds = await resolveSupabaseCredentials();
+        const supabase = creds ? new SupabaseStorage(creds) : null;
 
         let reposToScan: GitHubRepoConfig[] = [];
 

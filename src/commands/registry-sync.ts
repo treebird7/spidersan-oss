@@ -13,45 +13,9 @@ import { homedir } from 'os';
 import { execFileSync } from 'child_process';
 import { LocalStorage } from '../storage/local.js';
 import { SupabaseStorage } from '../storage/supabase.js';
-import { loadConfig } from '../lib/config.js';
-import type { MachineIdentity } from '../types/cloud.js';
-
-/**
- * Load machine identity from ~/.envoak/machine.json.
- * Falls back to hostname + generated ID if envoak is not configured.
- */
-async function loadMachineIdentity(): Promise<MachineIdentity> {
-    const configPath = join(homedir(), '.envoak', 'machine.json');
-    if (existsSync(configPath)) {
-        const raw = await readFile(configPath, 'utf-8');
-        const data = JSON.parse(raw);
-        return {
-            id: data.id || data.machine_id,
-            name: data.name || data.machine_name || 'unknown',
-            hostname: data.hostname || 'unknown',
-        };
-    }
-
-    // Fallback: use hostname
-    const hostname = execFileSync('hostname', [], { encoding: 'utf-8' }).trim();
-    return {
-        id: `fallback-${hostname}`,
-        name: hostname,
-        hostname,
-    };
-}
-
-/**
- * Get the current repo name from git or cwd.
- */
-function getRepoName(): string {
-    try {
-        const toplevel = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf-8' }).trim();
-        return basename(toplevel);
-    } catch {
-        return basename(process.cwd());
-    }
-}
+import { resolveSupabaseCredentials } from '../lib/supabase-credentials.js';
+import { loadMachineIdentity } from '../lib/machine.js';
+import { getRepoName } from '../lib/git.js';
 
 /**
  * Get the repo root path.
@@ -68,16 +32,12 @@ function getRepoPath(): string {
  * Get a SupabaseStorage instance, or null if not configured.
  */
 async function getSupabaseStorage(): Promise<SupabaseStorage | null> {
-    const config = await loadConfig();
-    // SPIDERSAN_SUPABASE_* first, mirroring factory.ts getSupabaseConfig()
-    // (fc8cf22): vault-injected creds arrive under the scoped names. This
-    // duplicate resolver missed that patch and left `registry-sync --push`
-    // (the hook path) reporting "Supabase not configured" on i7 (tb-efmm).
-    const url = process.env.SPIDERSAN_SUPABASE_URL || process.env.SUPABASE_URL || process.env.COLONY_SUPABASE_URL || config.storage.supabaseUrl;
-    const key = process.env.SPIDERSAN_SUPABASE_KEY || process.env.SUPABASE_KEY || process.env.COLONY_SUPABASE_KEY || config.storage.supabaseKey;
-
-    if (!url || !key) return null;
-    return new SupabaseStorage({ url, key });
+    // COLONY_SUPABASE_* used to sit in this chain as a last-resort fallback. It
+    // is gone deliberately: colony is a different Supabase project, so that
+    // fallback could push spider_registries into the wrong database (tb-ly0b).
+    const creds = await resolveSupabaseCredentials();
+    if (!creds) return null;
+    return new SupabaseStorage(creds);
 }
 
 export const registrySyncCommand = new Command('registry-sync')

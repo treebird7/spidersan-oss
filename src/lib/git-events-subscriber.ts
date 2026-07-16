@@ -25,6 +25,7 @@ import { existsSync, readFileSync, writeFileSync, appendFileSync, readdirSync, s
 import { join, resolve } from 'path';
 import { homedir } from 'os';
 import { getStorage } from '../storage/index.js';
+import { resolveSupabaseEnv } from './supabase-credentials.js';
 import { handleEvent } from './ai/event-handler.js';
 import type { EventPayload } from './ai/types.js';
 import { logActivity } from './activity.js';
@@ -696,11 +697,10 @@ interface SupabaseConfig {
 }
 
 function getConfig(): SupabaseConfig | null {
-    const url = process.env.SUPABASE_URL;
+    const { url, key } = resolveSupabaseEnv();
     if (!url) return null;
 
     const jwt = process.env.COLONY_SESSION_JWT;
-    const key = process.env.SUPABASE_KEY;
     if (!jwt && !key) return null;
 
     return { url, key: key ?? '', jwt };

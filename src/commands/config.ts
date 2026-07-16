@@ -10,6 +10,7 @@ import { homedir } from 'os';
 import { join } from 'path';
 import { createInterface } from 'readline/promises';
 import { stdin as input, stdout as output } from 'process';
+import { resolveSupabaseEnv } from '../lib/supabase-credentials.js';
 import { CONFIG_FILES, loadConfigWithSources } from '../lib/config.js';
 
 const DEFAULT_CONFIG_FILENAME = CONFIG_FILES[0];
@@ -237,8 +238,11 @@ async function printConfig(options: { json?: boolean } = {}): Promise<void> {
     const result = await loadConfigWithSources();
     const envDisable = isEnvDisabled(process.env.SPIDERSAN_ECOSYSTEM) ||
         isEnvDisabled(process.env.SPIDERSAN_CORE_ONLY);
-    const envSupabaseUrl = process.env.SUPABASE_URL;
-    const envSupabaseKey = process.env.SUPABASE_KEY;
+    // Shared resolution: reporting only the bare SUPABASE_* names made
+    // `spidersan config` claim "not set" under `envoak vault inject` (which only
+    // passes the scoped SPIDERSAN_SUPABASE_* names) — misleading on the exact
+    // surface people read to debug that (tb-ly0b).
+    const { url: envSupabaseUrl, key: envSupabaseKey } = resolveSupabaseEnv();
 
     if (options.json) {
         const payload = {

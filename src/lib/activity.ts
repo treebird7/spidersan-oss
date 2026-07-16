@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { basename, dirname, join } from 'path';
 import { homedir, hostname } from 'os';
+import { resolveSupabaseEnv } from './supabase-credentials.js';
 
 export type ActivityEvent =
     | 'register'
@@ -105,8 +106,11 @@ function resolveRepoName(cwd: string): string {
 }
 
 function resolveSupabaseConfig(runtime: ActivityRuntime = {}): { url: string; key: string } | null {
-    const url = runtime.supabaseUrl || process.env.SUPABASE_URL;
-    const key = runtime.supabaseKey || process.env.SUPABASE_KEY;
+    // Injected runtime config still wins; env resolution is shared so the
+    // scoped SPIDERSAN_SUPABASE_* names are honoured here too (tb-ly0b).
+    const env = resolveSupabaseEnv();
+    const url = runtime.supabaseUrl || env.url;
+    const key = runtime.supabaseKey || env.key;
     if (!url || !key) return null;
     return { url, key };
 }
