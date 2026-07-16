@@ -169,7 +169,11 @@ docs/arch/contracts/
 collab/
 tasks/
 .agent/
-.claude/
+# local Claude Code state stays ignored; repo-shipped skills are tracked
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/install-hooks/
 .jules/
 INDEX_MOVED.md
 /bin/
