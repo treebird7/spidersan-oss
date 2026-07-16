@@ -76,6 +76,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # gitleaks scans a commit RANGE; the default shallow clone (depth 1)
+          # makes it scan 0 bytes and die with exit 1
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
