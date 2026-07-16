@@ -69,8 +69,12 @@ function getRepoPath(): string {
  */
 async function getSupabaseStorage(): Promise<SupabaseStorage | null> {
     const config = await loadConfig();
-    const url = process.env.SUPABASE_URL || process.env.COLONY_SUPABASE_URL || config.storage.supabaseUrl;
-    const key = process.env.SUPABASE_KEY || process.env.COLONY_SUPABASE_KEY || config.storage.supabaseKey;
+    // SPIDERSAN_SUPABASE_* first, mirroring factory.ts getSupabaseConfig()
+    // (fc8cf22): vault-injected creds arrive under the scoped names. This
+    // duplicate resolver missed that patch and left `registry-sync --push`
+    // (the hook path) reporting "Supabase not configured" on i7 (tb-efmm).
+    const url = process.env.SPIDERSAN_SUPABASE_URL || process.env.SUPABASE_URL || process.env.COLONY_SUPABASE_URL || config.storage.supabaseUrl;
+    const key = process.env.SPIDERSAN_SUPABASE_KEY || process.env.SUPABASE_KEY || process.env.COLONY_SUPABASE_KEY || config.storage.supabaseKey;
 
     if (!url || !key) return null;
     return new SupabaseStorage({ url, key });
