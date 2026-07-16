@@ -6,17 +6,27 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+    strategy:
+      matrix:
+        node-version: [20, 22]
+
     steps:
       - uses: actions/checkout@v4
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ matrix.node-version }}
           cache: 'npm'
       
       - name: Install dependencies
@@ -25,9 +35,8 @@ jobs:
       - name: Build
         run: npm run build
       
-      - name: Lint (optional)
-        run: npm run lint || true
-        continue-on-error: true
+      - name: Lint
+        run: npm run lint
       
       - name: Run Tests
         run: npm test -- --run
@@ -61,3 +70,29 @@ jobs:
         run: |
           node dist/bin/spidersan.js init
           ls -la .spidersan/
+
+  security:
+    name: Dependency and secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks scans a commit RANGE; the default shallow clone (depth 1)
+          # makes it scan 0 bytes and die with exit 1
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
