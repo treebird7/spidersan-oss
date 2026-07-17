@@ -14,6 +14,12 @@ import { execFileSync, spawnSync } from 'child_process';
 import { basename } from 'path';
 import { homedir } from 'os';
 import { getStorage } from '../storage/index.js';
+import { SupabaseStorage } from '../storage/supabase.js';
+import type { Branch } from '../storage/adapter.js';
+import type { MachineRegistryView } from '../types/cloud.js';
+import { resolveSupabaseCredentials } from '../lib/supabase-credentials.js';
+import { loadMachineIdentity } from '../lib/machine.js';
+import { getRepoName } from '../lib/git.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
 import { validateBranchName, getCLIPath } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
@@ -30,6 +36,58 @@ import { activeBranches } from '../lib/reconcile.js';
 const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
 
 type ConflictTierInfo = ReturnType<typeof classifyWithLabel>;
+
+/**
+ * Pull other machines' registered branches as synthetic conflict targets.
+ *
+ * Why this exists: the registry is per-machine local state, and the pre-push /
+ * pre-merge hook calls `conflicts`. Without this, a teammate on another machine
+ * editing the same file was NEVER flagged — the hook advisory silently only ever
+ * saw local branches, giving false "you're good to merge" confidence. The data
+ * was already in Supabase (`registry-sync --push` writes it, `cross-conflicts`
+ * reads it); `conflicts` just never asked (tb-ly0b).
+ *
+ * Fail-open by design: unconfigured / offline / auth failure returns [] so the
+ * check degrades to local-only rather than blocking a push. Callers that need to
+ * distinguish "no conflicts" from "couldn't check" should use `cross-conflicts`.
+ *
+ * ponytail: one Supabase round-trip, only on the branch-overlap path (--real and
+ * --ecosystem return before this). Sub-second in practice and the hook is fail-open.
+ */
+export function crossMachineBranches(views: MachineRegistryView[]): Branch[] {
+    const branches: Branch[] = [];
+    for (const view of views) {
+        for (const b of view.branches) {
+            // Non-active entries are another machine's finished/abandoned work,
+            // and a file-less entry can never overlap — both would be phantom
+            // conflicts, which this codebase treats as worse than a miss.
+            if (b.status !== 'active' || !b.files?.length) continue;
+            branches.push({
+                ...b,
+                // Machine-qualified so the report distinguishes a remote branch
+                // from a local one of the same name (e.g. two mains).
+                name: `${view.machine_name}/${b.name}`,
+            });
+        }
+    }
+    return branches;
+}
+
+async function fetchCrossMachineBranches(): Promise<{ branches: Branch[]; degraded: boolean }> {
+    try {
+        const creds = await resolveSupabaseCredentials();
+        if (!creds) return { branches: [], degraded: false };
+
+        const machine = await loadMachineIdentity();
+        const supabase = new SupabaseStorage(creds);
+        // Excluding our own machine_id matters: without it this machine's own
+        // pushed rows come back and conflict against themselves.
+        const views = await supabase.pullRegistries(getRepoName(), machine.id);
+        return { branches: crossMachineBranches(views), degraded: false };
+    } catch {
+        return { branches: [], degraded: true };
+    }
+}
 
 function getCurrentBranch(): string {
     try {
@@ -603,6 +661,14 @@ export const conflictsCommand = new Command('conflicts')
                 allBranches.push(...prBranches.filter(b => b.files.length > 0));
             }
         }
+
+        // Cross-machine: other machines' registered branches are conflict targets
+        // too. Automatic (not opt-in) so the pre-push/pre-merge hook — which calls
+        // plain `conflicts` — actually catches a teammate on another machine
+        // touching the same file. Fail-open: degraded => local-only (tb-ly0b).
+        const cross = await fetchCrossMachineBranches();
+        allBranches.push(...cross.branches);
+
         const conflicts: Array<{ branch: string; files: string[]; tier: number; tierInfo: ConflictTierInfo }> = [];
 
         // Performance Optimization: Convert target files to Set for O(1) lookup
@@ -730,6 +796,11 @@ export const conflictsCommand = new Command('conflicts')
         if (conflicts.length === 0) {
             console.log(`🕷️ No conflicts detected for "${targetBranch}"`);
             console.log('   ✅ You\'re good to merge!');
+            // Never let a failed cross-machine check read as an all-clear — that
+            // silent false confidence is the whole bug this path fixes (tb-ly0b).
+            if (cross.degraded) {
+                console.error('   ⚠️  Cross-machine check unavailable — LOCAL branches only.');
+            }
             return;
         }
 

@@ -13,7 +13,8 @@
 import { Command } from 'commander';
 import blessed from 'blessed';
 import { getStorage } from '../storage/index.js';
-import { loadConfig } from '../lib/config.js';
+import { resolveSupabaseCredentials } from '../lib/supabase-credentials.js';
+import { loadMachineIdentity } from '../lib/machine.js';
 import { SupabaseStorage } from '../storage/supabase.js';
 import type { Branch } from '../storage/adapter.js';
 import type { MachineRegistryView } from '../types/cloud.js';
@@ -49,24 +50,6 @@ interface TUIState {
   machineId: string;
   machineName: string;
   refreshing: boolean;
-}
-
-async function loadMachineIdentity() {
-  const configPath = join(homedir(), '.envoak', 'machine.json');
-  if (existsSync(configPath)) {
-    try {
-      const raw = await readFile(configPath, 'utf-8');
-      const data = JSON.parse(raw);
-      return {
-        id: data.id || data.machine_id || 'unknown',
-        name: data.name || data.machine_name || 'unknown',
-        hostname: data.hostname || 'unknown',
-      };
-    } catch {
-      // fall through
-    }
-  }
-  return { id: 'unknown', name: 'local', hostname: 'unknown' };
 }
 
 function statusColor(status: Branch['status']): string {
@@ -164,10 +147,8 @@ export const dashboardCommand = new Command('dashboard')
       process.exit(1);
     }
     const machine = await loadMachineIdentity();
-    const config = await loadConfig();
-    const url = process.env.SUPABASE_URL || config.storage.supabaseUrl;
-    const key = process.env.SUPABASE_KEY || config.storage.supabaseKey;
-    const supabase = url && key ? new SupabaseStorage({ url, key }) : null;
+    const creds = await resolveSupabaseCredentials();
+    const supabase = creds ? new SupabaseStorage(creds) : null;
     const supabaseAvailable = !!supabase;
 
     // Suppress console output while TUI is active — any console.warn/log/error

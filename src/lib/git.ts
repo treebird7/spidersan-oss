@@ -1,5 +1,6 @@
 import { execFileSync } from 'child_process';
 import type { ExecFileSyncOptionsWithStringEncoding } from 'child_process';
+import { basename } from 'path';
 import { validateFilePath, validateBranchName } from './security.js';
 
 export class GitError extends Error {
@@ -85,6 +86,21 @@ export function getCurrentBranch(): string {
         return execGit(['rev-parse', '--abbrev-ref', 'HEAD']).trim();
     } catch (error) {
         throw toGitError(error, 'Failed to determine current branch', 'EXEC_FAILED');
+    }
+}
+
+/**
+ * Repo name as used for the `repo_name` column in spider_registries.
+ *
+ * Must stay identical across push and read paths: `registry-sync --push` stamps
+ * rows with this value and `conflicts`/`cross-conflicts` filter on it, so any
+ * divergence makes a pull silently return zero rows (tb-ly0b).
+ */
+export function getRepoName(): string {
+    try {
+        return basename(execGit(['rev-parse', '--show-toplevel']).trim());
+    } catch {
+        return basename(process.cwd());
     }
 }
 
