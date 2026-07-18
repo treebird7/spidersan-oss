@@ -253,6 +253,10 @@ Press Ctrl+C to stop.
 
             // Register files
             const existing = await storage.get(branch);
+            // ponytail: capture the pre-write agent/files — storage.update below overwrites
+            // them with ours, so this is the only chance to see who else was just here.
+            const previousAgent = existing?.agent;
+            const previousFiles = existing?.files ?? [];
             const allFiles = existing
                 ? [...new Set([...existing.files, ...files])]
                 : files;
@@ -278,6 +282,15 @@ Press Ctrl+C to stop.
 
             // Performance Optimization: Convert changed files to Set for O(1) lookup
             const filesSet = new Set(files);
+
+            // Same-branch conflict: another agent's edits to the same file(s) on this
+            // branch, still visible only because we grabbed `existing` before overwriting it.
+            if (previousAgent && previousAgent !== agent) {
+                const sameBranchOverlap = previousFiles.filter(f => filesSet.has(f));
+                if (sameBranchOverlap.length > 0) {
+                    conflicts.push({ branch: `${branch} (agent: ${previousAgent})`, files: sameBranchOverlap });
+                }
+            }
 
             for (const otherBranch of allBranches) {
                 if (otherBranch.name === branch || otherBranch.status !== 'active') continue;
