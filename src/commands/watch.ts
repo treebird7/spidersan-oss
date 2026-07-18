@@ -13,9 +13,16 @@ import { computeDriftResult } from '../lib/remote-drift.js';
 import { renderFetchPollDrift, renderFetchPollHeartbeat } from '../lib/watch-renderer.js';
 import { getCLIPath } from '../lib/security.js';
 import type { DriftResult, DriftSkipped } from '../lib/remote-drift.js';
+import { mergeClaims } from './coord.js';
+import { injectCoordComment } from '../lib/coord-comment.js';
 
 const DEBOUNCE_MS = 1000;  // Debounce file changes
 const hub = createHubClient();
+
+// Cooldown so watch's own coordination-comment writes don't re-trigger themselves
+// through chokidar into an infinite inject-detect-inject loop.
+const recentlyInjected = new Map<string, number>();
+const INJECT_COOLDOWN_MS = 3000;
 
 interface WatchOptions {
     dir?: string;
@@ -253,22 +260,29 @@ Press Ctrl+C to stop.
 
             // Register files
             const existing = await storage.get(branch);
-            // ponytail: capture the pre-write agent/files — storage.update below overwrites
-            // them with ours, so this is the only chance to see who else was just here.
+            // ponytail: capture the pre-write agent/files/claims — storage.update below
+            // overwrites them with ours, so this is the only chance to see who else was
+            // just here (branch-level agent, and now per-file via claims).
             const previousAgent = existing?.agent;
             const previousFiles = existing?.files ?? [];
+            const previousClaims = existing?.claims;
             const allFiles = existing
                 ? [...new Set([...existing.files, ...files])]
                 : files;
+            // Auto-claim: an agent never has to call `spidersan claim` — watch stamps
+            // every file it sees change, so even an agent that's never heard of
+            // spidersan shows up in `claims`/`whos-here`.
+            const claims = mergeClaims(previousClaims, files, agent);
 
             if (existing) {
-                await storage.update(branch, { files: allFiles, agent });
+                await storage.update(branch, { files: allFiles, agent, claims });
             } else {
                 await storage.register({
                     name: branch,
                     files: allFiles,
                     status: 'active',
                     agent,
+                    claims,
                 });
             }
 
@@ -289,6 +303,23 @@ Press Ctrl+C to stop.
                 const sameBranchOverlap = previousFiles.filter(f => filesSet.has(f));
                 if (sameBranchOverlap.length > 0) {
                     conflicts.push({ branch: `${branch} (agent: ${previousAgent})`, files: sameBranchOverlap });
+
+                    // Reach the ignorant agent: it never called `spidersan claim` and
+                    // never will, but it's about to read or re-read this file — so the
+                    // warning goes into the file itself, not just this log.
+                    for (const file of sameBranchOverlap) {
+                        const claim = previousClaims?.[file];
+                        const claimantAgent = claim?.agent ?? previousAgent;
+                        const claimedAt = claim?.at ?? new Date().toISOString();
+                        const now = Date.now();
+                        const lastInjected = recentlyInjected.get(file) ?? 0;
+                        if (now - lastInjected < INJECT_COOLDOWN_MS) continue;
+
+                        const absPath = path.isAbsolute(file) ? file : path.join(repoRoot, file);
+                        if (injectCoordComment(absPath, claimantAgent, claimedAt)) {
+                            recentlyInjected.set(file, now);
+                        }
+                    }
                 }
             }
 

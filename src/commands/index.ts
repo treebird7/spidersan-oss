@@ -12,6 +12,7 @@ export { abandonCommand } from './abandon.js';
 export { mergedCommand } from './merged.js';
 export { syncCommand } from './sync.js';
 export { watchCommand } from './watch.js';
+export { claimCommand, releaseCommand, whosHereCommand } from './coord.js';
 export { doctorCommand } from './doctor.js';
 export { configCommand } from './config.js';
 export { autoCommand } from './auto.js';

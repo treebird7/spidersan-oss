@@ -16,6 +16,13 @@ export interface Branch {
     dependsOn?: string[];
     /** PR that merged this branch (`spidersan merged --pr`). */
     prNumber?: number;
+    /**
+     * Per-file claims: who's actively touching which file on this branch,
+     * right now. Populated automatically by `watch` on every registered
+     * change (so an agent that's never heard of spidersan still gets
+     * claimed), or explicitly via `spidersan claim`/`release`.
+     */
+    claims?: Record<string, { agent: string; at: string }>;
 }
 
 export interface BranchRegistry {
