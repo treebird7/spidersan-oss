@@ -25,7 +25,7 @@ const COMMANDS_DIR = join(REPO_ROOT, 'src/commands');
 // Files in src/commands/ that aren't themselves commands (routers, helpers, subcommand hosts).
 // ai.ts exports several subcommands (ask/advise/explain/ai-ping/ai-setup/ai-telemetry/check-opt-out);
 // those are covered by the SCENARIO_PLAYBOOK test below, not the filesystem test.
-const NON_COMMAND_FILES = new Set(['index.ts', 'ecosystem-loader.ts', 'ai.ts']);
+const NON_COMMAND_FILES = new Set(['index.ts', 'ecosystem-loader.ts', 'ai.ts', 'coord.ts']);
 
 function extractKnownSet(source: string): Set<string> {
     const match = source.match(/const KNOWN_SPIDERSAN_COMMANDS\s*=\s*new Set\(\[([\s\S]*?)\]\)/);
