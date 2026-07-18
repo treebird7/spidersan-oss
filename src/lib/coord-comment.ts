@@ -8,8 +8,9 @@
  * stacking duplicates on every re-conflict.
  */
 
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, renameSync, existsSync } from 'fs';
 import { extname } from 'path';
+import { randomBytes } from 'crypto';
 
 const MARKER = 'spidersan-coord:';
 
@@ -71,6 +72,14 @@ export function injectCoordComment(filePath: string, claimantAgent: string, clai
         newLines = [markerLine, ...lines];
     }
 
-    writeFileSync(filePath, newLines.join('\n'));
+    // Atomic write: a file actively appended to by another process (e.g. a
+    // watch daemon's own stdout redirect sitting in the watched directory)
+    // can otherwise interleave with a direct writeFileSync and corrupt —
+    // seen live as garbled padding during dogfooding. Write to a sibling
+    // temp path and rename into place; the appender's fd just becomes stale
+    // rather than the file getting torn.
+    const tmpPath = `${filePath}.spidersan-coord-${randomBytes(4).toString('hex')}.tmp`;
+    writeFileSync(tmpPath, newLines.join('\n'));
+    renameSync(tmpPath, filePath);
     return true;
 }

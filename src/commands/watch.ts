@@ -373,6 +373,7 @@ Press Ctrl+C to stop.
             '**/package-lock.json', '**/yarn.lock', '**/pnpm-lock.yaml',
             '**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.gif', '**/*.ico',
             '**/*.woff', '**/*.woff2', '**/*.ttf', '**/*.pdf',
+            '**/*.spidersan-coord-*.tmp', // transient rename-target from injectCoordComment
         ];
         if (options.legacy) {
             console.log('⚠️ Legacy mode: Using old watcher settings (more file descriptors)');
