@@ -14,7 +14,7 @@ import { renderFetchPollDrift, renderFetchPollHeartbeat } from '../lib/watch-ren
 import { getCLIPath } from '../lib/security.js';
 import type { DriftResult, DriftSkipped } from '../lib/remote-drift.js';
 import { mergeClaims } from './coord.js';
-import { injectCoordComment } from '../lib/coord-comment.js';
+import { injectCoordComment, removeCoordComment } from '../lib/coord-comment.js';
 
 const DEBOUNCE_MS = 1000;  // Debounce file changes
 const hub = createHubClient();
@@ -299,8 +299,9 @@ Press Ctrl+C to stop.
 
             // Same-branch conflict: another agent's edits to the same file(s) on this
             // branch, still visible only because we grabbed `existing` before overwriting it.
+            let sameBranchOverlap: string[] = [];
             if (previousAgent && previousAgent !== agent) {
-                const sameBranchOverlap = previousFiles.filter(f => filesSet.has(f));
+                sameBranchOverlap = previousFiles.filter(f => filesSet.has(f));
                 if (sameBranchOverlap.length > 0) {
                     conflicts.push({ branch: `${branch} (agent: ${previousAgent})`, files: sameBranchOverlap });
 
@@ -321,6 +322,16 @@ Press Ctrl+C to stop.
                         }
                     }
                 }
+            }
+
+            // A file that came back to a single writer this cycle (no overlap above)
+            // has its conflict resolved from our vantage point — strip any marker a
+            // past collision left behind, so it can't squat forever reading falsely
+            // "still live" long after everyone moved on.
+            for (const file of files) {
+                if (sameBranchOverlap.includes(file)) continue;
+                const absPath = path.isAbsolute(file) ? file : path.join(repoRoot, file);
+                removeCoordComment(absPath);
             }
 
             for (const otherBranch of allBranches) {
