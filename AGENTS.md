@@ -2,6 +2,15 @@
 
 This project uses **bd** (beads) for issue tracking. Run `bd prime` for full workflow context.
 
+## CI Auto-Register (OIDC)
+
+Pushed branches self-register in the cloud `branch_registry` via
+`.github/workflows/auto-register.yml` — GitHub OIDC token verified by the
+`register-branch` edge function, zero secrets in this repo. Don't manually
+register a branch you just pushed; don't ever add a Supabase key of any
+kind to this repo's Actions secrets (the old workflow was retired for
+exactly that — c9a449b). Full rules: CLAUDE.md § "CI Auto-Register (OIDC)".
+
 > **Architecture in one line:** Issues live in a local Dolt database
 > (`.beads/dolt/`); cross-machine sync uses `bd dolt push/pull` (a
 > git-compatible protocol), stored under `refs/dolt/data` on your git
