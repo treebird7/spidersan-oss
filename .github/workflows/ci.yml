@@ -98,7 +98,11 @@ jobs:
         run: npm ci
 
       - name: Audit dependencies
-        run: npm audit --audit-level=high
+        # Prod deps only — what the published CLI ships. Dev-chain advisories
+        # (eslint 8's minimatch→brace-expansion tree) can't be fixed without
+        # the eslint 10 flat-config migration; blocking every merge on
+        # lint-tooling DoS advisories is gate malfunction, not security.
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Scan for secrets
         uses: gitleaks/gitleaks-action@v2

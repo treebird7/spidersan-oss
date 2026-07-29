@@ -1,0 +1,56 @@
+# Spidersan Auto-Register (OIDC edition)
+#
+# Registers branch + changed files on every push — with ZERO repo secrets.
+# CI mints a short-lived GitHub OIDC token; the register-branch edge function
+# verifies it (issuer, audience, repository claim) and writes the registry
+# server-side. Successor to the workflow retired in c9a449b for using an
+# anon DB key from public-repo secrets.
+#
+# Setup: set repo variable SPIDERSAN_REGISTER_URL to the deployed function URL,
+# e.g. https://<project-ref>.supabase.co/functions/v1/register-branch
+
+name: Spidersan Auto-Register
+
+on:
+  push:
+    branches-ignore:
+      - main
+      - staging/*
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    if: vars.SPIDERSAN_REGISTER_URL != ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Register branch with Spidersan
+        env:
+          BEFORE: ${{ github.event.before }}
+          COMMIT_SHA: ${{ github.sha }}
+          REGISTER_URL: ${{ vars.SPIDERSAN_REGISTER_URL }}
+        run: |
+          set -euo pipefail
+
+          # Changed files; initial push has an all-zeros 'before' → diff against main
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            FILES=$(git diff --name-only "origin/main...$COMMIT_SHA" 2>/dev/null || true)
+          else
+            FILES=$(git diff --name-only "$BEFORE" "$COMMIT_SHA" 2>/dev/null || true)
+          fi
+
+          TOKEN=$(curl -sSf -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=spidersan-registry" | jq -r .value)
+
+          jq -n --arg files "$FILES" \
+            '{files: ($files | split("\n") | map(select(length > 0)))}' \
+            | curl -sSf -X POST "$REGISTER_URL" \
+                -H "Authorization: Bearer $TOKEN" \
+                -H "Content-Type: application/json" \
+                --data-binary @-
