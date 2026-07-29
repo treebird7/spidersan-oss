@@ -391,6 +391,8 @@ replacement.
 
 **Note:** This complements (doesn't replace) local `spidersan watch` for real-time file monitoring. Conflict checking stays with the CLI — registry reads require an agent identity since the RLS hardening, so the workflow only registers.
 
+**Adopting this in your own repo/Supabase project (BYK):** Claude Code users can run the guided skill — [`.claude/skills/setup-oidc-autoregister/SKILL.md`](./.claude/skills/setup-oidc-autoregister/SKILL.md). Everything else needed (function + workflow) already lives in this repo.
+
 ### 🦺 Rescue Mode
 
 Got a repo with 10+ abandoned branches? Let Spidersan clean up the mess:
