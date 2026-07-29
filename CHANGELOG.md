@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **GitHub Actions auto-register is back — zero-secret OIDC edition** (PR #279, #280) — successor to the workflow retired in c9a449b for keeping a DB key in public-repo Actions secrets. New flow: on push, CI mints a short-lived GitHub OIDC token (`permissions: id-token: write`, **no repo secrets at all**); the new `supabase/functions/register-branch` edge function verifies it (RS256, issuer, audience, `repository` claim allowlist + optional `repository_id` pin — the `repository` claim is the only real gate) and writes `branch_registry` server-side with an `sb_secret_*` key held only in Supabase function secrets. Branch and actor come from verified token claims, never the request body. Existing branches get a `files_changed`-only refresh — a push can never re-activate a merged branch or overwrite attribution (which also neutralizes token replay). The workflow (`.github/workflows/auto-register.yml`) no-ops until the `SPIDERSAN_REGISTER_URL` repo variable is set. Proven end-to-end in production (probe push → workflow green → correct claims-derived row).
+- **`setup-oidc-autoregister` Claude Code skill** (`.claude/skills/setup-oidc-autoregister/SKILL.md`) — guided BYK adoption of the above on your own repo + Supabase project: deploy, wire secrets server-side, copy workflow, strict 4-point verify (three exact reject codes + probe row). Security invariants stated as non-negotiable, including rejecting legacy `eyJ` service_role JWTs via a no-print prefix check. Note: `.claude/skills/` is allowlist-gated in `.gitignore` — new skills need a `!` entry.
+
+### Security
+
+- **CI dependency audit scoped to production deps** (`npm audit --omit=dev --audit-level=high`) — GHSA-mh99-v99m-4gvg (brace-expansion, published 2026-07-29) is unfixable inside eslint 8's transitive tree: the only patched release (5.0.8) breaks minimatch@3's direct-function import (verified). The published CLI ships none of that chain. Full-tree audit returns with the eslint 8→10 flat-config migration (tracked as invoak tb-wb47). js-yaml and postcss high advisories fixed via lockfile bump in the same pass.
+
+### Removed (docs)
+
+- `INSTALL_AUTO_REGISTER.md`, `AUTO_REGISTER_USE_CASES.md` and the local `install-auto-register` skill (832 lines) — they taught the retired secret-in-CI flow. README § "GitHub Actions Auto-Register (OIDC)" is the single current reference.
+
+### Added
+
 - **`spidersan depends` actually works now** (tb-5h9b) — it was a stub that always printed "requires Supabase storage" and stored nothing. Dependencies (`dependsOn`) and the merged PR (`prNumber`, via `merged --pr N`) now live on the registry `Branch` entry itself, so they work with **local** storage too. `merge-order` folds declared dependencies into its sort as directed edges (new `addDependencyEdges` in `src/lib/graph.ts`): "A depends on B" puts B first regardless of file overlap. `registry-sync` pushes/pulls both fields (`depends_on`, `pr_number` on `spider_registries` — canonical table, not the dead `branch_registry` path removed above). **Deploy order:** apply migration `treebird/supabase/migrations/20260711000000_spider_registries_depends_pr.sql` before shipping this, or cloud pushes will reject the unknown columns.
 
 ### Fixed
