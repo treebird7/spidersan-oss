@@ -359,43 +359,37 @@ tail -f /tmp/spidersan-git-watch.log
 | `delete` | Marks branch `abandoned` in registry, archives to `~/.spidersan/archive.jsonl` |
 | `pull_request` / `create` | Logged only |
 
-### 🤖 GitHub Actions Auto-Register
+### 🤖 GitHub Actions Auto-Register (OIDC)
 
-**Zero-effort branch registration via GitHub workflow**
+**Zero-secret branch registration via GitHub workflow**
 
-When enabled, every push to a branch automatically:
-- ✅ Registers the branch with Spidersan
-- ✅ Detects changed files via git diff
-- ✅ Checks for conflicts with other branches
-- ✅ Reports TIER 2+ conflicts as workflow warnings
-- ✅ Extracts agent name from branch prefix (e.g., `claude/feature` → `claude`)
+On every push (except `main` / `staging/*`), CI mints a short-lived GitHub
+OIDC token and POSTs the branch's changed files to the `register-branch`
+edge function. The function verifies the token (issuer, audience, and a
+`repository` claim allowlist — the only real gate) and writes
+`branch_registry` server-side. Branch name and actor come from verified
+token claims, never from the request body.
 
-**Setup:**
-1. Workflow is already included: `.github/workflows/auto-register.yml`
-2. Just push to any branch (except main/staging)
-3. View results in GitHub Actions tab
+**No database credential ever lives in this repo's CI secrets.** An earlier
+version of this workflow was retired (c9a449b) because it wrote the registry
+with a DB key stored in public-repo Actions secrets; the OIDC flow is its
+replacement.
 
-**Example:**
-```bash
-git checkout -b yourname/new-feature
-git add src/api.ts
-git commit -m "feat: add new endpoint"
-git push origin yourname/new-feature
-# ✅ Auto-registered in ~15 seconds!
-```
+**Setup (registry operator, once):**
+1. Create an `sb_secret_...` API key in the Supabase dashboard
+2. `supabase functions deploy register-branch --no-verify-jwt`
+3. `supabase secrets set REGISTRY_SB_SECRET=<sb_secret key>` (plus optional
+   `REGISTRY_ALLOWED_REPOS` / `REGISTRY_ALLOWED_REPO_IDS`)
+4. Set the repo variable `SPIDERSAN_REGISTER_URL` to the function URL
+   (the workflow is a no-op until this variable exists)
 
-**Benefits:**
-- No manual `spidersan register` needed
-- Works across all contributors and AI agents
-- Conflict warnings appear in CI checks
-- Perfect for multi-agent repositories
+**Behavior:**
+- New branch → registered with agent parsed from branch prefix
+  (`claude/feature` → `claude`), state `active`
+- Existing branch → only `files_changed` is refreshed; state and
+  attribution are never touched (a push can't re-activate a merged branch)
 
-**Note:** This complements (doesn't replace) local `spidersan watch` for real-time file monitoring.
-
-**Installation:**
-- [📖 Complete Installation Guide →](./INSTALL_AUTO_REGISTER.md)
-- [🎯 Use Cases & Examples →](./AUTO_REGISTER_USE_CASES.md)
-- [🤖 Claude Code Skill →](./.claude/skills/install-auto-register.md)
+**Note:** This complements (doesn't replace) local `spidersan watch` for real-time file monitoring. Conflict checking stays with the CLI — registry reads require an agent identity since the RLS hardening, so the workflow only registers.
 
 ### 🦺 Rescue Mode
 
