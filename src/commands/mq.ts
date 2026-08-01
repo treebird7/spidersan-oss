@@ -54,7 +54,7 @@ function listReadyPRs(repoSlug: string, label: string): QueuedPR[] {
   try {
     out = execFileSync('gh', args, { encoding: 'utf-8', stdio: 'pipe' });
   } catch (err) {
-    throw new Error(`Failed to list PRs (label ${label}): ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(`Failed to list PRs (label ${label}): ${err instanceof Error ? err.message : String(err)}`, { cause: err });
   }
   const rows = JSON.parse(out) as Array<{ number: number; headRefName: string; title: string; isDraft: boolean }>;
   return rows

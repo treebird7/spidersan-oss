@@ -255,7 +255,7 @@ Dry-run:  ${dryRun}
 `);
 
         // Emit queen signal (skip in dry-run)
-        let queenSignalId: string | null = null;
+        let queenSignalId: string | null;
         if (!dryRun) {
             queenSignalId = emitQueenSignal(options.task, repos);
             if (queenSignalId) {

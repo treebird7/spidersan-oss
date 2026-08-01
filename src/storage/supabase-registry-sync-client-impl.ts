@@ -385,6 +385,7 @@ export class SupabaseRegistrySyncClientImpl implements SupabaseRegistrySyncClien
                     'Network error connecting to Supabase.\n' +
                     '  • Check your internet connection\n' +
                     '  • Verify SUPABASE_URL is correct',
+                    { cause: error },
                 );
             }
 

@@ -418,7 +418,7 @@ export function getMergeConflicts(base: string, branch: string): MergeConflictRe
     }
 
     // Compute merge-base (best-effort; not fatal if unrelated histories).
-    let mergeBase: string | null = null;
+    let mergeBase: string | null;
     try {
         mergeBase = execGit(['merge-base', baseSha, branchSha], {
             stdio: ['pipe', 'pipe', 'ignore'],

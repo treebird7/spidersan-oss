@@ -118,7 +118,7 @@ export async function listBranches(config: GitHubRepoConfig): Promise<GitHubBran
         return branches;
     } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        throw new Error(`Failed to list branches: ${msg}`);
+        throw new Error(`Failed to list branches: ${msg}`, { cause: error });
     }
 }
 
@@ -276,7 +276,7 @@ export async function getPRDetails(prNumber: number): Promise<GitHubPRDetails> {
         ], { encoding: 'utf-8' });
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`Failed to fetch PR #${safePrNumber} metadata: ${msg}`);
+        throw new Error(`Failed to fetch PR #${safePrNumber} metadata: ${msg}`, { cause: err });
     }
 
     const prData = JSON.parse(prOutput) as { headRefName: string; title: string; number: number };
@@ -291,7 +291,7 @@ export async function getPRDetails(prNumber: number): Promise<GitHubPRDetails> {
         ], { encoding: 'utf-8' });
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`Failed to fetch changed files for PR #${prNumber}: ${msg}`);
+        throw new Error(`Failed to fetch changed files for PR #${prNumber}: ${msg}`, { cause: err });
     }
 
     const files = diffOutput.trim().split('\n').filter(f => f.length > 0);

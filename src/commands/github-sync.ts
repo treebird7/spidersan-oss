@@ -188,7 +188,7 @@ export const githubSyncCommand = new Command('github-sync')
         const creds = await resolveSupabaseCredentials();
         const supabase = creds ? new SupabaseStorage(creds) : null;
 
-        let reposToScan: GitHubRepoConfig[] = [];
+        let reposToScan: GitHubRepoConfig[];
 
         if (options.all) {
             const reposConfig = await loadReposConfig();
