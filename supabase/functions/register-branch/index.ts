@@ -88,8 +88,13 @@ Deno.serve(async (req) => {
 
   // Existing row: refresh files only. Never touch state or attribution —
   // a push must not re-activate a merged branch or steal machine ownership.
+  // Scoped by repo_name: branch_name is (for now) globally UNIQUE, so the
+  // same branch name pushed from two allowlisted repos would otherwise
+  // cross-clobber files. Until the composite-unique migration lands, the
+  // second repo's insert 409s and its branch stays unregistered — visible
+  // in the response, never silently corrupting another repo's row.
   const patch = await fetch(
-    `${REST}?branch_name=eq.${encodeURIComponent(branch)}`,
+    `${REST}?branch_name=eq.${encodeURIComponent(branch)}&repo_name=eq.${encodeURIComponent(repository)}`,
     {
       method: "PATCH",
       headers: { ...REST_HEADERS, Prefer: "return=representation" },
@@ -113,9 +118,10 @@ Deno.serve(async (req) => {
       state: "active",
     }),
   });
-  // 409 = raced another push that inserted first; its row wins, files near-identical.
+  // 409 = same-repo push race (row wins, files near-identical) OR the
+  // global-unique collision above — either way surfaced, not swallowed.
   if (!insert.ok && insert.status !== 409) {
     return json(502, { error: `registry insert failed: ${insert.status}` });
   }
-  return json(201, { branch, created: insert.ok });
+  return json(201, { branch, created: insert.ok, collided: !insert.ok });
 });
