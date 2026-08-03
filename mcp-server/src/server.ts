@@ -169,6 +169,33 @@ function isReadyCheckPass(payload: any): boolean {
     return payload.ready === true || payload.pass === true;
 }
 
+type MergeTreeReport = { clean?: boolean; conflicts?: unknown[]; error?: string };
+
+function getMergeTreeFallbackConflicts(payload: unknown): { conflicts: any[] } | { error: string } {
+    if (!payload || typeof payload !== 'object') {
+        return { error: 'merge-tree analysis returned no result' };
+    }
+
+    const results = (payload as { results?: unknown }).results;
+    if (!Array.isArray(results) || results.length !== 1) {
+        return { error: 'merge-tree analysis returned an invalid result set' };
+    }
+
+    const report = results[0] as MergeTreeReport;
+    if (report.error) {
+        return { error: `merge-tree analysis failed: ${report.error}` };
+    }
+    if (typeof report.clean !== 'boolean') {
+        return { error: 'merge-tree analysis returned an indeterminate result' };
+    }
+
+    return {
+        conflicts: report.clean
+            ? []
+            : [{ tier: 3, files: report.conflicts ?? [] }],
+    };
+}
+
 function globToRegex(pattern: string): RegExp {
     let regex = '^';
     for (const char of pattern) {
@@ -1111,9 +1138,9 @@ server.tool(
         } catch (error) {
             const message = getExecErrorMessage(error);
             // Registry overlap checks require a registered branch. A Codex caller
-            // can still safely merge an ordinary local branch, so fall back to
-            // SpiderSan's pure-git merge-tree analysis in that one case.
-            if (!/not registered/i.test(message)) {
+            // can still safely preview an ordinary local branch, so dry runs fall
+            // back to SpiderSan's pure-git merge-tree analysis in that one case.
+            if (!dryRun || !/not registered/i.test(message)) {
                 return {
                     content: [{
                         type: 'text',
@@ -1136,18 +1163,19 @@ server.tool(
                     ],
                     { cwd: repoDir }
                 );
-                const realPayload = JSON.parse(realConflictResult.stdout || '{}') as {
-                    results?: Array<{ clean?: boolean; conflicts?: unknown[]; error?: string }>;
-                };
-                const realConflicts = (realPayload.results ?? []).filter(
-                    report => !report.error && report.clean === false
+                const fallback = getMergeTreeFallbackConflicts(
+                    JSON.parse(realConflictResult.stdout || '{}')
                 );
-                conflictsPayload = {
-                    conflicts: realConflicts.map(report => ({
-                        tier: 3,
-                        files: report.conflicts ?? [],
-                    })),
-                };
+                if ('error' in fallback) {
+                    return {
+                        content: [{
+                            type: 'text',
+                            text: JSON.stringify({ success: false, error: fallback.error }, null, 2)
+                        }],
+                        isError: true,
+                    };
+                }
+                conflictsPayload = { conflicts: fallback.conflicts };
             } catch (fallbackError) {
                 const fallbackMessage = getExecErrorMessage(fallbackError);
                 return {
