@@ -435,6 +435,26 @@ server.tool(
                 }],
             };
         } catch (error) {
+            // `ready-check --json` exits 1 for an ordinary "not ready" result
+            // while still writing the complete result to stdout. Preserve that
+            // payload for MCP callers instead of replacing its `ready` contract
+            // with a transport error.
+            const raw = (error as { stdout?: string; stderr?: string })?.stdout
+                || (error as { stdout?: string; stderr?: string })?.stderr
+                || '';
+            if (raw) {
+                try {
+                    const parsed = JSON.parse(raw);
+                    return {
+                        content: [{
+                            type: 'text',
+                            text: JSON.stringify(parsed, null, 2)
+                        }],
+                    };
+                } catch {
+                    // Fall through to the execution error when stdout was not JSON.
+                }
+            }
             const message = getExecErrorMessage(error);
             return {
                 content: [{
@@ -1090,13 +1110,54 @@ server.tool(
             conflictsPayload = JSON.parse(conflictResult.stdout || '{}');
         } catch (error) {
             const message = getExecErrorMessage(error);
-            return {
-                content: [{
-                    type: 'text',
-                    text: JSON.stringify({ success: false, error: message }, null, 2)
-                }],
-                isError: true,
-            };
+            // Registry overlap checks require a registered branch. A Codex caller
+            // can still safely merge an ordinary local branch, so fall back to
+            // SpiderSan's pure-git merge-tree analysis in that one case.
+            if (!/not registered/i.test(message)) {
+                return {
+                    content: [{
+                        type: 'text',
+                        text: JSON.stringify({ success: false, error: message }, null, 2)
+                    }],
+                    isError: true,
+                };
+            }
+
+            try {
+                const realConflictResult = await execFileAsync(
+                    cli.command,
+                    [
+                        ...cli.argsPrefix,
+                        'conflicts',
+                        '--real',
+                        '--branch', sourceBranch,
+                        '--base', targetBranch,
+                        '--json',
+                    ],
+                    { cwd: repoDir }
+                );
+                const realPayload = JSON.parse(realConflictResult.stdout || '{}') as {
+                    results?: Array<{ clean?: boolean; conflicts?: unknown[]; error?: string }>;
+                };
+                const realConflicts = (realPayload.results ?? []).filter(
+                    report => !report.error && report.clean === false
+                );
+                conflictsPayload = {
+                    conflicts: realConflicts.map(report => ({
+                        tier: 3,
+                        files: report.conflicts ?? [],
+                    })),
+                };
+            } catch (fallbackError) {
+                const fallbackMessage = getExecErrorMessage(fallbackError);
+                return {
+                    content: [{
+                        type: 'text',
+                        text: JSON.stringify({ success: false, error: fallbackMessage }, null, 2)
+                    }],
+                    isError: true,
+                };
+            }
         }
 
         const { conflicts, maxTier } = extractConflictSummary(conflictsPayload);
