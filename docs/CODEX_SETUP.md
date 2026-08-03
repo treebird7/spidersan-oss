@@ -57,6 +57,31 @@ This gives the Codex model the coordination tools directly: `register_branch`,
 `lock_files` / `unlock_files`, and friends. Verify inside a Codex session by asking
 it to list its spidersan tools.
 
+### Shared PreToolUse adapter integrity
+
+Codex uses `~/.codex/hooks/spidersan_pre_codex.py` to translate the shared
+SpiderSan pre-hook into Codex's hook protocol. The adapter pins the reviewed
+shared script at `~/treebird-shared/hooks/spidersan-pre.sh`; it must not silently
+trust a changed script.
+
+For the reviewed v2.5 hook, the expected shared-script SHA-256 is:
+
+```text
+eaaa5f13194358032904dac2e03af5ab2d24124bab210a051a6b496caebfade1
+```
+
+When the adapter reports a mismatch, do not replace the pin automatically. First
+inspect the hook change and its provenance, then run:
+
+```bash
+bash ~/treebird-shared/hooks/test-hooks.sh
+```
+
+Only after the harness passes and a human has approved the change should the
+adapter's `EXPECTED_SHA256` be updated to the verified digest. The v2.5 harness
+has 32 checks; it covers the new advisory for pushing a branch whose PR is already
+merged or closed, while preserving the dangerous-`rm` hard block.
+
 ## 3. AGENTS.md — the behavioral layer
 
 Codex reads `AGENTS.md` (repo root and `~/.codex/AGENTS.md`) the way Claude reads
