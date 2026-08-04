@@ -415,12 +415,11 @@ Press Ctrl+C to stop.
             },
             // ALWAYS limit depth to prevent EMFILE (default: 5, legacy: 10)
             depth: !options.legacy ? 5 : 10,
-            // Smart mode (default): use polling to reduce file descriptor usage
-            ...(!options.legacy && {
-                usePolling: true,
-                interval: 1000,  // Check every 1 second
-                binaryInterval: 3000,
-            })
+            // ponytail: no usePolling. It was added to dodge EMFILE, but on macOS
+            // chokidar uses FSEvents — one kernel watch for the whole tree, so there
+            // were never fds to run out of. Polling cost 37% of a core forever
+            // (stat'ing ~10k files/sec on a 2.1G repo). Set CHOKIDAR_USEPOLLING=1 if a
+            // network mount or a Linux box with a low inotify limit ever needs it.
         });
 
         watcher.on('change', (filePath: string) => {
