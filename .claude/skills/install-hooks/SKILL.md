@@ -17,7 +17,7 @@ per-hook failure modes: `treebird/canopy/spidersan-hooks-v2-report_16-06-26.md`.
 | Hook | Event | Gives you |
 |------|-------|-----------|
 | `spidersan-autoreg.sh` | PostToolUse(Write\|Edit\|MultiEdit\|NotebookEdit) | Every file edit auto-registers branch + changed files. Never touches main/master; only in repos with `.spidersan/`. |
-| `spidersan-pre.sh` | PreToolUse(Bash) | Dangerous-`rm` hard block + advisories: force-push guard, `gh pr merge` precheck, conflicts advisory, concurrent-checkout busy guard. |
+| `spidersan-pre.sh` (v2.5) | PreToolUse(Bash) | Dangerous-`rm` hard block + advisories: force-push guard, `gh pr merge` precheck, conflicts advisory, concurrent-checkout busy guard, branch-ownership warning, and dead-branch-on-push warning. |
 | `spidersan-post-m5-merged.sh` → installed AS `spidersan-post.sh` | PostToolUse(Bash) | registry-sync to Supabase after `git push`, trunk-poison auto-heal after merges, auto-`register` on `git checkout -b`/`switch -c`. (`sangit-refresh` inside fails silently if absent — harmless.) |
 
 Everything is fail-open except the dangerous-`rm` block — a hook bug can never block a push.
@@ -98,7 +98,7 @@ echo "${SUPABASE_URL:?unset}" >/dev/null && echo ok
 ## 5. Verify
 
 ```bash
-bash ~/treebird-shared/hooks/test-hooks.sh          # fixture harness, 16 checks
+bash ~/treebird-shared/hooks/test-hooks.sh          # fixture harness, 32 checks
 # live smoke, in any spidersan-initialized repo inside a Claude session:
 #   git checkout -b test/hook-smoke   → post hook registers it
 #   edit any file                     → autoreg: "registered N file(s) …"
@@ -112,11 +112,13 @@ Append one line to `~/treebird-shared/machines/<machine>.md` so the next drift-d
 has a baseline:
 
 ```
-- spidersan hooks installed <date> from treebird-shared/hooks (pre 2.2 / post 2.1-m5 / autoreg 1.1) — binary <version/commit>
+- spidersan hooks installed <date> from treebird-shared/hooks (pre 2.5 / post 2.1-m5 / autoreg 1.1) — binary <version/commit>
 ```
 
 ## Requirements + knobs
 
+- `bash ~/treebird-shared/hooks/test-hooks.sh` is the required regression harness
+  before trusting a changed pre-hook; it currently reports 32 checks.
 - Needs `jq`, `git`, `python3`, spidersan on PATH (`npx --no-install spidersan` works
   from checkouts; global covers `register --auto`).
 - `SPIDERSAN_AUTOREG_QUIET=1` silences autoreg's stderr line (CI/pipelines).

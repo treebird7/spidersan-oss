@@ -169,6 +169,33 @@ function isReadyCheckPass(payload: any): boolean {
     return payload.ready === true || payload.pass === true;
 }
 
+type MergeTreeReport = { clean?: boolean; conflicts?: unknown[]; error?: string };
+
+function getMergeTreeFallbackConflicts(payload: unknown): { conflicts: any[] } | { error: string } {
+    if (!payload || typeof payload !== 'object') {
+        return { error: 'merge-tree analysis returned no result' };
+    }
+
+    const results = (payload as { results?: unknown }).results;
+    if (!Array.isArray(results) || results.length !== 1) {
+        return { error: 'merge-tree analysis returned an invalid result set' };
+    }
+
+    const report = results[0] as MergeTreeReport;
+    if (report.error) {
+        return { error: `merge-tree analysis failed: ${report.error}` };
+    }
+    if (typeof report.clean !== 'boolean') {
+        return { error: 'merge-tree analysis returned an indeterminate result' };
+    }
+
+    return {
+        conflicts: report.clean
+            ? []
+            : [{ tier: 3, files: report.conflicts ?? [] }],
+    };
+}
+
 function globToRegex(pattern: string): RegExp {
     let regex = '^';
     for (const char of pattern) {
@@ -435,6 +462,26 @@ server.tool(
                 }],
             };
         } catch (error) {
+            // `ready-check --json` exits 1 for an ordinary "not ready" result
+            // while still writing the complete result to stdout. Preserve that
+            // payload for MCP callers instead of replacing its `ready` contract
+            // with a transport error.
+            const raw = (error as { stdout?: string; stderr?: string })?.stdout
+                || (error as { stdout?: string; stderr?: string })?.stderr
+                || '';
+            if (raw) {
+                try {
+                    const parsed = JSON.parse(raw);
+                    return {
+                        content: [{
+                            type: 'text',
+                            text: JSON.stringify(parsed, null, 2)
+                        }],
+                    };
+                } catch {
+                    // Fall through to the execution error when stdout was not JSON.
+                }
+            }
             const message = getExecErrorMessage(error);
             return {
                 content: [{
@@ -1090,13 +1137,55 @@ server.tool(
             conflictsPayload = JSON.parse(conflictResult.stdout || '{}');
         } catch (error) {
             const message = getExecErrorMessage(error);
-            return {
-                content: [{
-                    type: 'text',
-                    text: JSON.stringify({ success: false, error: message }, null, 2)
-                }],
-                isError: true,
-            };
+            // Registry overlap checks require a registered branch. A Codex caller
+            // can still safely preview an ordinary local branch, so dry runs fall
+            // back to SpiderSan's pure-git merge-tree analysis in that one case.
+            if (!dryRun || !/not registered/i.test(message)) {
+                return {
+                    content: [{
+                        type: 'text',
+                        text: JSON.stringify({ success: false, error: message }, null, 2)
+                    }],
+                    isError: true,
+                };
+            }
+
+            try {
+                const realConflictResult = await execFileAsync(
+                    cli.command,
+                    [
+                        ...cli.argsPrefix,
+                        'conflicts',
+                        '--real',
+                        '--branch', sourceBranch,
+                        '--base', targetBranch,
+                        '--json',
+                    ],
+                    { cwd: repoDir }
+                );
+                const fallback = getMergeTreeFallbackConflicts(
+                    JSON.parse(realConflictResult.stdout || '{}')
+                );
+                if ('error' in fallback) {
+                    return {
+                        content: [{
+                            type: 'text',
+                            text: JSON.stringify({ success: false, error: fallback.error }, null, 2)
+                        }],
+                        isError: true,
+                    };
+                }
+                conflictsPayload = { conflicts: fallback.conflicts };
+            } catch (fallbackError) {
+                const fallbackMessage = getExecErrorMessage(fallbackError);
+                return {
+                    content: [{
+                        type: 'text',
+                        text: JSON.stringify({ success: false, error: fallbackMessage }, null, 2)
+                    }],
+                    isError: true,
+                };
+            }
         }
 
         const { conflicts, maxTier } = extractConflictSummary(conflictsPayload);

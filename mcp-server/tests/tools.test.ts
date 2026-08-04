@@ -181,14 +181,16 @@ describe.sequential('MCP tools integration', () => {
         expect(text).toContain(branch);
     });
 
-    it('ready_check returns JSON payload', async () => {
+    it('ready_check preserves the JSON result when a non-ready branch exits 1', async () => {
         const currentBranch = execSync('git branch --show-current', { cwd: repoDir, encoding: 'utf-8' }).trim();
         await callTool('register_branch', { branch: currentBranch, files: TEST_FILES, agent: 'tester' });
 
-        const { json, text } = await callTool('ready_check', { branch: currentBranch, target: 'main' });
+        const { result, json, text } = await callTool('ready_check', { branch: currentBranch, target: 'main' });
         const payload = json ?? tryParseJson(text);
         expect(payload).toBeTruthy();
+        expect(result.isError).not.toBe(true);
         expect(typeof payload.ready).toBe('boolean');
+        expect(payload.ready).toBe(false);
     });
 
     it('branch_status returns branch list', async () => {
@@ -269,6 +271,37 @@ describe.sequential('MCP tools integration', () => {
         const payload = json ?? tryParseJson(text);
         expect(payload?.dryRun).toBe(true);
         expect(payload?.wouldMerge?.source).toBe(branch);
+    });
+
+    it('git_merge rejects an unregistered branch outside dry-run mode', async () => {
+        const branch = unique('unregistered-merge');
+        execSync(`git branch ${branch}`, { cwd: repoDir, stdio: 'ignore' });
+
+        const { json, text } = await callTool('git_merge', {
+            source: branch,
+            target: 'main',
+            strategy: 'merge',
+            dryRun: false,
+        });
+        const payload = json ?? tryParseJson(text);
+        expect(payload?.success).toBe(false);
+        expect(String(payload?.error ?? text)).toMatch(/not registered/i);
+    });
+
+    it('git_merge fails closed when merge-tree cannot analyze the target', async () => {
+        const branch = unique('merge-analysis');
+        const missingTarget = unique('missing-target');
+        execSync(`git branch ${branch}`, { cwd: repoDir, stdio: 'ignore' });
+
+        const { json, text } = await callTool('git_merge', {
+            source: branch,
+            target: missingTarget,
+            strategy: 'merge',
+            dryRun: true,
+        });
+        const payload = json ?? tryParseJson(text);
+        expect(payload?.success).toBe(false);
+        expect(String(payload?.error ?? text)).toContain('merge-tree analysis failed');
     });
 
     it('git_commit_and_push errors on no changes', async () => {
