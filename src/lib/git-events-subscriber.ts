@@ -28,9 +28,35 @@ import { getStorage } from '../storage/index.js';
 import { resolveSupabaseEnv } from './supabase-credentials.js';
 import { handleEvent } from './ai/event-handler.js';
 import type { EventPayload } from './ai/types.js';
+import { createNotifier, deliver, type Notifier } from './notify.js';
 import { logActivity } from './activity.js';
 
 const execFileAsync = promisify(execFile);
+
+// Resolved on first use, not at import — the daemon gets its room token from
+// `envoak vault inject`, so the env is only populated once the process runs.
+let _notifier: Notifier | null = null;
+function notifier(): Notifier {
+    return (_notifier ??= createNotifier());
+}
+
+/**
+ * The compare-API credential, preferring the vault-injected name.
+ *
+ * It cannot be stored as `GITHUB_TOKEN`: envoak's protected-namespace filter
+ * (`SENSITIVE_PREFIXES` in Envoak vault.ts) refuses to inject any name starting
+ * `GITHUB_`, so a vault secret called GITHUB_TOKEN would be granted, decrypted,
+ * and then dropped — leaving the daemon silently unauthenticated at 60 req/h.
+ * Hence the app-prefixed `spidersan/SPIDERSAN_GITHUB_TOKEN`.
+ *
+ * `GITHUB_TOKEN` stays as a fallback so a plain shell (or CI) that already
+ * exports it keeps working.
+ */
+export function resolveGithubToken(
+    env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+    return env.SPIDERSAN_GITHUB_TOKEN || env.GITHUB_TOKEN || undefined;
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -257,7 +283,7 @@ const TREE_ACTION_HINTS: Record<string, string> = {
 async function detectTreePairs(event: GitEvent, log: (m: string) => void): Promise<void> {
     if (!event.before_sha || !event.after_sha) return;
     const url = `https://api.github.com/repos/${event.repo}/compare/${event.before_sha}...${event.after_sha}`;
-    const githubToken = process.env.GITHUB_TOKEN;
+    const githubToken = resolveGithubToken();
     const headers: Record<string, string> = {
         'Accept':     'application/vnd.github.v3+json',
         'User-Agent': 'spidersan-git-watch',
@@ -384,23 +410,24 @@ async function consumePendingTreePairs(log: (m: string) => void): Promise<void> 
             const files = Array.isArray(entry.files) ? (entry.files as string[]) : [];
             const summary = `spidersan auto-dispatch: ${entry.tree} pair(s) ready — ${entry.repo}@${entry.after_sha} — ${task}`;
 
-            const args = [
-                'hive', 'signal',
-                '--status',  'awaiting-review',
-                '--task',    task,
-                '--handoff', 'review',
-                '--summary', summary,
-            ];
-            if (files.length > 0) args.push('--files', files.join(','));
+            // Retry-and-retain, now driven by the delivery result rather than
+            // by whether a subprocess exited 0. Tier 1: this is a review
+            // prompt, not a conflict — it obliges someone to look, not to stop.
+            const delivery = await deliver(notifier(), {
+                repo: String(entry.repo ?? 'unknown'),
+                branch: String(entry.branch ?? 'unknown'),
+                tier: 1,
+                message: summary,
+                dedupe: `tree_pairs:${id}`,
+                files,
+                details: { trigger: 'tree_pairs_ready', tree: entry.tree, task, after_sha: entry.after_sha },
+            }, log);
 
-            log(`📡 hive handoff → ${task} (${files.length} file(s))`);
-            try {
-                await execFileAsync('envoak', args, { timeout: 15000 });
+            if (delivery.ok) {
                 succeeded.push({ entry, id });
                 log(`✅ dispatched ${id}`);
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                log(`⚠  hive signal failed for ${id}: ${msg} — retaining in pending`);
+            } else {
+                log(`⚠  dispatch failed for ${id}: ${delivery.reason} — retaining in pending`);
                 failed.push(raw);
             }
         }
@@ -453,19 +480,10 @@ async function handlePush(event: GitEvent, localPaths: string[], log: (m: string
 
     log(`⚠  git push: ${event.repo} ${branch} by ${who} (${shortSha}) — run \`spidersan pulse\` to check conflicts`);
 
-    // Notify fleet when main is updated — all machines see this in hive status / pulse
-    const isDefaultBranch = branch === 'main' || branch === 'master';
-    if (isDefaultBranch) {
-        const commitCount = (event as any).commits?.length ?? 1;
-        const summary = `${commitCount} commit${commitCount !== 1 ? 's' : ''} pushed to ${event.repo}/${branch} by ${who} (${shortSha})`;
-        execFile('envoak', [
-            'hive', 'signal',
-            '--status', 'idle',
-            '--task', `main updated: ${event.repo}`,
-            '--summary', summary,
-        ], { timeout: 10000 }, () => { /* best-effort, non-blocking */ });
-        log(`📡 hive signal emitted: ${summary}`);
-    }
+    // sp-8iqm: the main-updated fleet announce was removed, not re-pointed. It
+    // fired into a dead `envoak hive signal` for a month and nobody missed it;
+    // the push is already logged to the activity log below, and `spidersan
+    // pulse` reads that. Alerts are for conflicts, not for every push to main.
 
     const entry = {
         type: 'git_push',
@@ -518,12 +536,16 @@ async function handlePush(event: GitEvent, localPaths: string[], log: (m: string
                 },
             });
             log(`🕷  AI [T${advice.tier}/${advice.action}] ${event.repo}/${branch}: ${advice.message.slice(0, 120)}`);
-            // Best-effort hive signal — async, non-blocking
-            execFile('envoak', [
-                'hive', 'signal',
-                '--status', 'needs-context',
-                '--task', `TIER ${advice.tier} conflict: ${event.repo}/${branch} — ${advice.message.slice(0, 120)}`,
-            ], { timeout: 10000 }, () => { /* ignore result */ });
+            await deliver(notifier(), {
+                repo: event.repo,
+                branch,
+                tier: advice.tier,
+                message: advice.message,
+                dedupe: `push:${event.after_sha ?? 'unknown'}`,
+                agent: who !== 'unknown' ? who : undefined,
+                files,
+                details: { action: advice.action, commands: advice.commands, trigger: 'push', after_sha: event.after_sha },
+            }, log);
         }
     } catch {
         // AI layer failure is non-fatal — daemon continues
@@ -568,11 +590,15 @@ async function handlePR(event: GitEvent, _localPaths: string[], log: (m: string)
                 },
             });
             log(`🕷  AI [T${advice.tier}/${advice.action}] PR ${event.repo}/${branch}: ${advice.message.slice(0, 120)}`);
-            execFile('envoak', [
-                'hive', 'signal',
-                '--status', 'needs-context',
-                '--task', `TIER ${advice.tier} PR conflict: ${event.repo}/${branch} — ${advice.message.slice(0, 120)}`,
-            ], { timeout: 10000 }, () => { /* ignore result */ });
+            await deliver(notifier(), {
+                repo: event.repo,
+                branch,
+                tier: advice.tier,
+                message: advice.message,
+                dedupe: `pr:${action}`,
+                agent: who !== 'unknown' ? who : undefined,
+                details: { action: advice.action, commands: advice.commands, trigger: 'pull_request', pr_action: action },
+            }, log);
         }
     } catch {
         // AI layer failure is non-fatal
@@ -646,12 +672,19 @@ async function handleDelete(event: GitEvent, localPaths: string[], log: (m: stri
                             deleted_by: who,
                         },
                     });
-                    execFile('envoak', [
-                        'hive', 'signal',
-                        '--status', 'awaiting-review',
-                        '--task', `deleted branch ${branch} had active conflict registrations (${entry.files.length} files) in ${event.repo}`,
-                        '--files', entry.files.slice(0, 5).join(','),
-                    ], { timeout: 10000 }, () => { /* best-effort */ });
+                    // Tier 2: the files were tracked for conflict detection, so
+                    // another branch may still be registered against them —
+                    // actionable, but not a BLOCK the way a live overlap is.
+                    await deliver(notifier(), {
+                        repo: event.repo,
+                        branch,
+                        tier: 2,
+                        message: `deleted branch had ${entry.files.length} active conflict registration(s) — other branches may share these files`,
+                        dedupe: 'branch_deleted',
+                        agent: who !== 'unknown' ? who : undefined,
+                        files: entry.files,
+                        details: { trigger: 'branch_deleted_with_active_registrations', deleted_by: who },
+                    }, log);
                 }
 
                 // Archive first, then remove from active registry
