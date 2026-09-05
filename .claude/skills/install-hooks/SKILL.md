@@ -66,6 +66,12 @@ merged version BACK to `~/Dev/treebird/hooks/` (that's how `-m5-merged` was born
 
 ```bash
 mkdir -p ~/.claude/hooks
+# The checkout must be on main. `git pull --rebase` on a feature branch rebases
+# onto THAT branch's upstream and never brings main's hooks/ — and this repo has
+# a recorded habit of sitting on a stale branch for weeks (tb-79jq; found on m5
+# again 2026-09-05, on sasusan/tree-pair-triage, 27 commits behind).
+b=$(git -C ~/Dev/treebird branch --show-current)
+[ "$b" = main ] || { echo "⚠️ treebird checkout is on '$b', not main — hooks/ will be stale or missing. Repoint it first."; return 2>/dev/null || exit 2; }
 git -C ~/Dev/treebird pull --rebase -q
 SRC=~/Dev/treebird/hooks
 cp "$SRC/spidersan-pre.sh"            ~/.claude/hooks/spidersan-pre.sh
