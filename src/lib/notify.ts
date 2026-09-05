@@ -12,7 +12,9 @@
  * there is a value it has to look at.
  *
  * Adapters are selected by env, so swapping transports is config, not code:
- *   TOAK_ROOM_TOKEN  — post to a toak.me room (POST /api/chat/send)
+ *   SPIDERSAN_ROOM_TOKEN — post to a toak.me room (POST /api/chat/send).
+ *                          Name matches the vault secret toak/SPIDERSAN_ROOM_TOKEN,
+ *                          so `envoak vault inject` supplies it directly.
  *   unset            — nullNotifier: reports undelivered, never pretends
  */
 
@@ -127,11 +129,11 @@ export function toakRoomNotifier(token: string, fetchImpl: typeof fetch = fetch)
  */
 export const nullNotifier: Notifier = async () => ({
     ok: false,
-    reason: 'no transport configured (set TOAK_ROOM_TOKEN)',
+    reason: 'no transport configured (set SPIDERSAN_ROOM_TOKEN)',
 });
 
 export function createNotifier(): Notifier {
-    const token = process.env.TOAK_ROOM_TOKEN;
+    const token = process.env.SPIDERSAN_ROOM_TOKEN;
     return token ? toakRoomNotifier(token) : nullNotifier;
 }
 

@@ -54,7 +54,7 @@ describe('nullNotifier', () => {
     it('reports undelivered rather than pretending', async () => {
         expect(await nullNotifier(event)).toEqual({
             ok: false,
-            reason: 'no transport configured (set TOAK_ROOM_TOKEN)',
+            reason: 'no transport configured (set SPIDERSAN_ROOM_TOKEN)',
         });
     });
 });
