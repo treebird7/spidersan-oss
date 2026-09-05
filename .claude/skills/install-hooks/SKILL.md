@@ -5,12 +5,18 @@ description: Install or update the spidersan Claude-Code hooks (autoreg, pre, po
 
 # /install-hooks — spidersan hooks on any machine
 
-Canonical hook source: **`~/treebird-shared/hooks/`** (Syncthing-synced, already on
-every flock machine). Live copies run from `~/.claude/hooks/` (NOT a git repo).
+Canonical hook source: **`~/Dev/treebird/hooks/`** — git-tracked, so it has
+history, review and a real backup. `git pull` in that repo is the distribution;
+**pull before installing.** Live copies run from `~/.claude/hooks/` (NOT a git repo).
+
+> `~/treebird-shared/hooks/` is now a compatibility mirror, kept in step by
+> `hooks/sync-shared.sh --push`. Install from the repo; the mirror goes away once
+> nobody reads it.
 Full rationale: `~/treebird-shared/hooks/README.md` + `INSTALL-m2-i7.md`;
 per-hook failure modes: `treebird/canopy/spidersan-hooks-v2-report_16-06-26.md`.
 
 > ⚠️ Do NOT install from `~/treebird-shared/spidersan/claude-hooks/` — stale v2.0 copy.
+> Two stale-copy incidents are on record; installing from git is what ends that class.
 
 ## What gets installed
 
@@ -44,14 +50,14 @@ overwriting — a raw copy can silently drop behaviors the local copy gained:
 
 ```bash
 for f in spidersan-pre.sh spidersan-post.sh spidersan-autoreg.sh; do
-  [ -f ~/.claude/hooks/$f ] && { echo "== $f"; diff ~/.claude/hooks/$f ~/treebird-shared/hooks/$f; }
+  [ -f ~/.claude/hooks/$f ] && { echo "== $f"; diff ~/.claude/hooks/$f ~/Dev/treebird/hooks/$f; }
 done
 # post hook drifted? also diff against the merged variant:
-diff ~/.claude/hooks/spidersan-post.sh ~/treebird-shared/hooks/spidersan-post-m5-merged.sh
+diff ~/.claude/hooks/spidersan-post.sh ~/Dev/treebird/hooks/spidersan-post-m5-merged.sh
 ```
 
 If the LOCAL copy has behaviors the shared one lacks: merge by hand, then push the
-merged version BACK to `~/treebird-shared/hooks/` (that's how `-m5-merged` was born).
+merged version BACK to `~/Dev/treebird/hooks/` (that's how `-m5-merged` was born).
 
 ## 2. Copy + chmod
 
@@ -60,7 +66,8 @@ merged version BACK to `~/treebird-shared/hooks/` (that's how `-m5-merged` was b
 
 ```bash
 mkdir -p ~/.claude/hooks
-SRC=~/treebird-shared/hooks
+git -C ~/Dev/treebird pull --rebase -q
+SRC=~/Dev/treebird/hooks
 cp "$SRC/spidersan-pre.sh"            ~/.claude/hooks/spidersan-pre.sh
 cp "$SRC/spidersan-post-m5-merged.sh" ~/.claude/hooks/spidersan-post.sh
 cp "$SRC/spidersan-autoreg.sh"        ~/.claude/hooks/spidersan-autoreg.sh
