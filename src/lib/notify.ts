@@ -17,6 +17,7 @@
  */
 
 import { createHash } from 'crypto';
+import { hostname } from 'os';
 
 export type Delivered = { ok: true } | { ok: false; reason: string };
 
@@ -52,7 +53,13 @@ export interface NotifyEvent {
 export type Notifier = (event: NotifyEvent) => Promise<Delivered>;
 
 const TOAK_URL = process.env.TOAK_CHAT_URL || 'https://toak.me/api/chat/send';
-const SENDER = `agent:${process.env.SPIDERSAN_AGENT || 'spidersan'}`;
+// Bare name, no `agent:` prefix. Room allowlists match the sender string
+// EXACTLY — the `agent:<id>` form in toak's send route governs verification
+// upgrade, not allowlist matching, and conflating the two means an approved
+// `spidersan` would not admit a sender of `agent:spidersan`. The machine goes
+// in metadata instead, so one approval covers every host.
+const SENDER = process.env.SPIDERSAN_AGENT || 'spidersan';
+const MACHINE = process.env.TREEBIRD_MACHINE || hostname();
 
 /**
  * Stable per event, so a catch-up poll that replays an event minutes later
@@ -92,6 +99,7 @@ export function toakRoomNotifier(token: string, fetchImpl: typeof fetch = fetch)
                     content: format(event),
                     idempotency_key: idempotencyKey(event),
                     metadata: {
+                        machine: MACHINE,
                         repo: event.repo,
                         branch: event.branch,
                         tier: event.tier,

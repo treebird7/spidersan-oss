@@ -97,7 +97,9 @@ describe('toakRoomNotifier', () => {
         const [first, second] = bodies.map((b) => JSON.parse(b));
         expect(first.idempotency_key).toBe(second.idempotency_key);
         expect(first.token).toBe('tok');
-        expect(first.sender).toMatch(/^agent:/);
+        // Bare name: room allowlists match exactly, so a prefix would be rejected.
+        expect(first.sender).toBe('spidersan');
+        expect(first.metadata.machine).toBeTruthy();
         expect(first.metadata.tier).toBe(3);
     });
 
