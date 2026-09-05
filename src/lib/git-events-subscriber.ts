@@ -392,23 +392,24 @@ async function consumePendingTreePairs(log: (m: string) => void): Promise<void> 
             const files = Array.isArray(entry.files) ? (entry.files as string[]) : [];
             const summary = `spidersan auto-dispatch: ${entry.tree} pair(s) ready — ${entry.repo}@${entry.after_sha} — ${task}`;
 
-            const args = [
-                'hive', 'signal',
-                '--status',  'awaiting-review',
-                '--task',    task,
-                '--handoff', 'review',
-                '--summary', summary,
-            ];
-            if (files.length > 0) args.push('--files', files.join(','));
+            // Retry-and-retain, now driven by the delivery result rather than
+            // by whether a subprocess exited 0. Tier 1: this is a review
+            // prompt, not a conflict — it obliges someone to look, not to stop.
+            const delivery = await deliver(notifier(), {
+                repo: String(entry.repo ?? 'unknown'),
+                branch: String(entry.branch ?? 'unknown'),
+                tier: 1,
+                message: summary,
+                dedupe: `tree_pairs:${id}`,
+                files,
+                details: { trigger: 'tree_pairs_ready', tree: entry.tree, task, after_sha: entry.after_sha },
+            }, log);
 
-            log(`📡 hive handoff → ${task} (${files.length} file(s))`);
-            try {
-                await execFileAsync('envoak', args, { timeout: 15000 });
+            if (delivery.ok) {
                 succeeded.push({ entry, id });
                 log(`✅ dispatched ${id}`);
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                log(`⚠  hive signal failed for ${id}: ${msg} — retaining in pending`);
+            } else {
+                log(`⚠  dispatch failed for ${id}: ${delivery.reason} — retaining in pending`);
                 failed.push(raw);
             }
         }
