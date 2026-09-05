@@ -18,6 +18,7 @@ per-hook failure modes: `treebird/canopy/spidersan-hooks-v2-report_16-06-26.md`.
 |------|-------|-----------|
 | `spidersan-autoreg.sh` | PostToolUse(Write\|Edit\|MultiEdit\|NotebookEdit) | Every file edit auto-registers branch + changed files. Never touches main/master; only in repos with `.spidersan/`. |
 | `spidersan-pre.sh` (v2.5) | PreToolUse(Bash) | Dangerous-`rm` hard block + advisories: force-push guard, `gh pr merge` precheck, conflicts advisory, concurrent-checkout busy guard, branch-ownership warning, and dead-branch-on-push warning. |
+| `spidersan-worktree-guard.sh` | SessionStart | Warns when this worktree already holds uncommitted work that isn't yours (invoak `sp-iocc`). Fires at session open, before the first tool call — `spidersan-pre.sh` #5/#6 only fire at `git add|commit`, which on 2026-09-04 was an hour too late. Pure git; no envoak call, no registry read, nothing persisted. Silent unless it fires. |
 | `spidersan-post-m5-merged.sh` → installed AS `spidersan-post.sh` | PostToolUse(Bash) | registry-sync to Supabase after `git push`, trunk-poison auto-heal after merges, auto-`register` on `git checkout -b`/`switch -c`. (`sangit-refresh` inside fails silently if absent — harmless.) |
 
 Everything is fail-open except the dangerous-`rm` block — a hook bug can never block a push.
@@ -63,7 +64,8 @@ SRC=~/treebird-shared/hooks
 cp "$SRC/spidersan-pre.sh"            ~/.claude/hooks/spidersan-pre.sh
 cp "$SRC/spidersan-post-m5-merged.sh" ~/.claude/hooks/spidersan-post.sh
 cp "$SRC/spidersan-autoreg.sh"        ~/.claude/hooks/spidersan-autoreg.sh
-chmod +x ~/.claude/hooks/spidersan-{pre,post,autoreg}.sh
+cp "$SRC/spidersan-worktree-guard.sh" ~/.claude/hooks/spidersan-worktree-guard.sh
+chmod +x ~/.claude/hooks/spidersan-{pre,post,autoreg,worktree-guard}.sh
 ```
 
 ## 3. Wire into `~/.claude/settings.json` (merge into existing matchers)
@@ -76,9 +78,15 @@ chmod +x ~/.claude/hooks/spidersan-{pre,post,autoreg}.sh
   "PostToolUse": [
     { "matcher": "Bash", "hooks": [ { "type": "command", "command": "~/.claude/hooks/spidersan-post.sh", "timeout": 10 } ] },
     { "matcher": "Write|Edit|MultiEdit|NotebookEdit", "hooks": [ { "type": "command", "command": "~/.claude/hooks/spidersan-autoreg.sh", "timeout": 10 } ] }
+  ],
+  "SessionStart": [
+    { "hooks": [ { "type": "command", "command": "~/.claude/hooks/spidersan-worktree-guard.sh", "timeout": 10 } ] }
   ]
 }
 ```
+
+No `async: true` on the worktree guard either — its whole point is to reach the agent
+*before* it touches the tree, and an async SessionStart hook races the first tool call.
 
 No `async: true` on spidersan-post — the trunk-poison warning should reach the agent
 synchronously. Restart Claude Code after editing.
