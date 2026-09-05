@@ -5,12 +5,18 @@ description: Install or update the spidersan Claude-Code hooks (autoreg, pre, po
 
 # /install-hooks — spidersan hooks on any machine
 
-Canonical hook source: **`~/treebird-shared/hooks/`** (Syncthing-synced, already on
-every flock machine). Live copies run from `~/.claude/hooks/` (NOT a git repo).
+Canonical hook source: **`~/Dev/treebird/hooks/`** — git-tracked, so it has
+history, review and a real backup. `git pull` in that repo is the distribution;
+**pull before installing.** Live copies run from `~/.claude/hooks/` (NOT a git repo).
+
+> `~/treebird-shared/hooks/` is now a compatibility mirror, kept in step by
+> `hooks/sync-shared.sh --push`. Install from the repo; the mirror goes away once
+> nobody reads it.
 Full rationale: `~/treebird-shared/hooks/README.md` + `INSTALL-m2-i7.md`;
 per-hook failure modes: `treebird/canopy/spidersan-hooks-v2-report_16-06-26.md`.
 
 > ⚠️ Do NOT install from `~/treebird-shared/spidersan/claude-hooks/` — stale v2.0 copy.
+> Two stale-copy incidents are on record; installing from git is what ends that class.
 
 ## What gets installed
 
@@ -18,6 +24,7 @@ per-hook failure modes: `treebird/canopy/spidersan-hooks-v2-report_16-06-26.md`.
 |------|-------|-----------|
 | `spidersan-autoreg.sh` | PostToolUse(Write\|Edit\|MultiEdit\|NotebookEdit) | Every file edit auto-registers branch + changed files. Never touches main/master; only in repos with `.spidersan/`. |
 | `spidersan-pre.sh` (v2.5) | PreToolUse(Bash) | Dangerous-`rm` hard block + advisories: force-push guard, `gh pr merge` precheck, conflicts advisory, concurrent-checkout busy guard, branch-ownership warning, and dead-branch-on-push warning. |
+| `spidersan-worktree-guard.sh` | SessionStart | Warns when this worktree already holds uncommitted work that isn't yours (invoak `sp-iocc`). Fires at session open, before the first tool call — `spidersan-pre.sh` #5/#6 only fire at `git add|commit`, which on 2026-09-04 was an hour too late. Pure git; no envoak call, no registry read, nothing persisted. Silent unless it fires. Identity (`BIRDCHAT_AGENT` → session-identity file → `TOAK_AGENT_ID`) only *suppresses* the warning for your own leftovers — at a fresh SessionStart none of those is set yet, so it warns without attribution rather than going quiet. |
 | `spidersan-post-m5-merged.sh` → installed AS `spidersan-post.sh` | PostToolUse(Bash) | registry-sync to Supabase after `git push`, trunk-poison auto-heal after merges, auto-`register` on `git checkout -b`/`switch -c`. (`sangit-refresh` inside fails silently if absent — harmless.) |
 
 Everything is fail-open except the dangerous-`rm` block — a hook bug can never block a push.
@@ -43,14 +50,14 @@ overwriting — a raw copy can silently drop behaviors the local copy gained:
 
 ```bash
 for f in spidersan-pre.sh spidersan-post.sh spidersan-autoreg.sh; do
-  [ -f ~/.claude/hooks/$f ] && { echo "== $f"; diff ~/.claude/hooks/$f ~/treebird-shared/hooks/$f; }
+  [ -f ~/.claude/hooks/$f ] && { echo "== $f"; diff ~/.claude/hooks/$f ~/Dev/treebird/hooks/$f; }
 done
 # post hook drifted? also diff against the merged variant:
-diff ~/.claude/hooks/spidersan-post.sh ~/treebird-shared/hooks/spidersan-post-m5-merged.sh
+diff ~/.claude/hooks/spidersan-post.sh ~/Dev/treebird/hooks/spidersan-post-m5-merged.sh
 ```
 
 If the LOCAL copy has behaviors the shared one lacks: merge by hand, then push the
-merged version BACK to `~/treebird-shared/hooks/` (that's how `-m5-merged` was born).
+merged version BACK to `~/Dev/treebird/hooks/` (that's how `-m5-merged` was born).
 
 ## 2. Copy + chmod
 
@@ -59,11 +66,19 @@ merged version BACK to `~/treebird-shared/hooks/` (that's how `-m5-merged` was b
 
 ```bash
 mkdir -p ~/.claude/hooks
-SRC=~/treebird-shared/hooks
+# The checkout must be on main. `git pull --rebase` on a feature branch rebases
+# onto THAT branch's upstream and never brings main's hooks/ — and this repo has
+# a recorded habit of sitting on a stale branch for weeks (tb-79jq; found on m5
+# again 2026-09-05, on sasusan/tree-pair-triage, 27 commits behind).
+b=$(git -C ~/Dev/treebird branch --show-current)
+[ "$b" = main ] || { echo "⚠️ treebird checkout is on '$b', not main — hooks/ will be stale or missing. Repoint it first."; return 2>/dev/null || exit 2; }
+git -C ~/Dev/treebird pull --rebase -q
+SRC=~/Dev/treebird/hooks
 cp "$SRC/spidersan-pre.sh"            ~/.claude/hooks/spidersan-pre.sh
 cp "$SRC/spidersan-post-m5-merged.sh" ~/.claude/hooks/spidersan-post.sh
 cp "$SRC/spidersan-autoreg.sh"        ~/.claude/hooks/spidersan-autoreg.sh
-chmod +x ~/.claude/hooks/spidersan-{pre,post,autoreg}.sh
+cp "$SRC/spidersan-worktree-guard.sh" ~/.claude/hooks/spidersan-worktree-guard.sh
+chmod +x ~/.claude/hooks/spidersan-{pre,post,autoreg,worktree-guard}.sh
 ```
 
 ## 3. Wire into `~/.claude/settings.json` (merge into existing matchers)
@@ -76,9 +91,15 @@ chmod +x ~/.claude/hooks/spidersan-{pre,post,autoreg}.sh
   "PostToolUse": [
     { "matcher": "Bash", "hooks": [ { "type": "command", "command": "~/.claude/hooks/spidersan-post.sh", "timeout": 10 } ] },
     { "matcher": "Write|Edit|MultiEdit|NotebookEdit", "hooks": [ { "type": "command", "command": "~/.claude/hooks/spidersan-autoreg.sh", "timeout": 10 } ] }
+  ],
+  "SessionStart": [
+    { "hooks": [ { "type": "command", "command": "~/.claude/hooks/spidersan-worktree-guard.sh", "timeout": 10 } ] }
   ]
 }
 ```
+
+No `async: true` on the worktree guard either — its whole point is to reach the agent
+*before* it touches the tree, and an async SessionStart hook races the first tool call.
 
 No `async: true` on spidersan-post — the trunk-poison warning should reach the agent
 synchronously. Restart Claude Code after editing.
