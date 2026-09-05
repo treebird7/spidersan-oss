@@ -25,8 +25,15 @@ export interface NotifyEvent {
     branch: string;
     /** Conflict tier. Callers gate on this themselves — policy is not ours. */
     tier: number;
-    /** Human-readable line. */
+    /** Human-readable line. May be LLM-generated — never key off this. */
     message: string;
+    /**
+     * Stable identity of the underlying event, for deduplication. MUST be
+     * built only from deterministic facts (repo, branch, sha, action) — the
+     * tier>=2 path escalates to an LLM, so `message` differs between two
+     * deliveries of the same event and cannot be used here.
+     */
+    dedupe: string;
     /** GitHub login or agent that triggered it, when known. */
     agent?: string;
     files?: string[];
@@ -54,9 +61,16 @@ const SENDER = `agent:${process.env.SPIDERSAN_AGENT || 'spidersan'}`;
  */
 function idempotencyKey(e: NotifyEvent): string {
     return createHash('sha256')
-        .update([e.repo, e.branch, e.tier, e.message].join(' '))
+        .update([e.repo, e.branch, e.tier, e.dedupe].join(' '))
         .digest('hex');
 }
+
+/**
+ * The original emits were fire-and-forget with `{ timeout: 10000 }`. These are
+ * awaited inside the event handlers, so an unbounded fetch would stall the
+ * handler and queue every event behind it. Same budget as before.
+ */
+const TIMEOUT_MS = 10_000;
 
 function format(e: NotifyEvent): string {
     const who = e.agent ? ` by ${e.agent}` : '';
@@ -71,6 +85,7 @@ export function toakRoomNotifier(token: string, fetchImpl: typeof fetch = fetch)
             const res = await fetchImpl(TOAK_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                signal: AbortSignal.timeout(TIMEOUT_MS),
                 body: JSON.stringify({
                     token,
                     sender: SENDER,

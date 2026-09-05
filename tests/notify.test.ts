@@ -12,6 +12,7 @@ const event: NotifyEvent = {
     branch: 'sherlock/x',
     tier: 3,
     message: 'CLAUDE.md contested by two branches',
+    dedupe: 'push:abc1234',
     agent: 'sherlock',
     files: ['CLAUDE.md'],
 };
@@ -79,7 +80,7 @@ describe('toakRoomNotifier', () => {
         expect(result).toEqual({ ok: false, reason: 'connect ECONNREFUSED' });
     });
 
-    it('sends a stable idempotency key so a replayed catch-up poll cannot double-post', async () => {
+    it('keys off dedupe, not the LLM-written message, so a replay cannot double-post', async () => {
         const bodies: string[] = [];
         const fetchImpl = (async (_url: string, init: RequestInit) => {
             bodies.push(String(init.body));
@@ -88,7 +89,10 @@ describe('toakRoomNotifier', () => {
 
         const notifier = toakRoomNotifier('tok', fetchImpl);
         await notifier(event);
-        await notifier({ ...event }); // same event, replayed
+        // Same push, re-delivered by the catch-up poll. advice.message is
+        // LLM-generated for tier>=2, so the prose differs on replay — the key
+        // must not move with it.
+        await notifier({ ...event, message: 'Two branches both modify CLAUDE.md' });
 
         const [first, second] = bodies.map((b) => JSON.parse(b));
         expect(first.idempotency_key).toBe(second.idempotency_key);
@@ -106,9 +110,21 @@ describe('toakRoomNotifier', () => {
 
         const notifier = toakRoomNotifier('tok', fetchImpl);
         await notifier(event);
-        await notifier({ ...event, branch: 'sherlock/y' });
+        await notifier({ ...event, branch: 'sherlock/y', dedupe: 'push:def5678' });
 
         const [a, b] = bodies.map((x) => JSON.parse(x));
         expect(a.idempotency_key).not.toBe(b.idempotency_key);
+    });
+
+    it('bounds the request — an unanswered POST must not stall the event handler', async () => {
+        let seen: RequestInit | undefined;
+        const fetchImpl = (async (_url: string, init: RequestInit) => {
+            seen = init;
+            return new Response('{}', { status: 200 });
+        }) as unknown as typeof fetch;
+
+        await toakRoomNotifier('tok', fetchImpl)(event);
+
+        expect(seen?.signal).toBeInstanceOf(AbortSignal);
     });
 });

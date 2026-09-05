@@ -522,9 +522,10 @@ async function handlePush(event: GitEvent, localPaths: string[], log: (m: string
                 branch,
                 tier: advice.tier,
                 message: advice.message,
+                dedupe: `push:${event.after_sha ?? 'unknown'}`,
                 agent: who !== 'unknown' ? who : undefined,
                 files,
-                details: { action: advice.action, commands: advice.commands, trigger: 'push' },
+                details: { action: advice.action, commands: advice.commands, trigger: 'push', after_sha: event.after_sha },
             }, log);
         }
     } catch {
@@ -575,6 +576,7 @@ async function handlePR(event: GitEvent, _localPaths: string[], log: (m: string)
                 branch,
                 tier: advice.tier,
                 message: advice.message,
+                dedupe: `pr:${action}`,
                 agent: who !== 'unknown' ? who : undefined,
                 details: { action: advice.action, commands: advice.commands, trigger: 'pull_request', pr_action: action },
             }, log);
@@ -659,6 +661,7 @@ async function handleDelete(event: GitEvent, localPaths: string[], log: (m: stri
                         branch,
                         tier: 2,
                         message: `deleted branch had ${entry.files.length} active conflict registration(s) — other branches may share these files`,
+                        dedupe: 'branch_deleted',
                         agent: who !== 'unknown' ? who : undefined,
                         files: entry.files,
                         details: { trigger: 'branch_deleted_with_active_registrations', deleted_by: who },
