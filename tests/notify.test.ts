@@ -6,6 +6,7 @@ import {
     type NotifyEvent,
     type Notifier,
 } from '../src/lib/notify.js';
+import { resolveGithubToken } from '../src/lib/git-events-subscriber.js';
 
 const event: NotifyEvent = {
     repo: 'treebird7/spidersan-oss',
@@ -128,5 +129,29 @@ describe('toakRoomNotifier', () => {
         await toakRoomNotifier('tok', fetchImpl)(event);
 
         expect(seen?.signal).toBeInstanceOf(AbortSignal);
+    });
+});
+
+describe('resolveGithubToken', () => {
+    // envoak's protected-namespace filter refuses to inject any name starting
+    // GITHUB_, so the vault copy must be app-prefixed or it is silently dropped
+    // and the daemon falls back to 60 req/h unauthenticated.
+    it('prefers the vault-injected app-prefixed name', () => {
+        expect(resolveGithubToken({
+            SPIDERSAN_GITHUB_TOKEN: 'from-vault',
+            GITHUB_TOKEN: 'from-shell',
+        })).toBe('from-vault');
+    });
+
+    it('falls back to GITHUB_TOKEN so a plain shell or CI still works', () => {
+        expect(resolveGithubToken({ GITHUB_TOKEN: 'from-shell' })).toBe('from-shell');
+    });
+
+    it('is undefined when neither is set — the caller then goes unauthenticated', () => {
+        expect(resolveGithubToken({})).toBeUndefined();
+    });
+
+    it('treats an empty value as absent rather than sending an empty Bearer', () => {
+        expect(resolveGithubToken({ SPIDERSAN_GITHUB_TOKEN: '', GITHUB_TOKEN: '' })).toBeUndefined();
     });
 });

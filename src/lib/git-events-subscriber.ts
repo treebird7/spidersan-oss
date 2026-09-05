@@ -40,6 +40,24 @@ function notifier(): Notifier {
     return (_notifier ??= createNotifier());
 }
 
+/**
+ * The compare-API credential, preferring the vault-injected name.
+ *
+ * It cannot be stored as `GITHUB_TOKEN`: envoak's protected-namespace filter
+ * (`SENSITIVE_PREFIXES` in Envoak vault.ts) refuses to inject any name starting
+ * `GITHUB_`, so a vault secret called GITHUB_TOKEN would be granted, decrypted,
+ * and then dropped — leaving the daemon silently unauthenticated at 60 req/h.
+ * Hence the app-prefixed `spidersan/SPIDERSAN_GITHUB_TOKEN`.
+ *
+ * `GITHUB_TOKEN` stays as a fallback so a plain shell (or CI) that already
+ * exports it keeps working.
+ */
+export function resolveGithubToken(
+    env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+    return env.SPIDERSAN_GITHUB_TOKEN || env.GITHUB_TOKEN || undefined;
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface GitEvent {
@@ -265,7 +283,7 @@ const TREE_ACTION_HINTS: Record<string, string> = {
 async function detectTreePairs(event: GitEvent, log: (m: string) => void): Promise<void> {
     if (!event.before_sha || !event.after_sha) return;
     const url = `https://api.github.com/repos/${event.repo}/compare/${event.before_sha}...${event.after_sha}`;
-    const githubToken = process.env.GITHUB_TOKEN;
+    const githubToken = resolveGithubToken();
     const headers: Record<string, string> = {
         'Accept':     'application/vnd.github.v3+json',
         'User-Agent': 'spidersan-git-watch',
