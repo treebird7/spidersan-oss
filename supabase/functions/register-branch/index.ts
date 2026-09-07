@@ -7,8 +7,11 @@
 //
 // Deploy:  supabase functions deploy register-branch --no-verify-jwt
 // Secrets: REGISTRY_SB_SECRET        sb_secret_... key (Dashboard → API keys)
-//          REGISTRY_ALLOWED_REPOS    comma-separated owner/repo allowlist
-//                                    (default: treebird7/spidersan-oss)
+//          REGISTRY_ALLOWED_REPOS    FALLBACK ONLY since sp-uuyg. The allowlist
+//                                    now lives in public.registry_allowed_repos;
+//                                    this var is read only if that table errors
+//                                    or comes back empty, so one bad read cannot
+//                                    403 every repo at once. Drop after a release.
 //          REGISTRY_ALLOWED_REPO_IDS optional comma-separated numeric repo IDs
 //                                    (immune to repo-name resquatting)
 //
@@ -16,8 +19,15 @@
 // not a boundary — any GitHub repo can mint a token with our audience).
 // Branch and actor come from token claims, never from the request body;
 // the body contributes only `files`.
+//
+// To allow a repo (sp-uuyg): insert a row, service_role only —
+//   insert into registry_allowed_repos (repo_name, added_by, note)
+//   values ('treebird7/<repo>', '<agent>', '<why>');
+// repo_name must be lowercase owner/repo. The repo also needs the
+// SPIDERSAN_REGISTER_URL actions variable, or the workflow warns and skips.
 
 import { createRemoteJWKSet, jwtVerify } from "npm:jose@5";
+import { readAllowlist } from "./allowlist.ts";
 
 const ISSUER = "https://token.actions.githubusercontent.com";
 const AUDIENCE = "spidersan-registry";
@@ -25,12 +35,13 @@ const JWKS = createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks`));
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SB_SECRET = Deno.env.get("REGISTRY_SB_SECRET")!;
-const ALLOWED_REPOS = (Deno.env.get("REGISTRY_ALLOWED_REPOS") ?? "treebird7/spidersan-oss")
+const ENV_ALLOWED_REPOS = (Deno.env.get("REGISTRY_ALLOWED_REPOS") ?? "treebird7/spidersan-oss")
   .split(",").map((r) => r.trim().toLowerCase()).filter(Boolean);
 const ALLOWED_REPO_IDS = (Deno.env.get("REGISTRY_ALLOWED_REPO_IDS") ?? "")
   .split(",").map((r) => r.trim()).filter(Boolean);
 
 const REST = `${SUPABASE_URL}/rest/v1/branch_registry`;
+const ALLOWLIST_REST = `${SUPABASE_URL}/rest/v1/registry_allowed_repos`;
 const REST_HEADERS = {
   apikey: SB_SECRET,
   Authorization: `Bearer ${SB_SECRET}`,
@@ -63,7 +74,14 @@ Deno.serve(async (req) => {
   }
 
   const repository = String(claims.repository ?? "");
-  if (!ALLOWED_REPOS.includes(repository.toLowerCase())) {
+  // Read only after the token verifies — an unauthenticated probe must not be
+  // able to make us hit the database. Read fresh every call, no cache: a
+  // revoked repo has to stop registering immediately.
+  const { repos: allowed, source } = await readAllowlist(
+    ALLOWLIST_REST, REST_HEADERS, ENV_ALLOWED_REPOS,
+  );
+  if (!allowed.includes(repository.toLowerCase())) {
+    console.log(`denied ${repository} (allowlist source: ${source}, n=${allowed.length})`);
     return json(403, { error: "repository not allowed" });
   }
   if (ALLOWED_REPO_IDS.length && !ALLOWED_REPO_IDS.includes(String(claims.repository_id ?? ""))) {
