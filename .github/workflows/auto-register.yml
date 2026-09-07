@@ -24,7 +24,6 @@ permissions:
 jobs:
   register:
     runs-on: ubuntu-latest
-    if: vars.SPIDERSAN_REGISTER_URL != ''
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,6 +36,24 @@ jobs:
           REGISTER_URL: ${{ vars.SPIDERSAN_REGISTER_URL }}
         run: |
           set -euo pipefail
+
+          # An unset variable means this repo registers nothing. Say so: the job
+          # used to carry `if: vars.SPIDERSAN_REGISTER_URL != ''`, which skipped
+          # with no annotation, so a repo holding this file but no variable looked
+          # configured and registered nothing. Of the 13 org repos carrying this
+          # workflow (2026-09-07), 12 set the variable; only Spidersan-deprecated
+          # does not. Warn rather than fail so a deprecated repo does not go red
+          # on every push; a repo that should register and does not now says so.
+          if [ -z "${REGISTER_URL:-}" ]; then
+            echo "::warning title=Branch NOT registered::SPIDERSAN_REGISTER_URL is not set on ${GITHUB_REPOSITORY}, so this branch was not registered. Spidersan cannot see it when checking cross-branch conflicts. Fix: gh variable set SPIDERSAN_REGISTER_URL --repo ${GITHUB_REPOSITORY} --body <register-branch function url>"
+            {
+              echo "### Branch NOT registered with Spidersan"
+              echo ""
+              echo "\`SPIDERSAN_REGISTER_URL\` is unset on \`${GITHUB_REPOSITORY}\`."
+              echo "Cross-branch conflict detection will not see this branch."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
 
           # Changed files; initial push has an all-zeros 'before' → diff against main
           if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
