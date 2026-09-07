@@ -13,6 +13,10 @@ name: Spidersan Auto-Register
 
 on:
   push:
+    # A cheap pre-filter only. GitHub forbids expressions in `on:` filters, so
+    # this cannot name the repo's actual default branch — a master-default repo
+    # (memosan, selfimprove-harness, selfimprove-dashboard) still triggers here.
+    # The trunk guard in the step below is what actually enforces it.
     branches-ignore:
       - main
       - staging/*
@@ -34,6 +38,8 @@ jobs:
           BEFORE: ${{ github.event.before }}
           COMMIT_SHA: ${{ github.sha }}
           REGISTER_URL: ${{ vars.SPIDERSAN_REGISTER_URL }}
+          BRANCH: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
 
@@ -55,9 +61,18 @@ jobs:
             exit 0
           fi
 
-          # Changed files; initial push has an all-zeros 'before' → diff against main
+          # Never register the trunk as if it were a feature branch. branches-ignore
+          # above hardcodes `main` because `on:` filters take no expressions, so on a
+          # master-default repo this is the only thing that catches it.
+          if [ "$BRANCH" = "$DEFAULT_BRANCH" ]; then
+            echo "::notice::Push to the default branch ($DEFAULT_BRANCH) — nothing to register."
+            exit 0
+          fi
+
+          # Changed files; initial push has an all-zeros 'before' → diff against the
+          # repo's DEFAULT branch, which is not always `main`.
           if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-            FILES=$(git diff --name-only "origin/main...$COMMIT_SHA" 2>/dev/null || true)
+            FILES=$(git diff --name-only "origin/$DEFAULT_BRANCH...$COMMIT_SHA" 2>/dev/null || true)
           else
             FILES=$(git diff --name-only "$BEFORE" "$COMMIT_SHA" 2>/dev/null || true)
           fi
