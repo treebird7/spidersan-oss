@@ -126,7 +126,9 @@ async function notifyConflicts(branch: string, conflicts: Array<{ branch: string
         message,
         dedupe: `conflicts:${branch}:${contested.join(',')}`,
         files: contested,
-    }, (m) => console.log(m));
+        // stderr, not stdout: this runs before the --json blob is printed, and a
+        // delivery diagnostic must never end up inside machine-readable output.
+    }, (m) => console.error(m));
 }
 
 /**
@@ -508,7 +510,6 @@ export const conflictsCommand = new Command('conflicts')
     .option('--tier <level>', 'Filter by minimum tier (1, 2, or 3)', '1')
     .option('--strict', 'Strict mode: exit with error if TIER 2+ conflicts found')
     .option('--notify', 'Deliver TIER 2+ conflicts to the configured alert room (SPIDERSAN_ROOM_TOKEN)')
-    .option('--auto', 'Auto mode: skip confirmations (enables Ralph Wiggum loop)')
     .option('--semantic', 'Use semantic (AST) analysis for symbol-level conflict detection')
     .option('--ecosystem', 'Scan all ecosystem repos and aggregate conflict tiers')
     .option('--repos <paths>', 'Comma-separated repo paths for --ecosystem scan')

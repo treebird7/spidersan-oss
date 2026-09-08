@@ -34,7 +34,7 @@ Note: `mcp-health` and `pulse` are ecosystem-only commands.
 | `init` | ✅ | ✅ | Creates .spidersan/ |
 | `register` | ✅ | ✅ | --auto, --interactive modes |
 | `list` | ✅ | ✅ | Lists all branches |
-| `conflicts` | ✅ | ✅ | Tiered system, --wake, --auto |
+| `conflicts` | ✅ | ✅ | Tiered system, --notify |
 | `merge-order` | ✅ | ✅ | Topological sort |
 | `ready-check` | ✅ | ✅ | Pre-merge verification |
 | `depends` | ✅ | ✅ | Set/show branch dependencies |
