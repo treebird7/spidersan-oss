@@ -16,11 +16,9 @@ import { syncFromColony } from '../lib/colony-subscriber.js';
 import { loadConfig } from '../lib/config.js';
 import { classifyTier } from '../lib/conflict-tier.js';
 import { getCurrentBranch } from '../lib/git.js';
-import { createHubClient } from '../lib/hub.js';
 import { renderPulseReport } from '../lib/pulse-renderer.js';
 import { computeDriftResult } from '../lib/remote-drift.js';
 import type { ConflictTier } from '../lib/conflict-tier.js';
-import { isOfflineError } from '../lib/remote-drift.js';
 import { probeSmalltoak } from '../lib/smalltoak.js';
 
 function resolveCurrentBranch(): string {
@@ -36,7 +34,6 @@ export const pulseCommand = new Command('pulse')
     .option('--json', 'Output as JSON')
     .option('--no-sync', 'Skip Colony sync, use local registry only')
     .option('--remote-drift', 'Check if remote has advanced past local HEAD')
-    .option('--hub-sync', 'Post drift alert to Hub if registered or unstaged files are in drift zone')
     .option('--strict', 'Exit 1 if any registered or unstaged files are in the drift zone')
     .action(async (options) => {
         const storage = await getStorage();
@@ -161,20 +158,10 @@ export const pulseCommand = new Command('pulse')
             ? await computeDriftResult(target.files, { remote: 'origin', branch: currentBranch })
             : null;
 
-        if (drift && !('skipped' in drift) && options.hubSync) {
-            const hasRisk = drift.registeredInDrift.length > 0 || drift.unstagedInDrift.length > 0;
-            if (hasRisk) {
-                const hub = createHubClient();
-                const lines = [
-                    `🕷️⚠️ Remote drift detected on \`${drift.branch}\``,
-                    `  ${drift.remoteAhead} commit(s) ahead | ${drift.registeredInDrift.length} registered file(s) at risk | ${drift.unstagedInDrift.length} rebase-continue blocker(s)`,
-                    ...drift.registeredInDrift.map((entry) => `  ${renderTierIcon(entry.tier)} ${entry.file}${entry.unstaged ? '  [also has unstaged modifications]' : ''}`),
-                ];
-                await hub.postToChat({ agent: 'spidersan', name: 'Spidersan', message: lines.join('\n'), glyph: '🕷️' }).catch((error: unknown) => {
-                    if (!isOfflineError(error)) console.warn('Hub sync failed:', error);
-                });
-            }
-        }
+        // Drift used to be posted to the Hub behind --hub-sync. Drift is not a
+        // conflict, so it has no place in the notify() seam, and `pulse` is an
+        // invoked command whose report the operator is already reading — the
+        // alert added nothing the next line does not print. (sp-hnjf)
 
         console.log(renderPulseReport({
             branch: currentBranch,
@@ -192,9 +179,3 @@ export const pulseCommand = new Command('pulse')
         }
     });
 
-function renderTierIcon(tier: 1 | 2 | 3 | null): string {
-    if (tier === 3) return '🔴';
-    if (tier === 2) return '🟠';
-    if (tier === 1) return '🟡';
-    return '⚪';
-}

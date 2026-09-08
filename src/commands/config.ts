@@ -198,8 +198,6 @@ async function runWizard(): Promise<void> {
             autoWatch: {
                 enabled: autoWatchEnabled && autoWatchPaths.length > 0,
                 paths: autoWatchPaths,
-                hub: false,
-                hubSync: false,
                 quiet: false,
                 legacy: false,
             },
@@ -348,8 +346,6 @@ configCommand
             autoWatch: {
                 enabled: false,
                 paths: [],
-                hub: false,
-                hubSync: false,
                 quiet: false,
                 legacy: false,
             },

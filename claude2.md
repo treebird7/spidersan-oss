@@ -114,7 +114,7 @@ From `SECURITY.md` / `SECURITY_AUDIT.md` / `CONTEXT.md`:
 
 ## Environment Variables (`.env.example`)
 
-`SPIDERSAN_ENV` (production/staging/local), `SUPABASE_URL_PROD`/`SUPABASE_KEY_PROD`, `SUPABASE_URL_STAGING`/`SUPABASE_KEY_STAGING`, legacy `SUPABASE_URL`/`SUPABASE_KEY`, `SPIDERSAN_AGENT` (agent identity), `HUB_URL` (default `https://hub.treebird.uk`). LLM: `SPIDERSAN_LLM` (provider, default `lmstudio`), `SPIDERSAN_LLM_MODEL`, `SPIDERSAN_LLM_URL`. LLM fallback chain: **LM Studio (Gemma) → Ollama → api.spidersan.net → GitHub Copilot**.
+`SPIDERSAN_ENV` (production/staging/local), `SUPABASE_URL_PROD`/`SUPABASE_KEY_PROD`, `SUPABASE_URL_STAGING`/`SUPABASE_KEY_STAGING`, legacy `SUPABASE_URL`/`SUPABASE_KEY`, `SPIDERSAN_AGENT` (agent identity), `SPIDERSAN_ROOM_TOKEN` (conflict alert delivery). LLM: `SPIDERSAN_LLM` (provider, default `lmstudio`), `SPIDERSAN_LLM_MODEL`, `SPIDERSAN_LLM_URL`. LLM fallback chain: **LM Studio (Gemma) → Ollama → api.spidersan.net → GitHub Copilot**.
 
 > To force local storage in tests, set `SUPABASE_URL=` / `SUPABASE_KEY=` empty.
 

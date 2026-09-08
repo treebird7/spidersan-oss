@@ -172,19 +172,21 @@ spidersan watch --agent myagent --hub
 
 ---
 
-## 10. Integration with Myceliumail
+## 10. Conflict alert delivery
 
-Spidersan can wake conflicting agents via Myceliumail:
+`spidersan conflicts --notify` delivers TIER 2+ conflicts to the configured
+alert room. The transport is chosen by environment, not by a flag — set
+`SPIDERSAN_ROOM_TOKEN` (inject it from the envoak vault, `toak/SPIDERSAN_ROOM_TOKEN`).
+With no token the alert is reported locally as `NOT NOTIFIED`, never silently dropped.
 
 ```bash
-# Wake agents and send them fix instructions
-spidersan conflicts --wake
-
-# With retry after waiting
-spidersan conflicts --wake --retry 60
+spidersan conflicts --notify
 ```
 
-**Note:** This uses the Myceliumail CLI (`mycmail`). Messaging commands like `spidersan send`, `inbox`, and `read` are ecosystem-only and require the plugin plus Myceliumail setup.
+**Note:** `--wake` / `--retry` were removed in sp-hnjf. They woke agents via
+`hub.treebird.uk`, which was retired 2026-09-05, and reported success
+unconditionally. Messaging commands like `spidersan send`, `inbox`, and `read`
+are ecosystem-only and require the plugin plus Myceliumail setup.
 
 ---
 

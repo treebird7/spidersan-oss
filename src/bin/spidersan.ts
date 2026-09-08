@@ -6,7 +6,7 @@
  *
  * Startup performance: commands are lazy-loaded. Importing from
  * `../commands/index.js` would pull in all ~38 command modules (and their heavy
- * transitive deps — blessed, socket.io-client, chokidar, tree-sitter — ~700ms)
+ * transitive deps — blessed, chokidar, tree-sitter — ~700ms)
  * just to print `--version`. Instead we register only the invoked command's
  * module on the hot path, and fall back to loading everything only for help /
  * unknown / ecosystem commands.

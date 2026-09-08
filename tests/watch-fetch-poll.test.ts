@@ -14,14 +14,18 @@ const mocks = vi.hoisted(() => {
         spawnSync: vi.fn(),
         existsSync: vi.fn(() => false),
         chokidarWatch: vi.fn(),
-        socketIo: vi.fn(),
         getStorage: vi.fn(),
         loadConfig: vi.fn(),
         syncFromColony: vi.fn(),
         getCurrentBranch: vi.fn(),
+        getRepoName: vi.fn(),
         getRemoteHead: vi.fn(),
         computeDriftResult: vi.fn(),
-        postToChat: vi.fn(),
+        injectCoordComment: vi.fn(() => false),
+        removeCoordComment: vi.fn(),
+        // The transport behind the real `deliver`. Defaults to dead, which is
+        // exactly the sp-8iqm condition under test.
+        notifier: vi.fn(),
         storage,
     };
 });
@@ -39,10 +43,6 @@ vi.mock('chokidar', () => ({
     watch: mocks.chokidarWatch,
 }));
 
-vi.mock('socket.io-client', () => ({
-    io: mocks.socketIo,
-}));
-
 vi.mock('../src/storage/index.js', () => ({
     getStorage: mocks.getStorage,
 }));
@@ -57,6 +57,7 @@ vi.mock('../src/lib/colony-subscriber.js', () => ({
 
 vi.mock('../src/lib/git.js', () => ({
     getCurrentBranch: mocks.getCurrentBranch,
+    getRepoName: mocks.getRepoName,
     getRemoteHead: mocks.getRemoteHead,
 }));
 
@@ -64,12 +65,17 @@ vi.mock('../src/lib/remote-drift.js', () => ({
     computeDriftResult: mocks.computeDriftResult,
 }));
 
-vi.mock('../src/lib/hub.js', () => ({
-    createHubClient: vi.fn(() => ({
-        url: 'https://hub.test',
-        postToChat: mocks.postToChat,
-    })),
+vi.mock('../src/lib/coord-comment.js', () => ({
+    injectCoordComment: mocks.injectCoordComment,
+    removeCoordComment: mocks.removeCoordComment,
 }));
+
+// The REAL `deliver` runs; only the transport underneath it is swapped. Mocking
+// `deliver` itself would test the mock, not the rule it enforces.
+vi.mock('../src/lib/notify.js', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../src/lib/notify.js')>();
+    return { ...actual, createNotifier: () => mocks.notifier };
+});
 
 function makeDriftResult(overrides: Record<string, unknown> = {}) {
     return {
@@ -88,44 +94,44 @@ function makeDriftResult(overrides: Record<string, unknown> = {}) {
     };
 }
 
+/** chokidar handlers registered by the watch command, keyed by event name. */
+const handlers = new Map<string, (p: string) => void>();
+
 async function loadWatchModule() {
     return import('../src/commands/watch.js');
 }
 
+beforeEach(() => {
+    vi.resetModules();
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+
+    mocks.execFileSync.mockReturnValue('/repo\n');
+    mocks.spawnSync.mockReturnValue({ status: 0, stdout: '', stderr: '' });
+    handlers.clear();
+    mocks.chokidarWatch.mockReturnValue({
+        on: (event: string, cb: (p: string) => void) => { handlers.set(event, cb); },
+        close: vi.fn(),
+    });
+    mocks.storage.isInitialized.mockResolvedValue(true);
+    mocks.storage.get.mockResolvedValue({ files: ['src/auth.ts'] });
+    mocks.storage.update.mockResolvedValue(null);
+    mocks.storage.register.mockResolvedValue(null);
+    mocks.storage.list.mockResolvedValue([]);
+    mocks.getStorage.mockResolvedValue(mocks.storage);
+    mocks.loadConfig.mockResolvedValue({ agent: { name: 'tester' } });
+    mocks.getCurrentBranch.mockReturnValue('feat/my-feature');
+    mocks.getRepoName.mockReturnValue('spidersan-oss');
+    mocks.notifier.mockResolvedValue({ ok: false, reason: 'ENOTFOUND toak.me' });
+});
+
+afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+});
+
 describe('watch fetch poll', () => {
-    beforeEach(() => {
-        vi.resetModules();
-        vi.useFakeTimers();
-        vi.clearAllMocks();
-
-        mocks.execFileSync.mockReturnValue('/repo\n');
-        mocks.spawnSync.mockReturnValue({ status: 0, stdout: '', stderr: '' });
-        mocks.chokidarWatch.mockReturnValue({
-            on: vi.fn(),
-            close: vi.fn(),
-        });
-        mocks.socketIo.mockReturnValue({
-            on: vi.fn(),
-            disconnect: vi.fn(),
-            connected: false,
-        });
-        mocks.storage.isInitialized.mockResolvedValue(true);
-        mocks.storage.get.mockResolvedValue({ files: ['src/auth.ts'] });
-        mocks.storage.update.mockResolvedValue(null);
-        mocks.storage.register.mockResolvedValue(null);
-        mocks.storage.list.mockResolvedValue([]);
-        mocks.getStorage.mockResolvedValue(mocks.storage);
-        mocks.loadConfig.mockResolvedValue({ agent: { name: 'tester' } });
-        mocks.getCurrentBranch.mockReturnValue('feat/my-feature');
-        mocks.postToChat.mockResolvedValue(undefined);
-    });
-
-    afterEach(() => {
-        vi.runOnlyPendingTimers();
-        vi.useRealTimers();
-        vi.restoreAllMocks();
-    });
-
     it('startFetchPollLoop schedules polling and avoids a warning when drift result reports remoteAhead 0', async () => {
         const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
         const intervalSpy = vi.spyOn(globalThis, 'setInterval');
@@ -144,7 +150,6 @@ describe('watch fetch poll', () => {
         const { startFetchPollLoop } = await loadWatchModule();
         await startFetchPollLoop({
             intervalSecs: 30,
-            hubSync: false,
             quiet: false,
             repoDir: process.cwd(),
         });
@@ -169,7 +174,6 @@ describe('watch fetch poll', () => {
         const { startFetchPollLoop } = await loadWatchModule();
         await startFetchPollLoop({
             intervalSecs: 1,
-            hubSync: false,
             quiet: false,
             repoDir: process.cwd(),
         });
@@ -193,7 +197,6 @@ describe('watch fetch poll', () => {
         const { startFetchPollLoop } = await loadWatchModule();
         await startFetchPollLoop({
             intervalSecs: 1,
-            hubSync: false,
             quiet: false,
             repoDir: process.cwd(),
         });
@@ -220,7 +223,6 @@ describe('watch fetch poll', () => {
         const { startFetchPollLoop } = await loadWatchModule();
         await startFetchPollLoop({
             intervalSecs: 1,
-            hubSync: false,
             quiet: false,
             repoDir: process.cwd(),
         });
@@ -244,7 +246,6 @@ describe('watch fetch poll', () => {
         const { startFetchPollLoop } = await loadWatchModule();
         await startFetchPollLoop({
             intervalSecs: 1,
-            hubSync: false,
             quiet: false,
             repoDir: process.cwd(),
         });
@@ -264,7 +265,6 @@ describe('watch fetch poll', () => {
         const { startFetchPollLoop } = await loadWatchModule();
         await startFetchPollLoop({
             intervalSecs: 1,
-            hubSync: false,
             quiet: true,
             repoDir: process.cwd(),
         });
@@ -274,7 +274,7 @@ describe('watch fetch poll', () => {
         expect(logSpy).not.toHaveBeenCalled();
     });
 
-    it('startFetchPollLoop still prints drift warnings in quiet mode and syncs them to Hub', async () => {
+    it('startFetchPollLoop still prints drift warnings in quiet mode, and delivers nothing', async () => {
         const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
         mocks.getRemoteHead
             .mockReturnValueOnce('sha-initial')
@@ -284,7 +284,6 @@ describe('watch fetch poll', () => {
         const { startFetchPollLoop } = await loadWatchModule();
         await startFetchPollLoop({
             intervalSecs: 1,
-            hubSync: true,
             quiet: true,
             repoDir: process.cwd(),
         });
@@ -292,8 +291,9 @@ describe('watch fetch poll', () => {
         await vi.advanceTimersByTimeAsync(1_000);
 
         expect(logSpy.mock.calls.flat().join('\n')).toContain('Remote advanced');
-        expect(mocks.postToChat).toHaveBeenCalledTimes(1);
-        expect(String(mocks.postToChat.mock.calls[0]?.[0]?.message ?? '')).toContain('Remote advanced');
+        // Drift is not a conflict: it has no transport at all now, so there is
+        // nothing that could report a delivery it did not make. (sp-hnjf)
+        expect(mocks.notifier).not.toHaveBeenCalled();
     });
 
     it('watch accepts --fetch-poll 30 and commander stores the parsed value', async () => {
@@ -301,5 +301,68 @@ describe('watch fetch poll', () => {
         watchCommand.parseOptions(['--fetch-poll', '30']);
 
         expect(watchCommand.opts().fetchPoll).toBe('30');
+    });
+});
+
+// THE sp-hnjf regression test, mirroring tests/notify.test.ts. watch.ts:372 used
+// to print '📤 Posted conflict to Hub chat' unconditionally after awaiting a
+// Promise<void> that swallowed failure at both the adapter and client layers —
+// gated on --hub-sync, never on delivery. The conflict path now runs through the
+// real `deliver`, so a dead transport must surface and must not claim success.
+describe('watch conflict delivery', () => {
+    async function fireConflict() {
+        const { watchCommand } = await loadWatchModule();
+        // Another active branch already holds the file we are about to touch.
+        mocks.storage.list.mockResolvedValue([
+            { name: 'other/branch', status: 'active', files: ['src/auth.ts'], agent: 'other' },
+        ]);
+        mocks.storage.get.mockResolvedValue({ files: ['src/auth.ts'], agent: 'tester' });
+
+        await watchCommand.parseAsync(['/repo'], { from: 'user' });
+
+        const onChange = handlers.get('change');
+        expect(onChange).toBeTypeOf('function');
+        onChange!('/repo/src/auth.ts');
+        await vi.advanceTimersByTimeAsync(2_000);
+    }
+
+    it('reports NOT NOTIFIED and never claims success when delivery fails', async () => {
+        const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        mocks.notifier.mockResolvedValue({ ok: false, reason: 'ENOTFOUND toak.me' });
+
+        await fireConflict();
+
+        const output = logSpy.mock.calls.flat().join('\n');
+        expect(output).toContain('CONFLICT DETECTED');
+        expect(output).toContain('NOT NOTIFIED');
+        expect(output).toContain('ENOTFOUND toak.me');
+        expect(output).not.toContain('notified:');
+        // The exact line the old code printed regardless of outcome.
+        expect(output).not.toContain('Posted conflict to Hub chat');
+    });
+
+    it('claims success only when the transport reports delivery', async () => {
+        const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        mocks.notifier.mockResolvedValue({ ok: true });
+
+        await fireConflict();
+
+        const output = logSpy.mock.calls.flat().join('\n');
+        expect(output).toContain('notified:');
+        expect(output).not.toContain('NOT NOTIFIED');
+    });
+
+    it('keys dedupe off the contested files, not the rendered message', async () => {
+        vi.spyOn(console, 'log').mockImplementation(() => {});
+        mocks.notifier.mockResolvedValue({ ok: true });
+
+        await fireConflict();
+
+        expect(mocks.notifier).toHaveBeenCalledTimes(1);
+        const event = mocks.notifier.mock.calls[0]?.[0];
+        expect(event.dedupe).toBe('watch:feat/my-feature:src/auth.ts');
+        expect(event.repo).toBe('spidersan-oss');
+        expect(event.files).toEqual(['src/auth.ts']);
+        expect(event.tier).toBeGreaterThanOrEqual(1);
     });
 });

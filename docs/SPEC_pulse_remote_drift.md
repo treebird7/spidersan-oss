@@ -30,7 +30,6 @@ registered files are at risk.
 ```bash
 spidersan pulse --remote-drift              # fetch + drift report
 spidersan pulse --remote-drift --json       # machine-readable output
-spidersan pulse --remote-drift --hub-sync   # post alert to Hub chat if drifted
 spidersan pulse --remote-drift --strict     # exit 1 if any registered file is in drift zone
 ```
 
@@ -156,18 +155,12 @@ When clean:
 }
 ```
 
-### Step 6 — Hub notification (`--hub-sync`)
+### Step 6 — ~~Hub notification (`--hub-sync`)~~ (removed, sp-hnjf)
 
-If `--hub-sync` is passed and there are registered files **or unstaged files**
-in the drift zone, post to Hub chat:
-
-```
-🕷️⚠️ Remote drift detected on `main`
-  3 commits ahead | 2 registered files at risk | 1 rebase-continue blocker
-  🟠 CONSORTIUM-cat-A.md  [also has unstaged modifications]
-  🔴 docs/PAPER_finetune_findings.md
-  Recommended: pre-build merge content before rebasing.
-```
+`--hub-sync` posted the drift alert to `hub.treebird.uk`, which was retired
+2026-09-05. The flag is gone and drift has no external transport: it is not a
+conflict, so it does not belong in the `notify()` seam, and `pulse` is an
+invoked command whose report the operator is already reading.
 
 ### Step 7 — Exit code (`--strict`)
 
@@ -262,7 +255,6 @@ it has.
 
 ```bash
 spidersan watch --fetch-poll 60   # check remote every 60s
-spidersan watch --hub-sync --fetch-poll 120  # post to Hub when drift detected
 ```
 
 When drift is detected mid-watch, print:
@@ -291,7 +283,6 @@ check. Opt-in only.
 - [ ] Drifted files cross-referenced against `git diff --name-only` (unstaged tracked files); overlap flagged as `rebase_continue_risk`
 - [ ] `--json` output includes `unstaged_in_drift` array and `rebase_continue_risk` boolean
 - [ ] Human output shows `[unstaged modification ⚠]` label and separate warning line for rebase-continue blockers
-- [ ] `--hub-sync` posts to Hub when registered **or unstaged** files are in drift zone
 - [ ] `--strict` exits 1 when `registered_in_drift` or `unstaged_in_drift` is non-empty
 - [ ] All git calls use `execFileSync` with argv array (no string interpolation)
 - [ ] Offline / no-remote / detached-HEAD / mid-rebase all degrade gracefully
