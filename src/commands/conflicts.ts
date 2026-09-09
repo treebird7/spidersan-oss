@@ -794,8 +794,16 @@ export const conflictsCommand = new Command('conflicts')
         }
 
         if (conflicts.length === 0) {
-            console.log(`🕷️ No conflicts detected for "${targetBranch}"`);
-            console.log('   ✅ You\'re good to merge!');
+            // Say what was CHECKED, not what we wish it proved. This path compares
+            // registered file lists; it never runs a merge. It is structurally blind
+            // to add/add and content conflicts against the base — so "no overlap"
+            // is not "merges cleanly", and claiming the latter is the lie this
+            // wording removes (PATTERN_silent_success, instance #5).
+            const compared = allBranches.filter(
+                (b) => b.name !== targetBranch && b.status === 'active',
+            ).length;
+            console.log(`🕷️ No registry overlap for "${targetBranch}" (vs ${compared} registered branch${compared === 1 ? '' : 'es'})`);
+            console.log('   ℹ️  Registry-only — NOT a merge simulation. For merge readiness: spidersan conflicts --real');
             // Never let a failed cross-machine check read as an all-clear — that
             // silent false confidence is the whole bug this path fixes (tb-ly0b).
             if (cross.degraded) {
