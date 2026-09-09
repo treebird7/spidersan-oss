@@ -539,7 +539,7 @@ export const conflictsCommand = new Command('conflicts')
     .description('Detect file conflicts between branches (with tiered blocking)')
     .option('--branch <name>', 'Check conflicts for specific branch')
     .option('--pr <number>', 'Check conflicts for a GitHub pull request by number')
-    .option('--vs-prs', 'Also detect conflicts against other open PRs (not just registered branches)')
+    .option('--vs-prs', 'Also detect conflicts against other open PRs (not just registered branches); composes with --real')
     .option('--json', 'Output as JSON')
     .option('--tier <level>', 'Filter by minimum tier (1, 2, or 3)', '1')
     .option('--strict', 'Strict mode: exit with error if TIER 2+ conflicts found')
@@ -565,11 +565,37 @@ export const conflictsCommand = new Command('conflicts')
         // --pr defaults to the real merge-tree path (tb-8hgg): "will this PR merge
         // into trunk" is the common question and file-overlap false-positives it
         // (see #80/identity.ts). Opt into the legacy file-overlap check with --vs-prs.
+        //
+        // --real --vs-prs COMPOSES: it runs the merge-tree check vs trunk AND then
+        // falls through to the cross-PR/overlap pass, because the two answer
+        // different questions ("does this merge?" vs "is anyone else touching these
+        // files?") and /spidersan documents `conflicts --pr <N> --real --vs-prs` as
+        // THE authoritative pre-merge check. Before sp-a1l3 the `options.real` arm
+        // returned here, so that documented command silently dropped the cross-PR
+        // half and exited 0 looking healthy — a check reporting success while doing
+        // nothing. Exit codes are composed at the end via finish(): real conflicts
+        // are tier-blocking, overlap is advisory (only --strict makes it block), so
+        // the process code is max(real, overlap).
+        const composeRealAndOverlap = !!(options.real && options.vsPrs);
+        let realExitCode = 0;
         if (options.real || (options.pr && !options.vsPrs)) {
-            const code = await runRealConflicts(options);
-            if (code !== 0) process.exit(code);
-            return;
+            realExitCode = await runRealConflicts(options);
+            if (!composeRealAndOverlap) {
+                if (realExitCode !== 0) process.exit(realExitCode);
+                return;
+            }
+            console.log(''); // separate the two reports
         }
+
+        /**
+         * Terminate the overlap pass, folding in the real-conflict verdict.
+         * On the composed path a non-zero code from EITHER half must survive;
+         * on the plain overlap path realExitCode is 0, so behaviour is unchanged.
+         */
+        const finish = (overlapCode: number): void => {
+            const code = Math.max(realExitCode, overlapCode);
+            if (code !== 0) process.exit(code);
+        };
 
         // ── Ecosystem shortcut ───────────────────────────────────────────────
         if (options.ecosystem) {
@@ -577,12 +603,22 @@ export const conflictsCommand = new Command('conflicts')
                 ? (options.repos as string).split(',').map((r: string) => r.trim()).filter(Boolean)
                 : DEFAULT_ECOSYSTEM_REPOS;
             runEcosystemScan(repos, !!options.json);
+            finish(0);
             return;
         }
         const storage = await getStorage();
         const config = await loadConfig();
 
         if (!await storage.isInitialized()) {
+            // --real is deliberately registry-independent; adding --vs-prs must not
+            // turn a working real check into a hard failure. Degrade loudly instead
+            // of dying — but never silently (sp-a1l3).
+            if (composeRealAndOverlap) {
+                console.error('⚠️  Overlap/cross-PR check skipped: spidersan not initialized here (run: spidersan init).');
+                console.error('   The --real merge-tree result above stands on its own; the --vs-prs half did NOT run.');
+                finish(0);
+                return;
+            }
             console.error('❌ Spidersan not initialized. Run: spidersan init');
             process.exit(1);
         }
@@ -629,6 +665,16 @@ export const conflictsCommand = new Command('conflicts')
             const target = await storage.get(targetBranch);
 
             if (!target) {
+                // Same reasoning as the isInitialized() guard above: on the composed
+                // --real --vs-prs path the real check already produced a valid answer,
+                // so an unregistered branch degrades the overlap half loudly rather
+                // than failing the whole command (sp-a1l3).
+                if (composeRealAndOverlap) {
+                    console.error(`⚠️  Overlap/cross-PR check skipped: branch "${targetBranch}" is not registered (run: spidersan register --files "...").`);
+                    console.error('   The --real merge-tree result above stands on its own; the --vs-prs half did NOT run.');
+                    finish(0);
+                    return;
+                }
                 console.error(`❌ Branch "${targetBranch}" is not registered.`);
                 console.error('   Run: spidersan register --files "..."');
                 process.exit(1);
@@ -789,7 +835,7 @@ export const conflictsCommand = new Command('conflicts')
                 }
             }, null, 2));
 
-            if (shouldBlock) process.exit(1);
+            finish(shouldBlock ? 1 : 0);
             return;
         }
 
@@ -801,6 +847,7 @@ export const conflictsCommand = new Command('conflicts')
             if (cross.degraded) {
                 console.error('   ⚠️  Cross-machine check unavailable — LOCAL branches only.');
             }
+            finish(0);
             return;
         }
 
@@ -917,6 +964,7 @@ export const conflictsCommand = new Command('conflicts')
                                     encoding: 'utf-8',
                                     stdio: 'inherit'
                                 });
+                                finish(0);
                                 return;
                             } catch {
                                 console.log('❌ Conflicts still exist after retry.');
@@ -933,6 +981,6 @@ export const conflictsCommand = new Command('conflicts')
 
         if (shouldBlock) {
             console.log('❌ Strict mode: Exiting with error due to TIER 2+ conflicts.');
-            process.exit(1);
         }
+        finish(shouldBlock ? 1 : 0);
     });
