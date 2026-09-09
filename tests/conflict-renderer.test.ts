@@ -29,11 +29,24 @@ function createConflict(overrides: Partial<Conflict> = {}): Conflict {
 }
 
 describe('renderConflictReport', () => {
-    it('renders a no-conflicts summary for an empty report', () => {
+    it('renders a no-overlap summary for an empty report', () => {
         const output = renderConflictReport(createReport([]));
 
-        expect(output).toContain('No conflicts detected');
-        expect(output).toContain('You\'re good to merge!');
+        expect(output).toContain('No registry overlap detected');
+        expect(output).toContain('NOT a merge simulation');
+    });
+
+    // Regression guard for PATTERN_silent_success instance #5: a ConflictReport is
+    // registry file-overlap, so no rendering of one may ever assert merge-readiness.
+    // Deleting this test is the only way to reintroduce the bug quietly.
+    it('never claims merge-readiness from a registry-only report', () => {
+        for (const output of [
+            renderConflictReport(createReport([])),
+            renderConflictReport(createReport([createConflict()])),
+        ]) {
+            expect(output).not.toMatch(/good to merge/i);
+            expect(output).not.toMatch(/merges? clean/i);
+        }
     });
 
     it('renders the tier 1 icon and label', () => {

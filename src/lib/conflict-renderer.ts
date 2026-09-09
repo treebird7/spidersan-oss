@@ -15,7 +15,11 @@ interface BranchConflict {
 
 export function renderConflictReport(report: ConflictReport, options: RenderOptions = {}): string {
     if (report.conflicts.length === 0) {
-        return '🕷️ No conflicts detected\n   ✅ You\'re good to merge!';
+        // A ConflictReport is registry file-overlap, never a merge simulation, so
+        // an empty one cannot support a merge verdict — report the scope instead.
+        // The merge-tree path has its own type (RealConflictReport) and its own
+        // renderer, which is where "clean vs <base>" legitimately belongs.
+        return '🕷️ No registry overlap detected\n   ℹ️  Registry-only — NOT a merge simulation. For merge readiness: spidersan conflicts --real';
     }
 
     const lines: string[] = [];
