@@ -142,6 +142,11 @@ describe('conflicts --real --vs-prs (sp-a1l3)', () => {
             if (Array.isArray(args) && args.includes('--is-ancestor')) {
                 throw new Error('not an ancestor');
             }
+            // resolveBranchRef() probes refs/remotes/origin/<trunk>: succeeding
+            // means the remote trunk exists, so --real merges into it (sp-vifo).
+            if (Array.isArray(args) && args.includes('--verify')) {
+                return '';
+            }
             return 'feat/current\n';
         });
         (analyzeRealConflicts as Mock).mockResolvedValue(makeReport());
@@ -160,7 +165,7 @@ describe('conflicts --real --vs-prs (sp-a1l3)', () => {
 
         expect(code).toBe(0);
         // The real half ran…
-        expect(analyzeRealConflicts).toHaveBeenCalledWith('main', 'feat/current');
+        expect(analyzeRealConflicts).toHaveBeenCalledWith('origin/main', 'feat/current');
         expect(logged()).toContain('clean vs main');
         // …and so did the cross-PR half, in the same invocation. This is the
         // discriminator: before the fix listOpenPRs was never called.
@@ -239,7 +244,7 @@ describe('conflicts --real --vs-prs (sp-a1l3)', () => {
         const code = await run(['--real']);
 
         expect(code).toBe(0);
-        expect(analyzeRealConflicts).toHaveBeenCalledWith('main', 'feat/current');
+        expect(analyzeRealConflicts).toHaveBeenCalledWith('origin/main', 'feat/current');
         expect(getStorage).not.toHaveBeenCalled();
         expect(listOpenPRs).not.toHaveBeenCalled();
     });
