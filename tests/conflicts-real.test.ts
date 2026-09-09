@@ -101,6 +101,12 @@ describe('conflicts --real', () => {
             if (Array.isArray(args) && args.includes('--is-ancestor')) {
                 throw new Error('not an ancestor');
             }
+            // resolveBranchRef() probes refs/remotes/<remote>/<trunk> first, so a
+            // successful --verify here means "origin/main exists" — the normal
+            // case, in which --real merges into the REMOTE trunk (sp-vifo).
+            if (Array.isArray(args) && args.includes('--verify')) {
+                return '';
+            }
             return 'feat/current\n';
         });
     });
@@ -114,7 +120,7 @@ describe('conflicts --real', () => {
 
         expect(code).toBe(0);
         expect(exitSpy).not.toHaveBeenCalled();
-        expect(analyzeRealConflicts).toHaveBeenCalledWith('main', 'feat/current');
+        expect(analyzeRealConflicts).toHaveBeenCalledWith('origin/main', 'feat/current');
         expect(logged()).toContain('✅ feat/current: clean vs main');
     });
 
@@ -176,11 +182,43 @@ describe('conflicts --real', () => {
         await run(['--real', '--json']);
 
         const parsed = JSON.parse(logged());
-        expect(parsed.base).toBe('main');
+        // The JSON reports the ref actually merged into, not the branch name.
+        expect(parsed.base).toBe('origin/main');
         expect(Array.isArray(parsed.results)).toBe(true);
         expect(parsed.results).toHaveLength(1);
         expect(parsed.results[0].branch).toBe('feat/current');
         expect(parsed.results[0].conflicts[0]).toEqual({ file: 'src/a.ts', kind: 'content' });
+    });
+
+    it('falls back to the LOCAL trunk when there is no origin/<trunk> (sp-vifo)', async () => {
+        // No remote-tracking ref (fresh clone, no origin, detached mirror): every
+        // --verify probe fails, so resolveBranchRef() returns null and the base
+        // must degrade to the local branch name rather than an unresolvable ref.
+        (execFileSync as Mock).mockImplementation((_cmd: string, args?: string[]) => {
+            if (Array.isArray(args) && args.includes('--verify')) {
+                throw new Error('fatal: Needed a single revision');
+            }
+            return 'feat/current\n';
+        });
+        (analyzeRealConflicts as Mock).mockResolvedValue(
+            makeReport({ branch: 'feat/current', clean: true }),
+        );
+
+        await run(['--real']);
+
+        expect(analyzeRealConflicts).toHaveBeenCalledWith('main', 'feat/current');
+    });
+
+    it('never merges into a bare local trunk when origin/<trunk> exists (sp-vifo)', async () => {
+        // The defect: a local trunk 78 commits behind origin merged cleanly, so
+        // `--real` reported green against a base nobody is merging into.
+        (analyzeRealConflicts as Mock).mockResolvedValue(
+            makeReport({ branch: 'feat/current', clean: true }),
+        );
+
+        await run(['--real']);
+
+        expect(analyzeRealConflicts).not.toHaveBeenCalledWith('main', expect.anything());
     });
 
     it('--base overrides the detected trunk', async () => {
@@ -202,8 +240,12 @@ describe('conflicts --real', () => {
 
         await run(['--real', '--branch', 'feat/other']);
 
-        expect(execFileSync).not.toHaveBeenCalled();
-        expect(analyzeRealConflicts).toHaveBeenCalledWith('main', 'feat/other');
+        // Base resolution probes refs on disk, so "no git calls at all" is no
+        // longer the guard — the guard is that the CURRENT branch is never read.
+        expect(execFileSync).not.toHaveBeenCalledWith(
+            'git', expect.arrayContaining(['--abbrev-ref']), expect.anything(),
+        );
+        expect(analyzeRealConflicts).toHaveBeenCalledWith('origin/main', 'feat/other');
     });
 
     it('--pr fetches the PR head + remote trunk and checks the right pair (tb-57fr)', async () => {
@@ -226,7 +268,11 @@ describe('conflicts --real', () => {
     it('--pr rejects a non-numeric PR (no fetch, no analysis)', async () => {
         const code = await run(['--real', '--pr', 'abc']);
         expect(code).toBe(1);
-        expect(execFileSync).not.toHaveBeenCalled();
+        // Base resolution runs first and reads local refs; what must NOT happen
+        // is a fetch or an analysis.
+        expect(execFileSync).not.toHaveBeenCalledWith(
+            'git', expect.arrayContaining(['fetch']), expect.anything(),
+        );
         expect(analyzeRealConflicts).not.toHaveBeenCalled();
     });
 
@@ -277,9 +323,9 @@ describe('conflicts --real', () => {
         expect(code).toBe(0);
         // completed branch skipped; active ones checked.
         expect(analyzeRealConflicts).toHaveBeenCalledTimes(2);
-        expect(analyzeRealConflicts).toHaveBeenCalledWith('main', 'feat/a');
-        expect(analyzeRealConflicts).toHaveBeenCalledWith('main', 'feat/c');
-        expect(analyzeRealConflicts).not.toHaveBeenCalledWith('main', 'feat/b');
+        expect(analyzeRealConflicts).toHaveBeenCalledWith('origin/main', 'feat/a');
+        expect(analyzeRealConflicts).toHaveBeenCalledWith('origin/main', 'feat/c');
+        expect(analyzeRealConflicts).not.toHaveBeenCalledWith('origin/main', 'feat/b');
     });
 
     it('--all exits 1 when the registry is not initialized', async () => {

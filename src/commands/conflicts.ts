@@ -19,7 +19,7 @@ import type { Branch } from '../storage/adapter.js';
 import type { MachineRegistryView } from '../types/cloud.js';
 import { resolveSupabaseCredentials } from '../lib/supabase-credentials.js';
 import { loadMachineIdentity } from '../lib/machine.js';
-import { getRepoName } from '../lib/git.js';
+import { getRepoName, resolveBranchRef } from '../lib/git.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
 import { validateBranchName, getCLIPath } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
@@ -397,6 +397,27 @@ function renderRealReport(report: RealConflictReport): void {
  *
  * @returns the process exit code (0 always, unless `--exit-code` + conflicts → 1).
  */
+/**
+ * The ref `--real` merges INTO: the remote-tracking trunk when it exists,
+ * otherwise the local branch name.
+ *
+ * A local trunk in a long-lived checkout can lag origin badly — a leftover
+ * worktree pinning the branch ref held one 78 commits back — and merge-tree
+ * against a stale base resolves cleanly where the real merge does not. That is
+ * a green earned by comparing against the wrong thing (sp-vifo). The `--pr` arm
+ * already reasoned this way (tb-57fr); this generalises it to `--branch`,
+ * `--all` and the current branch.
+ *
+ * Does NOT fetch: it reads refs already on disk, because this runs from a
+ * pre-merge hook and a check that hits the network every invocation is a
+ * different problem. `origin/<trunk>` can therefore be stale too — the report
+ * always names the base it used, so the reader can see what was compared.
+ */
+function resolveRealBase(trunk: string): string {
+    const ref = resolveBranchRef(trunk);
+    return ref?.startsWith('refs/remotes/') ? `origin/${trunk}` : trunk;
+}
+
 /** precondition(pr): `needs-<kind>:<resource>` labels gate a PR until they're cleared. */
 const NEEDS_LABEL = /^needs-[a-z0-9]+:/i;
 function preconditionLabels(labels: string[]): string[] {
@@ -436,7 +457,9 @@ async function runRealConflicts(options: {
     carries?: boolean;
     gate?: boolean;
 }): Promise<number> {
-    let base = options.base || getTrunkBranch();
+    // `|| resolveRealBase(...)` short-circuits: an explicit --base skips trunk
+    // detection entirely, as it always has.
+    let base = options.base || resolveRealBase(getTrunkBranch());
 
     // Determine target branches.
     let targets: string[];
@@ -461,6 +484,8 @@ async function runRealConflicts(options: {
             // is the same false-confidence class as tb-57fr.
             if (!options.base) {
                 const trunk = getTrunkBranch();
+                // Unlike resolveRealBase(), this arm DOES fetch — it is already
+                // fetching the PR head, and a PR merges into origin's tip.
                 execFileSync('git', ['fetch', '--quiet', 'origin', trunk], { stdio: 'pipe' });
                 base = `origin/${trunk}`;
             }
