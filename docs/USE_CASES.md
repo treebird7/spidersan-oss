@@ -1498,7 +1498,7 @@ spidersan archive --all-except fresh-start
 
 ```bash
 # 1. Spidersan: Fetch and locate the branch
-cd /Users/freedbird/Dev/Envoak
+cd ~/Dev/<your-repo>
 git fetch origin
 git branch -r | grep spidersan
 # Found: origin/spidersan-check-these

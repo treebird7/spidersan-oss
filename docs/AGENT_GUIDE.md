@@ -236,7 +236,7 @@ spidersan watch collab/           # ❌ Can hit file limits
 When working in multi-agent workspaces, always use canonical paths:
 ```bash
 # ✅ Correct - use absolute canonical path
-/Users/freedbird/Dev/treebird-internal/collab/COLLAB_*.md
+/Users/<you>/Dev/<workspace>/collab/COLLAB_*.md
 
 # ❌ Wrong - symlinks can cause identity confusion
 ~/work/internal/collab/COLLAB_*.md

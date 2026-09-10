@@ -173,9 +173,9 @@ tasks/
 .claude/*
 !.claude/skills/
 .claude/skills/*
-!.claude/skills/install-hooks/
 !.claude/skills/setup-oidc-autoregister/
 .jules/
+.colony/
 INDEX_MOVED.md
 /bin/
 run.sh
@@ -185,8 +185,16 @@ BACKLOG.md
 MAINTENANCE_TASKS.md
 tools/
 
-# IDE — local machine settings only
+# Fleet-ops files: internal to the Treebird fleet, not part of this package.
+# These carry machine names, absolute home paths and session state — none of it
+# useful to anyone installing spidersan, and it goes stale the moment it lands.
+selfimprove/
+**/HANDOFF_*.md
+
+# IDE — local machine settings only. mcp.json holds absolute paths to whichever
+# machine last wrote it, so it is per-developer, not per-repo.
 .vscode/settings.json
+.vscode/mcp.json
 .cursor/
 .gemini/
 .cline/
