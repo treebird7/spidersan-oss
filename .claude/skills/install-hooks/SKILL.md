@@ -46,14 +46,19 @@ npm i -g spidersan@latest
 ## 1. Pre-flight: diff, don't clobber (tb-q6mi)
 
 Machines drift. If any `~/.claude/hooks/spidersan-*.sh` already exists, diff before
-overwriting — a raw copy can silently drop behaviors the local copy gained:
+overwriting — a raw copy can silently drop behaviors the local copy gained.
+
+Diff against `origin/main`, **not** against `~/Dev/treebird/hooks/`. That checkout is
+shared and routinely parked on another agent's branch, so a drift check run against it
+reports "no drift" when there is drift:
 
 ```bash
+git -C ~/Dev/treebird fetch origin -q || echo "STOP: fetch failed — comparing against a stale origin/main"
 for f in spidersan-pre.sh spidersan-post.sh spidersan-autoreg.sh; do
-  [ -f ~/.claude/hooks/$f ] && { echo "== $f"; diff ~/.claude/hooks/$f ~/Dev/treebird/hooks/$f; }
+  [ -f ~/.claude/hooks/$f ] && { echo "== $f"; git -C ~/Dev/treebird show "origin/main:hooks/$f" | diff ~/.claude/hooks/$f -; }
 done
 # post hook drifted? also diff against the merged variant:
-diff ~/.claude/hooks/spidersan-post.sh ~/Dev/treebird/hooks/spidersan-post-m5-merged.sh
+git -C ~/Dev/treebird show origin/main:hooks/spidersan-post-m5-merged.sh | diff ~/.claude/hooks/spidersan-post.sh -
 ```
 
 If the LOCAL copy has behaviors the shared one lacks: merge by hand, then push the
@@ -64,22 +69,52 @@ merged version BACK to `~/Dev/treebird/hooks/` (that's how `-m5-merged` was born
 > Claude Code's P-3 config guard blocks **agents** from writing `~/.claude/**` — a
 > human runs this step (or `P3GUARD_OFF=1 claude`). Print the block for them to paste.
 
+Install reads `origin/main` directly, never the working tree. `~/Dev/treebird` is a
+shared checkout: agents park it on feature branches, and it usually carries uncommitted
+files, so `git pull --rebase` there fails (exit 128) while `cp` carries on regardless.
+Either way you install a stale hook at exit 0 — that is how treebird#86 came to be
+"installed" on m5 while the machine kept running the unpatched hook (`sp-q118`,
+`sp-92jw`). `git show origin/main:` has no opinion about the branch or the dirt.
+
 ```bash
 mkdir -p ~/.claude/hooks
-# The checkout must be on main. `git pull --rebase` on a feature branch rebases
-# onto THAT branch's upstream and never brings main's hooks/ — and this repo has
-# a recorded habit of sitting on a stale branch for weeks (tb-79jq; found on m5
-# again 2026-09-05, on sasusan/tree-pair-triage, 27 commits behind).
-b=$(git -C ~/Dev/treebird branch --show-current)
-[ "$b" = main ] || { echo "⚠️ treebird checkout is on '$b', not main — hooks/ will be stale or missing. Repoint it first."; return 2>/dev/null || exit 2; }
-git -C ~/Dev/treebird pull --rebase -q
-SRC=~/Dev/treebird/hooks
-cp "$SRC/spidersan-pre.sh"            ~/.claude/hooks/spidersan-pre.sh
-cp "$SRC/spidersan-post-m5-merged.sh" ~/.claude/hooks/spidersan-post.sh
-cp "$SRC/spidersan-autoreg.sh"        ~/.claude/hooks/spidersan-autoreg.sh
-cp "$SRC/spidersan-worktree-guard.sh" ~/.claude/hooks/spidersan-worktree-guard.sh
-chmod +x ~/.claude/hooks/spidersan-{pre,post,autoreg,worktree-guard}.sh
+git -C ~/Dev/treebird fetch origin -q || echo "STOP: fetch failed — everything below installs whatever you fetched last"
+
+T=$(mktemp -d)   # not a fixed path: skip this line and the copies below fail loudly
+for f in spidersan-pre.sh spidersan-post-m5-merged.sh spidersan-autoreg.sh \
+         spidersan-worktree-guard.sh untracked-skills.sh; do
+  git -C ~/Dev/treebird show "origin/main:hooks/$f" > "$T/$f" \
+    || { echo "STOP: no origin/main:hooks/$f"; rm -f "$T/$f"; }
+done
+
+cp "$T"/spidersan-pre.sh            ~/.claude/hooks/spidersan-pre.sh
+cp "$T"/spidersan-post-m5-merged.sh ~/.claude/hooks/spidersan-post.sh
+cp "$T"/spidersan-autoreg.sh        ~/.claude/hooks/spidersan-autoreg.sh
+cp "$T"/spidersan-worktree-guard.sh ~/.claude/hooks/spidersan-worktree-guard.sh
+cp "$T"/untracked-skills.sh         ~/.claude/hooks/untracked-skills.sh
+chmod +x ~/.claude/hooks/spidersan-{pre,post,autoreg,worktree-guard}.sh ~/.claude/hooks/untracked-skills.sh
 ```
+
+**The install is not done until this prints all OK.** A copy that never confirms its
+destination is a hope, not an install: `cp` exits 0 and prints nothing whether it copied
+the fix or an eight-week-old file.
+
+```bash
+check() {  # check <name-in-repo> <installed-path>
+  want=$(git -C ~/Dev/treebird show "origin/main:hooks/$1" | shasum -a 256 | cut -d' ' -f1)
+  got=$(shasum -a 256 < "$2" | cut -d' ' -f1)
+  [ "$want" = "$got" ] && echo "OK       $2" || echo "MISMATCH $2 (want ${want:0:8}, got ${got:0:8})"
+}
+check spidersan-pre.sh            ~/.claude/hooks/spidersan-pre.sh
+check spidersan-post-m5-merged.sh ~/.claude/hooks/spidersan-post.sh
+check spidersan-autoreg.sh        ~/.claude/hooks/spidersan-autoreg.sh
+check spidersan-worktree-guard.sh ~/.claude/hooks/spidersan-worktree-guard.sh
+check untracked-skills.sh         ~/.claude/hooks/untracked-skills.sh
+```
+
+A `MISMATCH` on `spidersan-post.sh` alone may be the deliberate machine merge step 1
+describes — confirm that is what it is. Anything else means the install did not take,
+and the machine is still running the old hook.
 
 ## 3. Wire into `~/.claude/settings.json` (merge into existing matchers)
 
