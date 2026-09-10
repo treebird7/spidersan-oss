@@ -80,16 +80,18 @@ Either way you install a stale hook at exit 0 — that is how treebird#86 came t
 mkdir -p ~/.claude/hooks
 git -C ~/Dev/treebird fetch origin -q || echo "STOP: fetch failed — everything below installs whatever you fetched last"
 
+T=$(mktemp -d)   # not a fixed path: skip this line and the copies below fail loudly
 for f in spidersan-pre.sh spidersan-post-m5-merged.sh spidersan-autoreg.sh \
          spidersan-worktree-guard.sh untracked-skills.sh; do
-  git -C ~/Dev/treebird show "origin/main:hooks/$f" > "/tmp/hk-$f" || echo "STOP: no origin/main:hooks/$f"
+  git -C ~/Dev/treebird show "origin/main:hooks/$f" > "$T/$f" \
+    || { echo "STOP: no origin/main:hooks/$f"; rm -f "$T/$f"; }
 done
 
-cp /tmp/hk-spidersan-pre.sh            ~/.claude/hooks/spidersan-pre.sh
-cp /tmp/hk-spidersan-post-m5-merged.sh ~/.claude/hooks/spidersan-post.sh
-cp /tmp/hk-spidersan-autoreg.sh        ~/.claude/hooks/spidersan-autoreg.sh
-cp /tmp/hk-spidersan-worktree-guard.sh ~/.claude/hooks/spidersan-worktree-guard.sh
-cp /tmp/hk-untracked-skills.sh         ~/.claude/hooks/untracked-skills.sh
+cp "$T"/spidersan-pre.sh            ~/.claude/hooks/spidersan-pre.sh
+cp "$T"/spidersan-post-m5-merged.sh ~/.claude/hooks/spidersan-post.sh
+cp "$T"/spidersan-autoreg.sh        ~/.claude/hooks/spidersan-autoreg.sh
+cp "$T"/spidersan-worktree-guard.sh ~/.claude/hooks/spidersan-worktree-guard.sh
+cp "$T"/untracked-skills.sh         ~/.claude/hooks/untracked-skills.sh
 chmod +x ~/.claude/hooks/spidersan-{pre,post,autoreg,worktree-guard}.sh ~/.claude/hooks/untracked-skills.sh
 ```
 
