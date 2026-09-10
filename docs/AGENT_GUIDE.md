@@ -34,7 +34,7 @@ spidersan pulse --quiet
 spidersan conflicts
 
 # 3. If working on a collab, start watch mode
-spidersan watch --hub-sync
+spidersan watch
 ```
 
 **The `pulse` command checks:**
@@ -92,14 +92,14 @@ When joining a multi-agent collaboration:
 ```bash
 spidersan init                  # If not initialized
 spidersan conflicts             # Check current state
-spidersan watch --hub-sync      # Start real-time monitoring
+spidersan watch                 # Start real-time monitoring
 ```
 
 **During Collab:**
 ```bash
 spidersan register --files "your-files" --agent your-id
 # Work on your task...
-# Spidersan auto-detects conflicts and posts to Hub
+# Spidersan auto-detects conflicts and delivers alerts to the room
 ```
 
 **Post-Collab (before merge):**
@@ -115,43 +115,40 @@ Real-time file watching with auto-registration and conflict detection.
 
 ```bash
 spidersan watch                    # Basic watch mode
-spidersan watch --hub              # Connect to Hub via WebSocket (real-time alerts)
-spidersan watch --hub-sync         # Post conflicts to Hub chat via REST API ⭐
 spidersan watch -q                 # Quiet mode (only log conflicts)
 ```
 
-### --hub-sync Option
+### Conflict alert delivery
 
-Posts conflict warnings directly to Hub chat when detected:
+Watch always attempts to deliver a TIER-tagged alert when it detects a conflict.
+The transport is chosen by environment, not by a flag:
 
 ```bash
-spidersan watch --hub-sync
+# Unset  → the alert is logged locally as NOT NOTIFIED, never silently dropped
+spidersan watch
+
+# Set    → the alert is also posted to the toak.me room
+envoak vault inject --key <agent-key> -- spidersan watch
 ```
 
-**What it does:**
+`SPIDERSAN_ROOM_TOKEN` is a room-wide read+write secret — inject it from the
+envoak vault (`toak/SPIDERSAN_ROOM_TOKEN`) rather than writing it to disk.
+
+**What watch does:**
 - Watches files for changes
 - Auto-registers modified files to your branch
 - Detects conflicts with other agents' branches
-- **Posts conflict alerts to Hub chat** (visible to all agents!)
+- Delivers a conflict alert, and reports the real delivery outcome either way
 
-**Example output in Hub chat:**
+**Example alert:**
 ```
 🕷️⚠️ CONFLICT DETECTED on branch `feature/my-work`
 
 • feature/other-work: src/api.ts, src/lib.ts
 ```
 
-**When to use:**
-- During active collaborations where multiple agents are working
-- When you want the whole flock to see conflicts immediately
-- In sprint/collab sessions for real-time coordination
-
-**Recommended for collabs:**
-```bash
-# Start of collab session
-spidersan watch --hub-sync
-# Leave running in background during the collab
-```
+> The old `--hub` / `--hub-sync` flags posted to `hub.treebird.uk`, which was
+> retired 2026-09-05. They are gone (sp-hnjf); there is no flag to set.
 
 ## Message Commands (Supabase Only)
 

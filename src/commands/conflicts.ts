@@ -21,21 +21,25 @@ import { resolveSupabaseCredentials } from '../lib/supabase-credentials.js';
 import { loadMachineIdentity } from '../lib/machine.js';
 import { getRepoName, resolveBranchRef } from '../lib/git.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
-import { validateBranchName, getCLIPath } from '../lib/security.js';
+import { getCLIPath } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
 import { logActivity } from '../lib/activity.js';
 import { isGhAvailable, getPRDetails, getPRLabels, listOpenPRs, getPRChangedFiles } from '../lib/github.js';
 import { analyzeCarries, type CarriesReport } from '../lib/carries.js';
 import { classifyWithLabel } from '../lib/conflict-tier.js';
+import { createNotifier, deliver, type Notifier } from '../lib/notify.js';
 import { analyzeRealConflicts, type RealConflictReport } from '../lib/git-merge-analyzer.js';
 import { getTrunkBranch } from '../lib/trunk.js';
 import { activeBranches } from '../lib/reconcile.js';
 
-// Config
-const HUB_URL = process.env.HUB_URL || 'https://hub.treebird.uk';
-
 type ConflictTierInfo = ReturnType<typeof classifyWithLabel>;
+
+// Lazy so the transport is resolved at first use, not at import.
+let _notifier: Notifier | null = null;
+function notifier(): Notifier {
+    return (_notifier ??= createNotifier());
+}
 
 /**
  * Pull other machines' registered branches as synthetic conflict targets.
@@ -97,7 +101,7 @@ function getCurrentBranch(): string {
     }
 }
 
-async function notifyHub(branch: string, conflicts: Array<{ branch: string; files: string[]; tier: number }>): Promise<void> {
+async function notifyConflicts(branch: string, conflicts: Array<{ branch: string; files: string[]; tier: number }>): Promise<void> {
     let hasTier3 = false;
     let hasTier2 = false;
     for (const c of conflicts) {
@@ -110,58 +114,21 @@ async function notifyHub(branch: string, conflicts: Array<{ branch: string; file
 
     const severity = hasTier3 ? '🔴 TIER 3 BLOCK' : '🟠 TIER 2 PAUSE';
     const message = `🕷️⚠️ **Conflict Alert** on \`${branch}\`\n\n${severity}\n\nConflicting files require coordination.`;
+    const contested = [...new Set(conflicts.flatMap((c) => c.files))].sort();
 
-    try {
-        await fetch(`${HUB_URL}/api/chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                agent: 'spidersan',
-                name: 'Spidersan',
-                message,
-                glyph: '🕷️'
-            })
-        });
-    } catch {
-        // Hub offline - silent fail
-    }
-}
-
-/**
- * Wake a conflicting agent and send them a message about what to fix
- */
-async function wakeConflictingAgent(
-    agentId: string,
-    myBranch: string,
-    theirBranch: string,
-    _conflictingFiles: string[]
-): Promise<boolean> {
-    // 1. Wake the agent via Hub
-    try {
-        const wakeResponse = await fetch(`${HUB_URL}/api/wake/${agentId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                sender: 'spidersan',
-                reason: `Conflict on ${theirBranch} - need resolution`
-            })
-        });
-
-        if (wakeResponse.ok) {
-            console.log(`  🔔 Wake signal sent to ${agentId}`);
-        }
-    } catch {
-        console.log(`  ⚠️ Could not wake ${agentId} via Hub`);
-    }
-
-    return true;
-}
-
-/**
- * Wait for a specified time
- */
-function sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    // `deliver` inspects the result and logs the real outcome. The previous
+    // implementation POSTed to a decommissioned host inside a bare `catch {}`,
+    // so `--notify` reported nothing either way. (sp-hnjf)
+    await deliver(notifier(), {
+        repo: getRepoName(),
+        branch,
+        tier: hasTier3 ? 3 : 2,
+        message,
+        dedupe: `conflicts:${branch}:${contested.join(',')}`,
+        files: contested,
+        // stderr, not stdout: this runs before the --json blob is printed, and a
+        // delivery diagnostic must never end up inside machine-readable output.
+    }, (m) => console.error(m));
 }
 
 /**
@@ -194,32 +161,6 @@ function suggestAddAddResolution(conflicts: Array<{ branch: string; files: strin
         console.log(`   • ${f} -> preserve incoming as ${f}.incoming`);
     }
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-}
-
-/**
- * Prompt user for Y/N confirmation (prevents Ralph Wiggum loops)
- * @param prompt - The question to ask
- * @param autoConfirm - If true, skip prompt and return true (for --auto mode)
- */
-async function confirmAction(prompt: string, autoConfirm: boolean = false): Promise<boolean> {
-    if (autoConfirm) {
-        console.log(`${prompt} [Y/n]: Y (auto)`);
-        return true;
-    }
-
-    const readline = await import('readline');
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout
-    });
-
-    return new Promise((resolve) => {
-        rl.question(`${prompt} [Y/n]: `, (answer) => {
-            rl.close();
-            const normalized = answer.toLowerCase().trim();
-            resolve(normalized === '' || normalized === 'y' || normalized === 'yes');
-        });
-    });
 }
 
 // ── Ecosystem scan ────────────────────────────────────────────────────────────
@@ -568,10 +509,7 @@ export const conflictsCommand = new Command('conflicts')
     .option('--json', 'Output as JSON')
     .option('--tier <level>', 'Filter by minimum tier (1, 2, or 3)', '1')
     .option('--strict', 'Strict mode: exit with error if TIER 2+ conflicts found')
-    .option('--notify', 'Notify Hub of TIER 2+ conflicts')
-    .option('--wake', 'Wake conflicting agents and send them fix instructions')
-    .option('--retry <seconds>', 'After waking, wait N seconds and re-check conflicts')
-    .option('--auto', 'Auto mode: skip confirmations (enables Ralph Wiggum loop)')
+    .option('--notify', 'Deliver TIER 2+ conflicts to the configured alert room (SPIDERSAN_ROOM_TOKEN)')
     .option('--semantic', 'Use semantic (AST) analysis for symbol-level conflict detection')
     .option('--ecosystem', 'Scan all ecosystem repos and aggregate conflict tiers')
     .option('--repos <paths>', 'Comma-separated repo paths for --ecosystem scan')
@@ -843,9 +781,9 @@ export const conflictsCommand = new Command('conflicts')
         // Check for blocking conditions
         const shouldBlock = options.strict && (tier3Count > 0 || tier2Count > 0);
 
-        // Notify Hub if requested
+        // Deliver the alert if requested
         if (options.notify && (tier3Count > 0 || tier2Count > 0)) {
-            await notifyHub(targetBranch, conflicts);
+            await notifyConflicts(targetBranch, conflicts);
         }
 
         if (options.json) {
@@ -936,80 +874,6 @@ export const conflictsCommand = new Command('conflicts')
 🟠 TIER 2 CONFLICTS FOUND
    Coordinate with the other agent before proceeding.
             `);
-        }
-
-        // Wake conflicting agents if --wake flag is set
-        if (options.wake && conflicts.length > 0) {
-            // Collect agents to wake
-            const agentsToWake = new Map<string, { branch: string; files: string[] }>();
-
-            // Performance Optimization: Use the already fetched allBranches
-            // to avoid N+1 slow network requests to storage.get()
-            const branchMap = new Map(allBranches.map(b => [b.name, b]));
-
-            for (const conflict of conflicts) {
-                const conflictBranch = branchMap.get(conflict.branch);
-                const agentId = conflictBranch?.agent;
-                if (agentId && !agentsToWake.has(agentId)) {
-                    agentsToWake.set(agentId, { branch: conflict.branch, files: conflict.files });
-                }
-            }
-
-            if (agentsToWake.size === 0) {
-                console.log('\n⚠️ No agents registered on conflicting branches.');
-            } else {
-                // Show what will happen and ask for confirmation
-                console.log('\n🔔 WAKE AGENTS?');
-                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                for (const [agent, info] of agentsToWake) {
-                    console.log(`  • ${agent} (${info.branch})`);
-                }
-                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                console.log('This will:');
-                console.log('  1. Send wake signal via Hub\n');
-
-                const confirmed = await confirmAction('Wake these agents?', options.auto);
-
-                if (confirmed) {
-                    console.log('\n🔔 WAKING AGENTS...\n');
-                    for (const [agentId, info] of agentsToWake) {
-                        await wakeConflictingAgent(agentId, targetBranch, info.branch, info.files);
-                    }
-                    console.log(`\n✅ Woke ${agentsToWake.size} agent(s)`);
-
-                    // If --retry is set, ask before waiting
-                    if (options.retry) {
-                        const waitSeconds = parseInt(options.retry, 10);
-                        const retryConfirmed = await confirmAction(`\nWait ${waitSeconds}s and re-check conflicts?`, options.auto);
-
-                        if (retryConfirmed) {
-                            console.log(`\n⏳ Waiting ${waitSeconds}s for agents to resolve conflicts...`);
-                            await sleep(waitSeconds * 1000);
-
-                            console.log('\n🔄 RE-CHECKING CONFLICTS...\n');
-                            const { execFileSync } = await import('child_process');
-                            try {
-                                const { getCLIPath } = await import('../lib/security.js');
-                                // Security: Use execFileSync with argument array
-                                const safeBranch = validateBranchName(targetBranch);
-                                const tierArg = String(parseInt(options.tier, 10) || 1);
-                                execFileSync(process.execPath, [getCLIPath(), 'conflicts', '--branch', safeBranch, '--tier', tierArg], {
-                                    encoding: 'utf-8',
-                                    stdio: 'inherit'
-                                });
-                                finish(0);
-                                return;
-                            } catch {
-                                console.log('❌ Conflicts still exist after retry.');
-                            }
-                        } else {
-                            console.log('⏭️ Skipping retry.');
-                        }
-                    }
-                } else {
-                    console.log('⏭️ Skipping wake.');
-                }
-            }
         }
 
         if (shouldBlock) {

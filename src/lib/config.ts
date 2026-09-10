@@ -19,8 +19,6 @@ export interface SpidersanConfig {
     autoWatch: {
         enabled: boolean;
         paths: string[];
-        hub: boolean;
-        hubSync: boolean;
         quiet: boolean;
         legacy: boolean;
     };
@@ -56,8 +54,6 @@ const DEFAULT_CONFIG: SpidersanConfig = {
     autoWatch: {
         enabled: false,
         paths: [],
-        hub: false,
-        hubSync: false,
         quiet: false,
         legacy: false,
     },
@@ -152,12 +148,9 @@ function validateConfig(config: unknown): ValidationError[] {
                     errors.push({ path: 'autoWatch.paths', message: 'Must be an array of strings' });
                 }
             }
-            if (aw.hub !== undefined && typeof aw.hub !== 'boolean') {
-                errors.push({ path: 'autoWatch.hub', message: 'Must be a boolean' });
-            }
-            if (aw.hubSync !== undefined && typeof aw.hubSync !== 'boolean') {
-                errors.push({ path: 'autoWatch.hubSync', message: 'Must be a boolean' });
-            }
+            // autoWatch.hub / autoWatch.hubSync were dropped with the Hub
+            // transport (sp-hnjf). validateConfig only checks the keys it knows,
+            // so an existing .spidersanrc carrying them stays valid and inert.
             if (aw.quiet !== undefined && typeof aw.quiet !== 'boolean') {
                 errors.push({ path: 'autoWatch.quiet', message: 'Must be a boolean' });
             }

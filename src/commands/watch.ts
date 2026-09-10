@@ -4,11 +4,11 @@ import { getStorage } from '../storage/index.js';
 import * as chokidar from 'chokidar';
 import * as path from 'path';
 import { homedir } from 'os';
-import { io, Socket } from 'socket.io-client';
 import { loadConfig } from '../lib/config.js';
 import { syncFromColony } from '../lib/colony-subscriber.js';
-import { getCurrentBranch, getRemoteHead } from '../lib/git.js';
-import { createHubClient } from '../lib/hub.js';
+import { getCurrentBranch, getRemoteHead, getRepoName } from '../lib/git.js';
+import { classifyTier } from '../lib/conflict-tier.js';
+import { createNotifier, deliver, type Notifier } from '../lib/notify.js';
 import { computeDriftResult } from '../lib/remote-drift.js';
 import { renderFetchPollDrift, renderFetchPollHeartbeat } from '../lib/watch-renderer.js';
 import { getCLIPath } from '../lib/security.js';
@@ -17,7 +17,13 @@ import { mergeClaims } from './coord.js';
 import { injectCoordComment, removeCoordComment } from '../lib/coord-comment.js';
 
 const DEBOUNCE_MS = 1000;  // Debounce file changes
-const hub = createHubClient();
+
+// Lazy so the transport is resolved at first use, not at import — same shape as
+// git-events-subscriber.ts, which keeps it mockable under vi.resetModules().
+let _notifier: Notifier | null = null;
+function notifier(): Notifier {
+    return (_notifier ??= createNotifier());
+}
 
 // Cooldown so watch's own coordination-comment writes don't re-trigger themselves
 // through chokidar into an infinite inject-detect-inject loop.
@@ -29,8 +35,6 @@ interface WatchOptions {
     paths?: string;
     root?: string;
     agent?: string;
-    hub?: boolean;
-    hubSync?: boolean;
     quiet?: boolean;
     fetchPoll?: string | boolean;
     legacy?: boolean;  // Use old behavior (more file descriptors)
@@ -101,7 +105,6 @@ function isDriftSkipped(result: DriftResult | DriftSkipped): result is DriftSkip
 
 export async function startFetchPollLoop(opts: {
     intervalSecs: number;
-    hubSync: boolean;
     quiet: boolean;
     repoDir: string;
 }): Promise<void> {
@@ -110,7 +113,6 @@ export async function startFetchPollLoop(opts: {
     try {
         const branch = runInRepoDir(opts.repoDir, () => getCurrentBranch());
         const storage = await getStorage();
-        const hubClient = opts.hubSync ? createHubClient() : null;
         let lastRemoteHead = runInRepoDir(opts.repoDir, () => getRemoteHead('origin', branch));
         let inFlight = false;
 
@@ -151,17 +153,9 @@ export async function startFetchPollLoop(opts: {
                         return;
                     }
 
-                    const warningOutput = renderFetchPollDrift({ branch, drift: result });
-                    console.log(warningOutput);
-
-                    if (hubClient) {
-                        await hubClient.postToChat({
-                            agent: 'spidersan',
-                            name: 'Spidersan',
-                            message: warningOutput,
-                            glyph: '🕷️',
-                        });
-                    }
+                    // Drift is not a conflict, and this loop already prints the
+                    // report the operator is watching. No external delivery.
+                    console.log(renderFetchPollDrift({ branch, drift: result }));
                 } catch (error) {
                     const message = error instanceof Error ? error.message : String(error);
                     console.warn(`⚠️ [FETCH-POLL] ${message}`);
@@ -183,8 +177,6 @@ export const watchCommand = new Command('watch')
     .option('--paths <paths>', 'Comma-separated list of files or folders to watch')
     .option('--root <root>', 'Project root for relative paths (default: git root)')
     .option('-a, --agent <agent>', 'Agent identifier for registration')
-    .option('--hub', 'Connect to Hub and emit real-time conflict warnings')
-    .option('--hub-sync', 'Post conflicts to Hub chat via REST API')
     .option('-q, --quiet', 'Only log conflicts, not file changes')
     .option('--fetch-poll [seconds]', 'Poll git ls-remote origin every N seconds (default: 60)')
     .option('--legacy', 'Legacy mode: use old watcher settings (more file descriptors)')
@@ -213,39 +205,9 @@ Branch:    ${branch}
 Agent:     ${agent}
 Root:      ${repoRoot}
 Watching:  ${watchLabel}
-Hub:       ${options.hub ? hub.url : 'disabled'}
-Hub Sync:  ${options.hubSync ? 'enabled (posts to chat)' : 'disabled'}
 ━━━━━━━━━━━━━━━━━━━━━━━
 Press Ctrl+C to stop.
         `);
-
-        // Hub socket connection (optional)
-        let hubSocket: Socket | null = null;
-        if (options.hub) {
-            try {
-                hubSocket = io(hub.url, {
-                    reconnection: true,
-                    reconnectionAttempts: 5,
-                    timeout: 5000
-                });
-
-                hubSocket.on('connect', () => {
-                    console.log('🔌 Connected to Hub');
-                });
-
-                hubSocket.on('disconnect', () => {
-                    console.log('🔌 Disconnected from Hub');
-                });
-
-                hubSocket.on('connect_error', (err: Error) => {
-                    if (!options.quiet) {
-                        console.log(`⚠️ Hub connection failed: ${err.message}`);
-                    }
-                });
-            } catch {
-                console.log('⚠️ Could not connect to Hub');
-            }
-        }
 
         // Track recently changed files for debouncing
         const pendingFiles: Set<string> = new Set();
@@ -350,27 +312,21 @@ Press Ctrl+C to stop.
                 });
                 console.log('');
 
-                // Emit to Hub via socket if connected
-                if (hubSocket?.connected) {
-                    hubSocket.emit('conflicts:warning', {
-                        branch,
-                        agent,
-                        files,
-                        conflicts,
-                        timestamp: new Date().toISOString()
-                    });
-                }
-
-                // Post to Hub chat if --hub-sync enabled
-                if (options.hubSync) {
-                    await hub.postToChat({
-                        agent: 'spidersan',
-                        name: 'Spidersan',
-                        message: formatConflictChatMessage(branch, conflicts),
-                        glyph: '🕷️',
-                    });
-                    console.log('📤 Posted conflict to Hub chat');
-                }
+                // Second consumer of the sp-8iqm delivery seam. `deliver` is the
+                // only thing that reports an outcome, and only after inspecting
+                // it — there is no unconditional "posted" line here any more.
+                const contested = [...new Set(conflicts.flatMap(c => c.files))].sort();
+                await deliver(notifier(), {
+                    repo: getRepoName(),
+                    branch,
+                    tier: Math.max(...contested.map(f => classifyTier(f))),
+                    message: formatConflictChatMessage(branch, conflicts),
+                    // Deterministic facts only: same branch contesting the same
+                    // files is the same event, however the message is worded.
+                    dedupe: `watch:${branch}:${contested.join(',')}`,
+                    agent,
+                    files: contested,
+                }, (m) => console.log(m));
             }
         }
 
@@ -451,7 +407,6 @@ Press Ctrl+C to stop.
             const intervalSecs = Number.isFinite(parsedSecs) && parsedSecs > 0 ? parsedSecs : 60;
             void startFetchPollLoop({
                 intervalSecs,
-                hubSync: !!options.hubSync,
                 quiet: !!options.quiet,
                 repoDir: repoRoot,
             });
@@ -461,13 +416,11 @@ Press Ctrl+C to stop.
         process.on('SIGINT', () => {
             console.log('\n🕷️ Watch mode stopped.');
             watcher.close();
-            hubSocket?.disconnect();
             process.exit(0);
         });
 
         process.on('SIGTERM', () => {
             watcher.close();
-            hubSocket?.disconnect();
             process.exit(0);
         });
     });

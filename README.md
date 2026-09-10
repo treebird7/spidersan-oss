@@ -199,9 +199,6 @@ spidersan pulse --remote-drift
 # Machine-readable output
 spidersan pulse --remote-drift --json
 
-# Post alert to Hub if registered or unstaged files are in the drift zone
-spidersan pulse --remote-drift --hub-sync
-
 # Exit 1 if any drift risk — use as a pre-push gate
 spidersan pulse --remote-drift --strict
 

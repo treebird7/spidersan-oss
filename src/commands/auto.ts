@@ -17,8 +17,6 @@ interface AutoWatchState {
     repoRoot: string;
     paths: string[];
     agent?: string;
-    hub: boolean;
-    hubSync: boolean;
     quiet: boolean;
     legacy: boolean;
 }
@@ -85,8 +83,6 @@ autoCommand
     .description('Start auto-watch in the background')
     .option('--paths <paths>', 'Comma-separated list of files or folders to watch')
     .option('--agent <agent>', 'Agent identifier for registration')
-    .option('--hub', 'Connect to Hub and emit real-time conflict warnings')
-    .option('--hub-sync', 'Post conflicts to Hub chat via REST API')
     .option('--quiet', 'Only log conflicts, not file changes')
     .option('--legacy', 'Legacy mode: use old watcher settings')
     .option('--force', 'Start even if autoWatch is disabled in config')
@@ -124,8 +120,6 @@ autoCommand
         const configuredAgent = config.agent.name?.trim();
         const agent = (options.agent || process.env.SPIDERSAN_AGENT || configuredAgent || 'unknown').trim();
 
-        const hub = Boolean(options.hub || autoConfig.hub);
-        const hubSync = Boolean(options.hubSync || autoConfig.hubSync);
         const quiet = Boolean(options.quiet || autoConfig.quiet);
         const legacy = Boolean(options.legacy || autoConfig.legacy);
 
@@ -146,8 +140,6 @@ autoCommand
             agent,
         ];
 
-        if (hub) args.push('--hub');
-        if (hubSync) args.push('--hub-sync');
         if (quiet) args.push('--quiet');
         if (legacy) args.push('--legacy');
 
@@ -171,8 +163,6 @@ autoCommand
             repoRoot,
             paths,
             agent,
-            hub,
-            hubSync,
             quiet,
             legacy,
         };
@@ -230,8 +220,6 @@ autoCommand
         console.log(`   PID: ${state.pid}`);
         console.log(`   Paths: ${state.paths.join(', ')}`);
         console.log(`   Agent: ${state.agent || 'unknown'}`);
-        console.log(`   Hub: ${state.hub ? 'enabled' : 'disabled'}`);
-        console.log(`   Hub Sync: ${state.hubSync ? 'enabled' : 'disabled'}`);
         console.log(`   Quiet: ${state.quiet ? 'enabled' : 'disabled'}`);
         console.log(`   Legacy: ${state.legacy ? 'enabled' : 'disabled'}`);
         console.log(`   Started: ${state.startedAt}`);
