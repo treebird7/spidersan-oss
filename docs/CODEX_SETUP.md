@@ -4,7 +4,8 @@
 > session gets — registration, conflict detection, merge ordering — even though
 > Codex's hook system can't run our Claude-Code hooks.
 >
-> Claude Code setup lives elsewhere: `.claude/skills/install-hooks/SKILL.md` (skill)
+> Claude Code setup lives elsewhere: the `install-hooks` skill, kept with the hooks
+> themselves rather than in this repo
 > and `~/treebird-shared/hooks/INSTALL-m2-i7.md`. **Do not copy those hook scripts
 > into Codex** — they parse Claude-Code's PreToolUse/PostToolUse JSON stdin, which
 > Codex does not emit.
