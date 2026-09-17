@@ -80,8 +80,12 @@ jobs:
           TOKEN=$(curl -sSf -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=spidersan-registry" | jq -r .value)
 
-          jq -n --arg files "$FILES" \
-            '{files: ($files | split("\n") | map(select(length > 0)))}' \
+          # Pipe the list, never `--arg files "$FILES"`: Linux caps one argv string
+          # at 128KB, so a stale-branch merge's file list killed jq with exit 126
+          # (Argument list too long) and curl POSTed an empty body (treebird#46).
+          # printf is a builtin, so this path never goes through execve.
+          printf '%s\n' "$FILES" \
+            | jq -Rn '{files: [inputs | select(length > 0)]}' \
             | curl -sSf -X POST "$REGISTER_URL" \
                 -H "Authorization: Bearer $TOKEN" \
                 -H "Content-Type: application/json" \
