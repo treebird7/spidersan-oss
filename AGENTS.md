@@ -121,9 +121,12 @@ symbol name and then switch. Two things this repo's graph actually shows:
 `god-nodes` mixes framework fan-in (`vitest` 67 edges, `commander` 45) with real
 hubs (`getStorage()` 63, `Branch` 54, `SupabaseStorage` 31), so read the list
 rather than taking the top entry; and 176 labels are shared by more than one
-node, so when a verb's answer contradicts an edge you can see in `graph.json`,
-check for duplicates first:
-`jq -r '.nodes[]|select(.label=="X")|.source_file' graphify-out/graph.json`.
+node, which matters because the verbs disagree about ambiguity: `explain`
+refuses and lists the candidate ids, `affected` refuses with *No unique node
+match*, and `path` does neither — it answers *No directed path found*, which
+reads exactly like a genuine negative. When an answer contradicts an edge you
+can see in `graph.json`, re-run `explain` on the bare name and pass the id it
+prints.
 
 Every file parsed — no syntax-error warnings. `graph.json` stores identifiers
 plus `source_file`/`source_location` and no source text. `graph.html` next to it
