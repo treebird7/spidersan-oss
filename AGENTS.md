@@ -78,6 +78,60 @@ bd close <id>         # Complete work
 
 **Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md for details and anti-patterns.
 
+## Knowledge graph — query the code instead of grepping it
+
+`graphify-out/` holds a tree-sitter AST knowledge graph of this repo: ~1,980
+nodes and ~4,280 edges over 247 code files. It is gitignored and rebuilt on
+demand in about 30 seconds, never committed. Run from the repo root:
+
+```bash
+g() { env -i PATH="$HOME/.local/bin:$PATH" HOME="$HOME" TMPDIR="$TMPDIR" \
+        uvx --from "graphifyy==0.9.64" --with tree-sitter-sql graphify "$@"; }
+
+git fetch -q origin main
+echo "graph : $(jq -r '.built_at_commit[0:7]' graphify-out/graph.json 2>/dev/null)"
+echo "HEAD  : $(git rev-parse --short HEAD)"
+echo "behind: $(git rev-list --count HEAD..origin/main) commits vs origin/main"
+
+g extract . --code-only --force && g cluster-only . --no-label
+g explain "getStorage"                              # a node and everything touching it
+g affected "SupabaseStorage" --depth 2              # blast radius, reverse traversal
+g path "conflictsCommand" "SupabaseStorage"         # how two things connect
+g god-nodes --top 10
+```
+
+There are two staleness faults and only the first is obvious. `built_at_commit`
+≠ `HEAD` means the graph is behind the checkout — rebuild in place. A non-zero
+`behind` means the *checkout* is behind the remote, and rebuilding there
+re-graphs old code into a graph that then **looks** fresh, because
+`built_at_commit` and `HEAD` agree while both are stale. Build over
+`git worktree add -q "$WT" origin/main` instead. An mtime comparison detects
+neither reliably: a fresh checkout writes old code with new mtimes.
+
+`--code-only` keeps extraction to local tree-sitter AST — no LLM, no network.
+Without it the 52 markdown files are sent to a backend, and `extract` picks that
+backend from *whichever API key is set*, which is why the wrapper runs under
+`env -i`: the stripped environment is the control, the flag is only the intent.
+`--with tree-sitter-sql` **fails silently** without the grammar — the 26 `.sql`
+files parse to nothing and the run still exits 0 behind one warning.
+
+`explain`, `affected` and `path` match exact symbol names and are precise;
+`query "<plain question>"` is fuzzy keyword matching, so use it to discover a
+symbol name and then switch. Two things this repo's graph actually shows:
+`god-nodes` mixes framework fan-in (`vitest` 67 edges, `commander` 45) with real
+hubs (`getStorage()` 63, `Branch` 54, `SupabaseStorage` 31), so read the list
+rather than taking the top entry; and 176 labels are shared by more than one
+node, which matters because the verbs disagree about ambiguity: `explain`
+refuses and lists the candidate ids, `affected` refuses with *No unique node
+match*, and `path` does neither — it answers *No directed path found*, which
+reads exactly like a genuine negative. When an answer contradicts an edge you
+can see in `graph.json`, re-run `explain` on the bare name and pass the id it
+prints.
+
+Every file parsed — no syntax-error warnings. `graph.json` stores identifiers
+plus `source_file`/`source_location` and no source text. `graph.html` next to it
+is the clickable version.
+
 ## Session Completion
 
 **When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
