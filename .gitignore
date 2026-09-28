@@ -205,3 +205,6 @@ workers/**/.wrangler/
 # Repo is npm-based; block stray pnpm artifacts (machine-local wrangler symlink)
 pnpm-lock.yaml
 pnpm-workspace.yaml
+
+# graphify knowledge graph — rebuilt on demand, see AGENTS.md
+graphify-out/
