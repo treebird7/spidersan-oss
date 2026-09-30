@@ -79,6 +79,10 @@ describe('Security Vulnerability Reproduction: Command Injection', () => {
             if (Array.isArray(args) && args.includes('--is-ancestor')) {
                 throw new Error('not an ancestor');
             }
+            // existence probe before `git show`: an empty listing means "path absent", so report it present
+            if (Array.isArray(args) && args[0] === 'ls-tree') {
+                return 'vulnerable.js; echo pwned; .js\n';
+            }
             return '';
         });
 
@@ -92,7 +96,8 @@ describe('Security Vulnerability Reproduction: Command Injection', () => {
 
         expect(execFileSync).toHaveBeenCalledWith(
             'git',
-            ['show', 'HEAD:vulnerable.js; echo pwned; .js'],
+            // ref is the target's own head (sp-5ne5: not a hard-coded HEAD); the file name must stay ONE argv element
+            ['show', expect.stringMatching(/^[^ ]+:vulnerable\.js; echo pwned; \.js$/)],
             expect.objectContaining({ encoding: 'utf-8' })
         );
 

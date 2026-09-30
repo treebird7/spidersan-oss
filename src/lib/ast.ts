@@ -24,7 +24,8 @@ export class ASTParser {
     }
 
     parse(code: string): Parser.Tree {
-        return this.parser.parse(code);
+        // node-tree-sitter throws "Invalid argument" past its default ~32KB buffer
+        return this.parser.parse(code, undefined, { bufferSize: Math.max(code.length + 1, 32 * 1024) });
     }
 
     /**

@@ -103,4 +103,9 @@ describe('ASTParser', () => {
         const b = 'class A { render(){ return 2 } }\nclass B { render(){ return 1 } }';
         expect(parser.findSymbolConflicts(a, 'A', b, 'B').map(c => c.symbolName)).toEqual(['A.render']);
     });
+
+    it('parses large multi-byte input (bufferSize is in string units, not bytes)', () => {
+        const code = 'function f(){}\n' + '// 😀😀😀😀😀😀😀😀😀😀\n'.repeat(10000); // 240k chars, 440k bytes
+        expect(parser.parse(code).rootNode.hasError).toBe(false);
+    });
 });
