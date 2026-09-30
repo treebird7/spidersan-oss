@@ -21,7 +21,7 @@ import { resolveSupabaseCredentials } from '../lib/supabase-credentials.js';
 import { loadMachineIdentity } from '../lib/machine.js';
 import { getRepoName, resolveBranchRef } from '../lib/git.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
-import { analyzeSemantic, resolveBranchTip, resolveTargetRef } from '../lib/semantic-analysis.js';
+import { analyzeSemantic, resolveBranchTip, resolveCrossMachineRef } from '../lib/semantic-analysis.js';
 import { getCLIPath } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
@@ -682,6 +682,7 @@ export const conflictsCommand = new Command('conflicts')
         // touching the same file. Fail-open: degraded => local-only (tb-ly0b).
         const cross = await fetchCrossMachineBranches();
         allBranches.push(...cross.branches);
+        const crossMachineLabels = new Set(cross.branches.map(b => b.name)); // origin-only refs for these
 
         const conflicts: Array<{ branch: string; files: string[]; tier: number; tierInfo: ConflictTierInfo }> = [];
 
@@ -746,8 +747,8 @@ export const conflictsCommand = new Command('conflicts')
             const refForLabel = (label: string): string | null => {
                 const n = prNumberByLabel.get(label);
                 if (n !== undefined) return fetchPrRef(n);
-                // local branch first; "<machine>/<branch>" cross-machine labels resolve only against origin
-                return resolveTargetRef(label);
+                // another machine's branch resolves only against origin; a registered local branch is local-first
+                return crossMachineLabels.has(label) ? resolveCrossMachineRef(label) : resolveBranchTip(label);
             };
             // Current side: the PR's own head under --pr (HEAD is just whatever is checked out),
             // else the target branch (HEAD when it is the checked-out one).

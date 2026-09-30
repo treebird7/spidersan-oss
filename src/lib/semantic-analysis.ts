@@ -33,13 +33,12 @@ const git = (args: string[], cwd?: string): string =>
  * File content at ref; null ONLY when the path genuinely doesn't exist there (a legitimate
  * non-conflict). Any other git failure throws, so the caller records it as skipped instead of
  * reading it as "absent".
+ *
+ * `ls-tree`, not `cat-file -e`: cat-file exits 128 for a missing path AND for a bad ref/repo, so it
+ * can't tell them apart. ls-tree exits 0 with empty output for an absent path and non-zero otherwise.
  */
 function show(ref: string, file: string, cwd?: string): string | null {
-    try {
-        git(['cat-file', '-e', `${ref}:${file}`], cwd);
-    } catch {
-        return null; // cat-file -e fails => no such path at that ref
-    }
+    if (!git(['ls-tree', '--name-only', ref, '--', file], cwd).trim()) return null;
     return git(['show', `${ref}:${file}`], cwd);
 }
 
@@ -52,13 +51,12 @@ export function resolveBranchTip(name: string): string | null {
 }
 
 /**
- * A conflict target's ref from its registry label. A registered branch may be a local branch
- * (local-first); a cross-machine label "<machine>/<branch>" is another machine's branch, so it
- * resolves ONLY against origin — a same-named local branch would be the wrong tip.
+ * A cross-machine label "<machine>/<branch>" names ANOTHER machine's branch, so it resolves only
+ * against origin — a same-named local branch would be the wrong tip. The caller must know the
+ * label is cross-machine (from where the entry came from); guessing from the label's shape is
+ * ambiguous for local branches like "feat/x".
  */
-export function resolveTargetRef(label: string): string | null {
-    const local = resolveBranchTip(label);
-    if (local) return local;
+export function resolveCrossMachineRef(label: string): string | null {
     const remote = resolveBranchRef(label.slice(label.indexOf('/') + 1));
     return remote?.startsWith('refs/remotes/') ? remote : null;
 }
@@ -98,13 +96,20 @@ export function analyzeSemantic(
             }
             if (current === null || other === null) continue; // absent on one side: nothing to conflict
 
-            // Three-way against the merge-base; two-way fallback if there isn't one.
+            // Three-way against the merge-base. Two-way ONLY when the histories are genuinely unrelated
+            // (merge-base exit 1); any other failure is unknown, not a reason to change comparison mode.
             let base: string | undefined;
             try {
-                const mb = git(['merge-base', currentRef, target.ref], cwd).trim();
-                base = show(mb, file, cwd) ?? undefined;
+                let mb: string | null = null;
+                try {
+                    mb = git(['merge-base', currentRef, target.ref], cwd).trim();
+                } catch (err) {
+                    if ((err as { status?: number }).status !== 1) throw err; // 1 = no common ancestor
+                }
+                base = mb ? show(mb, file, cwd) ?? undefined : undefined;
             } catch {
-                base = undefined;
+                result.skipped.push(`${file}: could not compute merge-base with ${target.label}`);
+                continue;
             }
 
             let found: SymbolConflict[] | null;

@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process';
 import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { analyzeSemantic, resolveBranchTip, resolveTargetRef } from '../src/lib/semantic-analysis';
+import { analyzeSemantic, resolveBranchTip, resolveCrossMachineRef } from '../src/lib/semantic-analysis';
 
 let repo: string;
 const git = (...a: string[]) => execFileSync('git', a, { cwd: repo, stdio: 'pipe', encoding: 'utf-8' });
@@ -66,6 +66,33 @@ describe('analyzeSemantic', () => {
         expect(r.conflicts.map(c => c.symbolName)).toEqual(['big']);
     });
 
+    describe('git failures are skipped, never read as "file absent" (P1)', () => {
+        it('a ref that does not resolve is skipped, not a clean result', () => {
+            const r = analyzeSemantic('PR #1', 'refs/spidersan/pr-1',
+                [{ label: 'gone', files: ['a.ts'], ref: 'refs/spidersan/does-not-exist' }], repo);
+            expect(r.conflicts).toEqual([]);
+            expect(r.skipped).toHaveLength(1);
+        });
+
+        it('a non-repository cwd is skipped, not "no conflicts"', () => {
+            const notARepo = mkdtempSync(join(tmpdir(), 'not-a-repo-'));
+            const r = analyzeSemantic('PR #1', 'refs/spidersan/pr-1',
+                [{ label: 't', files: ['a.ts'], ref: 'refs/spidersan/pr-2' }], notARepo);
+            expect(r.conflicts).toEqual([]);
+            expect(r.skipped).toHaveLength(1);
+        });
+
+        it('unrelated histories (no merge-base) still analyze two-way instead of being skipped', () => {
+            git('checkout', '-q', '--orphan', 'unrelated'); git('rm', '-rqf', '.');
+            writeFileSync(join(repo, 'a.ts'), 'export function login(){ return 5 }\n');
+            git('add', '.'); git('commit', '-qm', 'orphan');
+            const r = analyzeSemantic('PR #1', 'refs/spidersan/pr-1',
+                [{ label: 'orphan', files: ['a.ts'], ref: 'unrelated' }], repo);
+            expect(r.skipped).toEqual([]);
+            expect(r.conflicts.map(c => c.symbolName)).toEqual(['login']);
+        });
+    });
+
     describe('ref resolution (P1: a stale origin/<branch> must not shadow the local tip)', () => {
         let prev: string;
         beforeAll(() => {
@@ -82,7 +109,6 @@ describe('analyzeSemantic', () => {
 
         it('a local branch ahead of a stale origin resolves to the local tip', () => {
             expect(resolveBranchTip('ahead')).toBe('refs/heads/ahead');
-            expect(resolveTargetRef('ahead')).toBe('refs/heads/ahead');
         });
 
         it('falls back to origin when there is no local branch', () => {
@@ -91,8 +117,14 @@ describe('analyzeSemantic', () => {
         });
 
         it('a cross-machine label resolves only against origin, never a same-named local branch', () => {
-            expect(resolveTargetRef('otherbox/box2branch')).toBe('refs/remotes/origin/box2branch');
-            expect(resolveTargetRef('otherbox/localonly')).toBeNull(); // local exists, origin does not => unknown
+            expect(resolveCrossMachineRef('otherbox/box2branch')).toBe('refs/remotes/origin/box2branch');
+            expect(resolveCrossMachineRef('otherbox/localonly')).toBeNull(); // local exists, origin does not => unknown
+        });
+
+        it('a prefixed local branch does not shadow the cross-machine label (P2)', () => {
+            git('checkout', '-q', '-B', 'otherbox/feature/x', 'base');            // a LOCAL branch that looks like the label
+            git('update-ref', 'refs/remotes/origin/feature/x', 'base');           // the real cross-machine branch, on origin
+            expect(resolveCrossMachineRef('otherbox/feature/x')).toBe('refs/remotes/origin/feature/x');
         });
     });
 });
