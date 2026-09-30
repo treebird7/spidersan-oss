@@ -21,13 +21,18 @@ export interface SemanticResult {
     conflicts: SymbolConflict[];
     /** One human-readable line per file/target that could not be analyzed. */
     skipped: string[];
+    /**
+     * Overlapping files of a type semantic analysis doesn't cover (.sql, .yaml, .md …). "No symbol
+     * conflicts" says nothing about them, so callers must not turn it into "safe to merge".
+     */
+    unsupported: string[];
 }
 
 const TS_FILE = /\.(ts|js|tsx|jsx)$/;
 const PY_FILE = /\.py$/;
 
 const git = (args: string[], cwd?: string): string =>
-    execFileSync('git', args, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], cwd });
+    execFileSync('git', args, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], cwd, timeout: 30_000 }); // a hung object store must not hang the command
 
 /**
  * File content at ref; null ONLY when the path genuinely doesn't exist there (a legitimate
@@ -68,12 +73,15 @@ export function analyzeSemantic(
     cwd?: string
 ): SemanticResult {
     const parser = new ASTParser();
-    const result: SemanticResult = { conflicts: [], skipped: [] };
+    const result: SemanticResult = { conflicts: [], skipped: [], unsupported: [] };
 
     for (const target of targets) {
         for (const file of target.files) {
             const isPython = PY_FILE.test(file);
-            if (!isPython && !TS_FILE.test(file)) continue;
+            if (!isPython && !TS_FILE.test(file)) {
+                if (!result.unsupported.includes(file)) result.unsupported.push(file);
+                continue;
+            }
 
             // An unresolvable ref is UNKNOWN, not "no conflict" — never swallow it.
             if (!currentRef) {

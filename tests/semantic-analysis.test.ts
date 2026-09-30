@@ -50,7 +50,7 @@ describe('analyzeSemantic', () => {
     it('a file absent on one side is not a conflict and not "skipped"', () => {
         const r = analyzeSemantic('PR #1', 'refs/spidersan/pr-1',
             [{ label: 'z', files: ['nope.ts'], ref: 'refs/spidersan/pr-2' }], repo);
-        expect(r).toEqual({ conflicts: [], skipped: [] });
+        expect(r).toEqual({ conflicts: [], skipped: [], unsupported: [] });
     });
 
     it('parses files larger than the 32KB tree-sitter default buffer', () => {
@@ -91,6 +91,16 @@ describe('analyzeSemantic', () => {
             expect(r.skipped).toEqual([]);
             expect(r.conflicts.map(c => c.symbolName)).toEqual(['login']);
         });
+    });
+
+    it('unsupported file types are reported, never silently treated as analyzed (P1)', () => {
+        const r = analyzeSemantic('PR #1', 'refs/spidersan/pr-1', [
+            { label: 'a', files: ['schema.sql', 'README.md'], ref: 'refs/spidersan/pr-2' },
+            { label: 'b', files: ['schema.sql'], ref: 'refs/spidersan/pr-2' },
+        ], repo);
+        expect(r.conflicts).toEqual([]);
+        expect(r.skipped).toEqual([]);
+        expect(r.unsupported).toEqual(['schema.sql', 'README.md']); // deduped across targets
     });
 
     describe('ref resolution (P1: a stale origin/<branch> must not shadow the local tip)', () => {

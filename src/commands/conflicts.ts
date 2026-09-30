@@ -730,6 +730,7 @@ export const conflictsCommand = new Command('conflicts')
         // SEMANTIC ANALYSIS with AST parser
         let semanticConflicts: SymbolConflict[] = [];
         let semanticSkipped: string[] = []; // files we could not analyze — "no conflicts" is unproven if non-empty
+        let semanticUnsupported: string[] = []; // overlapping files of a type --semantic doesn't cover
         if (options.semantic && conflicts.length > 0) {
             console.log('\n🔬 Running semantic (AST) analysis...');
             const fetchPrRef = (n: number): string | null => {
@@ -762,7 +763,12 @@ export const conflictsCommand = new Command('conflicts')
             );
             semanticConflicts = res.conflicts;
             semanticSkipped = res.skipped;
+            semanticUnsupported = res.unsupported;
             for (const line of semanticSkipped) console.log(`  ⚠️  ${line}`);
+            if (semanticUnsupported.length > 0) {
+                const shown = semanticUnsupported.slice(0, 5).join(', ') + (semanticUnsupported.length > 5 ? `, +${semanticUnsupported.length - 5} more` : '');
+                console.log(`  ℹ️  not analyzable by --semantic (unsupported file type): ${shown}`);
+            }
         }
 
         // Sort by tier (highest first)
@@ -871,11 +877,11 @@ export const conflictsCommand = new Command('conflicts')
             console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
             console.log('\n💡 TIP: Coordinate on these specific functions/classes,');
             console.log('   not just the files. One of you should rebase.');
-            if (semanticSkipped.length > 0) {
-                console.log(`   ⚠️  incomplete: ${semanticSkipped.length} file(s) could not be analyzed, so more may exist.`);
+            if (semanticSkipped.length + semanticUnsupported.length > 0) {
+                console.log(`   ⚠️  incomplete: ${semanticSkipped.length + semanticUnsupported.length} file(s) could not be analyzed, so more may exist.`);
             }
-        } else if (options.semantic && semanticSkipped.length > 0) {
-            console.log(`\n🔬 SEMANTIC ANALYSIS: incomplete — ${semanticSkipped.length} file(s) could not be analyzed; no verdict.`);
+        } else if (options.semantic && semanticSkipped.length + semanticUnsupported.length > 0) {
+            console.log(`\n🔬 SEMANTIC ANALYSIS: incomplete — ${semanticSkipped.length + semanticUnsupported.length} file(s) could not be analyzed; no verdict.`);
         } else if (options.semantic && semanticConflicts.length === 0) {
             console.log('\n🔬 SEMANTIC ANALYSIS: No symbol-level conflicts!');
             console.log('   Files overlap, but different functions were modified.');
