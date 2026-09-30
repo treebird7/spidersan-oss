@@ -678,7 +678,7 @@ export const conflictsCommand = new Command('conflicts')
         const cross = await fetchCrossMachineBranches();
         allBranches.push(...cross.branches);
 
-        const conflicts: Array<{ branch: string; files: string[]; tier: number; tierInfo: ConflictTierInfo }> = [];
+        const conflicts: Array<{ branch: string; files: string[]; tier: number; tierInfo: ConflictTierInfo; sessionId?: string }> = [];
 
         // Performance Optimization: Convert target files to Set for O(1) lookup
         // Reduces complexity from O(N*M*K) to O(N*M) where N=branches, M=files/branch, K=target_files
@@ -715,7 +715,8 @@ export const conflictsCommand = new Command('conflicts')
                         branch: branch.name,
                         files: overlappingFiles,
                         tier: maxTier.tier,
-                        tierInfo: maxTier
+                        tierInfo: maxTier,
+                        ...(branch.sessionId ? { sessionId: branch.sessionId } : {}),
                     });
                 }
             }
@@ -828,7 +829,7 @@ export const conflictsCommand = new Command('conflicts')
         `);
 
         for (const conflict of conflicts) {
-            console.log(`${conflict.tierInfo.icon} TIER ${conflict.tier} (${conflict.tierInfo.label}): ${conflict.branch}`);
+            console.log(`${conflict.tierInfo.icon} TIER ${conflict.tier} (${conflict.tierInfo.label}): ${conflict.branch}${conflict.sessionId ? ` (session ${conflict.sessionId})` : ''}`);
             for (const file of conflict.files) {
                 const fileTier = classifyWithLabel(file, {
                     extraTier3: compiledHigh,

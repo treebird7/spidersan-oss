@@ -10,6 +10,12 @@ export interface Branch {
     files: string[];
     registeredAt: Date;
     agent?: string;
+    /**
+     * Claude Code session (the id `tbe`/ccsessions lists) that last registered this
+     * branch, so a conflict can say WHICH session to resume. Local registry only:
+     * meaningless off the machine that owns the session, and not synced to Supabase.
+     */
+    sessionId?: string;
     status: 'active' | 'completed' | 'abandoned';
     description?: string;
     /** Branches that must merge BEFORE this one (`spidersan depends`). */
