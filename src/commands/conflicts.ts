@@ -21,7 +21,7 @@ import { resolveSupabaseCredentials } from '../lib/supabase-credentials.js';
 import { loadMachineIdentity } from '../lib/machine.js';
 import { getRepoName, resolveBranchRef } from '../lib/git.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
-import { findOutlineConflicts } from '../lib/outline.js';
+import { analyzeSemantic } from '../lib/semantic-analysis.js';
 import { getCLIPath } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
@@ -598,6 +598,8 @@ export const conflictsCommand = new Command('conflicts')
 
         let targetBranch: string;
         let targetFiles: string[];
+        let targetPrNumber: number | undefined;
+        const prNumberByLabel = new Map<string, number>(); // display label -> PR number (labels are NOT git refs)
 
         if (options.pr) {
             // --pr mode: fetch PR head branch + changed files from GitHub
@@ -621,6 +623,7 @@ export const conflictsCommand = new Command('conflicts')
             }
             targetBranch = prDetails.headBranch;
             targetFiles = prDetails.files;
+            targetPrNumber = prNumber;
             console.log(`🕷️ Checking conflicts for PR #${prNumber}: "${prDetails.title}"`);
             console.log(`   Branch: ${targetBranch} (${targetFiles.length} file(s) changed)`);
         } else {
@@ -661,6 +664,7 @@ export const conflictsCommand = new Command('conflicts')
                 console.error('⚠️  --vs-prs needs gh (unavailable/unauthenticated); checking registered branches only.');
             } else {
                 const openPRs = (await listOpenPRs()).filter(pr => pr.headBranch !== targetBranch);
+                openPRs.forEach(pr => prNumberByLabel.set(`PR #${pr.number} (${pr.headBranch})`, pr.number));
                 const prBranches = await Promise.all(openPRs.map(async pr => ({
                     name: `PR #${pr.number} (${pr.headBranch})`,
                     files: await getPRChangedFiles(pr.number),
@@ -723,54 +727,41 @@ export const conflictsCommand = new Command('conflicts')
         }
 
         // SEMANTIC ANALYSIS with AST parser
-        const semanticConflicts: SymbolConflict[] = [];
-        let semanticSkipped = 0; // files we could not analyze — "no conflicts" is unproven if > 0
+        let semanticConflicts: SymbolConflict[] = [];
+        let semanticSkipped: string[] = []; // files we could not analyze — "no conflicts" is unproven if non-empty
         if (options.semantic && conflicts.length > 0) {
             console.log('\n🔬 Running semantic (AST) analysis...');
-            const astParser = new ASTParser();
-
-            for (const conflict of conflicts) {
-                for (const file of conflict.files) {
-                    // TS/JS via tree-sitter; Python via `ast-grep outline` (spike, optional binary)
-                    const isPython = /\.py$/.test(file);
-                    if (!isPython && !/\.(ts|js|tsx|jsx)$/.test(file)) continue;
-
-                    try {
-                        // Get file content from both branches
-                        // Security: Use execFileSync to prevent command injection via file names
-                        const currentContent = execFileSync('git', ['show', `HEAD:${file}`], { encoding: 'utf-8' });
-                        const otherContent = execFileSync('git', ['show', `${conflict.branch}:${file}`], { encoding: 'utf-8' });
-
-                        // Three-way: only flag symbols both sides changed from the merge-base.
-                        // No merge-base / file absent there → fall back to the two-way diff.
-                        let baseContent: string | undefined;
-                        try {
-                            const mb = execFileSync('git', ['merge-base', 'HEAD', conflict.branch], { encoding: 'utf-8' }).trim();
-                            baseContent = execFileSync('git', ['show', `${mb}:${file}`], { encoding: 'utf-8' });
-                        } catch {
-                            baseContent = undefined;
-                        }
-
-                        const symbolConflicts = isPython
-                            ? findOutlineConflicts('.py', currentContent, `${targetBranch}:${file}`,
-                                otherContent, `${conflict.branch}:${file}`, baseContent)
-                            : astParser.findSymbolConflicts(
-                                currentContent, `${targetBranch}:${file}`,
-                                otherContent, `${conflict.branch}:${file}`,
-                                baseContent
-                            );
-                        if (!symbolConflicts) {
-                            console.log(`  ⚠️  ${file}: semantic analysis unavailable (install ast-grep) — file-level conflict stands`);
-                            semanticSkipped++;
-                            continue;
-                        }
-
-                        semanticConflicts.push(...symbolConflicts);
-                    } catch {
-                        // File might not exist in one branch, skip
-                    }
+            const fetchPrRef = (n: number): string | null => {
+                const ref = `refs/spidersan/pr-${n}`;
+                try {
+                    // '+' forces the update after a PR force-push (same as the --real arm)
+                    execFileSync('git', ['fetch', '--quiet', 'origin', `+pull/${n}/head:${ref}`], { stdio: 'pipe' });
+                    return ref;
+                } catch {
+                    return null;
                 }
-            }
+            };
+            // Labels ("PR #N (branch)", "machine/branch") are display text, not refs:
+            // resolve each to a real ref, or null (→ reported as skipped, never swallowed).
+            const refForLabel = (label: string): string | null => {
+                const n = prNumberByLabel.get(label);
+                if (n !== undefined) return fetchPrRef(n);
+                // ponytail: cross-machine labels are "<machine>/<branch>"; only resolvable if that branch is fetched here
+                return resolveBranchRef(label) ?? resolveBranchRef(label.slice(label.indexOf('/') + 1));
+            };
+            // Current side: the PR's own head under --pr (HEAD is just whatever is checked out),
+            // else the target branch (HEAD when it is the checked-out one).
+            const currentRef = targetPrNumber !== undefined
+                ? fetchPrRef(targetPrNumber)
+                : targetBranch === getCurrentBranch() ? 'HEAD' : resolveBranchRef(targetBranch);
+
+            const res = analyzeSemantic(
+                targetBranch, currentRef,
+                conflicts.map(c => ({ label: c.branch, files: c.files, ref: refForLabel(c.branch) }))
+            );
+            semanticConflicts = res.conflicts;
+            semanticSkipped = res.skipped;
+            for (const line of semanticSkipped) console.log(`  ⚠️  ${line}`);
         }
 
         // Sort by tier (highest first)
@@ -879,8 +870,11 @@ export const conflictsCommand = new Command('conflicts')
             console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
             console.log('\n💡 TIP: Coordinate on these specific functions/classes,');
             console.log('   not just the files. One of you should rebase.');
-        } else if (options.semantic && semanticSkipped > 0) {
-            console.log(`\n🔬 SEMANTIC ANALYSIS: incomplete — ${semanticSkipped} file(s) could not be analyzed; no verdict.`);
+            if (semanticSkipped.length > 0) {
+                console.log(`   ⚠️  incomplete: ${semanticSkipped.length} file(s) could not be analyzed, so more may exist.`);
+            }
+        } else if (options.semantic && semanticSkipped.length > 0) {
+            console.log(`\n🔬 SEMANTIC ANALYSIS: incomplete — ${semanticSkipped.length} file(s) could not be analyzed; no verdict.`);
         } else if (options.semantic && semanticConflicts.length === 0) {
             console.log('\n🔬 SEMANTIC ANALYSIS: No symbol-level conflicts!');
             console.log('   Files overlap, but different functions were modified.');

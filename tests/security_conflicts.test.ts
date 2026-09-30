@@ -92,7 +92,8 @@ describe('Security Vulnerability Reproduction: Command Injection', () => {
 
         expect(execFileSync).toHaveBeenCalledWith(
             'git',
-            ['show', 'HEAD:vulnerable.js; echo pwned; .js'],
+            // ref is the target's own head (sp-5ne5: not a hard-coded HEAD); the file name must stay ONE argv element
+            ['show', expect.stringMatching(/^[^ ]+:vulnerable\.js; echo pwned; \.js$/)],
             expect.objectContaining({ encoding: 'utf-8' })
         );
 
