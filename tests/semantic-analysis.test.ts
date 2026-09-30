@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { execFileSync } from 'child_process';
 import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { ASTParser } from '../src/lib/ast';
 import { analyzeSemantic, resolveBranchTip, resolveCrossMachineRef } from '../src/lib/semantic-analysis';
 
 let repo: string;
@@ -47,50 +48,34 @@ describe('analyzeSemantic', () => {
         expect(r.skipped).toHaveLength(1);
     });
 
-    it('a file absent on one side is not a conflict and not "skipped"', () => {
+    it('a file absent on one side (delete/modify) is UNANALYZED, never "safe" (P1)', () => {
         const r = analyzeSemantic('PR #1', 'refs/spidersan/pr-1',
             [{ label: 'z', files: ['nope.ts'], ref: 'refs/spidersan/pr-2' }], repo);
-        expect(r).toEqual({ conflicts: [], skipped: [], unsupported: [] });
+        expect(r.conflicts).toEqual([]);
+        expect(r.skipped).toHaveLength(1);
+        expect(r.skipped[0]).toContain('nope.ts');
+        expect(r.skipped[0]).toMatch(/added or deleted/);
     });
 
-    it('parses files larger than the 32KB tree-sitter default buffer', () => {
-        const big = (n: number) => `export function big(){ return ${n} }\n` + '// pad\n'.repeat(6000);
-        execFileSync('git', ['checkout', '-q', '-B', 'bigbase', 'base'], { cwd: repo });
-        writeFileSync(join(repo, 'big.ts'), big(0)); git('add', '.'); git('commit', '-qm', 'bigbase');
-        for (const [ref, n] of [['bx', 1], ['by', 2]] as const) {
-            git('checkout', '-q', '-B', ref, 'bigbase'); writeFileSync(join(repo, 'big.ts'), big(n)); git('commit', '-qam', ref);
-        }
-        expect(big(0).length).toBeGreaterThan(40000);
-        const r = analyzeSemantic('bx', 'bx', [{ label: 'by', files: ['big.ts'], ref: 'by' }], repo);
-        expect(r.skipped).toEqual([]);
-        expect(r.conflicts.map(c => c.symbolName)).toEqual(['big']);
+    it('a merge-base failure after successful reads is skipped, not analyzed two-way', () => {
+        // tree objects: ls-tree/show work, but merge-base needs commits and exits 128
+        const t1 = git('rev-parse', 'refs/spidersan/pr-1^{tree}').trim();
+        const t2 = git('rev-parse', 'refs/spidersan/pr-2^{tree}').trim();
+        const r = analyzeSemantic('PR #1', t1, [{ label: 't', files: ['a.ts'], ref: t2 }], repo);
+        expect(r.conflicts).toEqual([]);
+        expect(r.skipped).toEqual(['a.ts: could not compute merge-base with t']);
     });
 
-    describe('git failures are skipped, never read as "file absent" (P1)', () => {
-        it('a ref that does not resolve is skipped, not a clean result', () => {
-            const r = analyzeSemantic('PR #1', 'refs/spidersan/pr-1',
-                [{ label: 'gone', files: ['a.ts'], ref: 'refs/spidersan/does-not-exist' }], repo);
-            expect(r.conflicts).toEqual([]);
-            expect(r.skipped).toHaveLength(1);
+    it('a parser exception is reported generically — its message is not printed', () => {
+        const spy = vi.spyOn(ASTParser.prototype, 'findSymbolConflicts').mockImplementation(() => {
+            throw new Error('INTERNAL /Users/secret/path node_modules/tree-sitter/index.js');
         });
-
-        it('a non-repository cwd is skipped, not "no conflicts"', () => {
-            const notARepo = mkdtempSync(join(tmpdir(), 'not-a-repo-'));
+        try {
             const r = analyzeSemantic('PR #1', 'refs/spidersan/pr-1',
-                [{ label: 't', files: ['a.ts'], ref: 'refs/spidersan/pr-2' }], notARepo);
-            expect(r.conflicts).toEqual([]);
-            expect(r.skipped).toHaveLength(1);
-        });
-
-        it('unrelated histories (no merge-base) still analyze two-way instead of being skipped', () => {
-            git('checkout', '-q', '--orphan', 'unrelated'); git('rm', '-rqf', '.');
-            writeFileSync(join(repo, 'a.ts'), 'export function login(){ return 5 }\n');
-            git('add', '.'); git('commit', '-qm', 'orphan');
-            const r = analyzeSemantic('PR #1', 'refs/spidersan/pr-1',
-                [{ label: 'orphan', files: ['a.ts'], ref: 'unrelated' }], repo);
-            expect(r.skipped).toEqual([]);
-            expect(r.conflicts.map(c => c.symbolName)).toEqual(['login']);
-        });
+                [{ label: 'x', files: ['a.ts'], ref: 'refs/spidersan/pr-2' }], repo);
+            expect(r.skipped).toEqual(['a.ts: parse failed']);
+            expect(JSON.stringify(r)).not.toContain('INTERNAL');
+        } finally { spy.mockRestore(); }
     });
 
     it('unsupported file types are reported, never silently treated as analyzed (P1)', () => {

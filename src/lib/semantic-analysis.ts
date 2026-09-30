@@ -102,7 +102,12 @@ export function analyzeSemantic(
                 result.skipped.push(`${file}: could not read from ${target.label}`);
                 continue;
             }
-            if (current === null || other === null) continue; // absent on one side: nothing to conflict
+            // Absent on one side = added/deleted there. A delete/modify overlap is a real git conflict, and
+            // symbol comparison can't judge it, so it is unanalyzed (incomplete), never "nothing to conflict".
+            if (current === null || other === null) {
+                result.skipped.push(`${file}: absent on ${current === null ? currentLabel : target.label} (added or deleted) — not analyzed`);
+                continue;
+            }
 
             // Three-way against the merge-base. Two-way ONLY when the histories are genuinely unrelated
             // (merge-base exit 1); any other failure is unknown, not a reason to change comparison mode.
