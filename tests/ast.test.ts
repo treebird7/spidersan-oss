@@ -84,4 +84,12 @@ describe('ASTParser', () => {
 
         expect(symbols1[0].hash).toBe(symbols2[0].hash);
     });
+
+    it('three-way: ignores symbols only one side changed from base', () => {
+        const base = 'function login(){ return 1 }\nfunction helper(){ return 1 }\nfunction both(){ return 1 }';
+        const a = 'function login(){ return 2 }\nfunction helper(){ return 1 }\nfunction both(){ return 2 }';
+        const b = 'function login(){ return 1 }\nfunction helper(){ return 7 }\nfunction both(){ return 3 }';
+        expect(parser.findSymbolConflicts(a, 'A', b, 'B').map(c => c.symbolName)).toEqual(['login', 'helper', 'both']);
+        expect(parser.findSymbolConflicts(a, 'A', b, 'B', base).map(c => c.symbolName)).toEqual(['both']);
+    });
 });

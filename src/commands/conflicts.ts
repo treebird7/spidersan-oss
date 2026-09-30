@@ -738,9 +738,20 @@ export const conflictsCommand = new Command('conflicts')
                         const currentContent = execFileSync('git', ['show', `HEAD:${file}`], { encoding: 'utf-8' });
                         const otherContent = execFileSync('git', ['show', `${conflict.branch}:${file}`], { encoding: 'utf-8' });
 
+                        // Three-way: only flag symbols both sides changed from the merge-base.
+                        // No merge-base / file absent there → fall back to the two-way diff.
+                        let baseContent: string | undefined;
+                        try {
+                            const mb = execFileSync('git', ['merge-base', 'HEAD', conflict.branch], { encoding: 'utf-8' }).trim();
+                            baseContent = execFileSync('git', ['show', `${mb}:${file}`], { encoding: 'utf-8' });
+                        } catch {
+                            baseContent = undefined;
+                        }
+
                         const symbolConflicts = astParser.findSymbolConflicts(
                             currentContent, `${targetBranch}:${file}`,
-                            otherContent, `${conflict.branch}:${file}`
+                            otherContent, `${conflict.branch}:${file}`,
+                            baseContent
                         );
 
                         semanticConflicts.push(...symbolConflicts);
