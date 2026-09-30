@@ -8,6 +8,8 @@ export interface SymbolInfo {
     type: 'function' | 'class' | 'method';
     startLine: number;
     endLine: number;
+    /** Enclosing class name for methods, so `A.render` and `B.render` don't collide. */
+    parent?: string;
     content?: string;
     hash?: string;
 }
@@ -53,6 +55,7 @@ export class ASTParser {
             startLine: number;
             endLine: number;
             name: string | null;
+            parent?: string;
             depth: number;
         }> = [];
 
@@ -77,6 +80,7 @@ export class ASTParser {
                                 type: top.type,
                                 startLine: top.startLine,
                                 endLine: top.endLine,
+                                ...(top.parent ? { parent: top.parent } : {}),
                                 content: content,
                                 hash: this.computeHash(content)
                             });
@@ -97,12 +101,21 @@ export class ASTParser {
                 const type = cursor.nodeType;
 
                 // 1. Check if it is a symbol definition
-                if (type === 'function_declaration' || type === 'class_declaration' || type === 'method_definition') {
+                const valueType = type === 'variable_declarator'
+                    ? cursor.currentNode.childForFieldName('value')?.type
+                    : undefined;
+                // `const f = () => {}` / `const f = function () {}` are functions too
+                const isFnConst = valueType === 'arrow_function' || valueType === 'function_expression' || valueType === 'function';
+                if (type === 'function_declaration' || type === 'class_declaration' || type === 'method_definition' || isFnConst) {
+                    const parentClass = type === 'method_definition'
+                        ? [...stack].reverse().find(e => e.type === 'class')?.name ?? undefined
+                        : undefined;
                     stack.push({
-                        type: type.replace('_declaration', '').replace('_definition', '') as SymbolInfo['type'],
+                        type: isFnConst ? 'function' : type.replace('_declaration', '').replace('_definition', '') as SymbolInfo['type'],
                         startLine: cursor.startPosition.row + 1,
                         endLine: cursor.endPosition.row + 1,
                         name: null,
+                        parent: parentClass,
                         depth: depth
                     });
                 }
@@ -145,26 +158,26 @@ export class ASTParser {
 
         const baseContentByName = new Map<string, string | undefined>();
         if (baseContent !== undefined) {
-            this.extractSymbols(this.parse(baseContent)).forEach(s => baseContentByName.set(s.name, s.content));
+            this.extractSymbols(this.parse(baseContent)).forEach(s => baseContentByName.set(qualify(s), s.content));
         }
 
         const conflicts: SymbolConflict[] = [];
 
         // Map for fast lookup
         const mapB = new Map<string, SymbolInfo>();
-        symbolsB.forEach(s => mapB.set(s.name, s));
+        symbolsB.forEach(s => mapB.set(qualify(s), s));
 
         for (const symA of symbolsA) {
-            const symB = mapB.get(symA.name);
+            const symB = mapB.get(qualify(symA));
             // If symbol exists in both and content differs
             if (symB && symA.content !== symB.content) {
                 if (baseContent !== undefined) {
-                    const base = baseContentByName.get(symA.name);
+                    const base = baseContentByName.get(qualify(symA));
                     // one-sided edit: the other side still equals base, git merges it cleanly
                     if (symA.content === base || symB.content === base) continue;
                 }
                 conflicts.push({
-                    symbolName: symA.name,
+                    symbolName: qualify(symA),
                     symbolType: symA.type,
                     locations: [
                         { file: labelA, range: [symA.startLine, symA.endLine] },
@@ -174,9 +187,13 @@ export class ASTParser {
             }
         }
 
-        return conflicts;
+        // A class always "changes" when one of its methods does; report the method, not both.
+        return conflicts.filter(c => c.symbolType !== 'class' ||
+            !conflicts.some(m => m.symbolType === 'method' && m.symbolName.startsWith(`${c.symbolName}.`)));
     }
 }
+
+const qualify = (s: SymbolInfo): string => (s.parent ? `${s.parent}.${s.name}` : s.name);
 
 export interface SymbolConflict {
     symbolName: string;

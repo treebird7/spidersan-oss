@@ -92,4 +92,15 @@ describe('ASTParser', () => {
         expect(parser.findSymbolConflicts(a, 'A', b, 'B').map(c => c.symbolName)).toEqual(['login', 'helper', 'both']);
         expect(parser.findSymbolConflicts(a, 'A', b, 'B', base).map(c => c.symbolName)).toEqual(['both']);
     });
+
+    it('extracts const arrow/function-expression functions', () => {
+        const syms = parser['extractSymbols'](parser.parse('export const a = () => 1;\nconst b = function () { return 2 };\nconst n = 5;'));
+        expect(syms.map(s => [s.name, s.type])).toEqual([['a', 'function'], ['b', 'function']]);
+    });
+
+    it('does not collide same-named methods; reports method not its class', () => {
+        const a = 'class A { render(){ return 1 } }\nclass B { render(){ return 1 } }';
+        const b = 'class A { render(){ return 2 } }\nclass B { render(){ return 1 } }';
+        expect(parser.findSymbolConflicts(a, 'A', b, 'B').map(c => c.symbolName)).toEqual(['A.render']);
+    });
 });
