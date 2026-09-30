@@ -150,16 +150,23 @@ export class ASTParser {
         contentB: string, labelB: string,
         baseContent?: string
     ): SymbolConflict[] {
-        const treeA = this.parse(contentA);
-        const treeB = this.parse(contentB);
+        return compareSymbols(
+            this.extractSymbols(this.parse(contentA)), labelA,
+            this.extractSymbols(this.parse(contentB)), labelB,
+            baseContent === undefined ? undefined : this.extractSymbols(this.parse(baseContent))
+        );
+    }
+}
 
-        const symbolsA = this.extractSymbols(treeA);
-        const symbolsB = this.extractSymbols(treeB);
-
+/** Language-agnostic core: two symbol lists (+ optional merge-base list) → conflicts. */
+export function compareSymbols(
+    symbolsA: SymbolInfo[], labelA: string,
+    symbolsB: SymbolInfo[], labelB: string,
+    symbolsBase?: SymbolInfo[]
+): SymbolConflict[] {
         const baseContentByName = new Map<string, string | undefined>();
-        if (baseContent !== undefined) {
-            this.extractSymbols(this.parse(baseContent)).forEach(s => baseContentByName.set(qualify(s), s.content));
-        }
+        symbolsBase?.forEach(s => baseContentByName.set(qualify(s), s.content));
+        const baseContent = symbolsBase;
 
         const conflicts: SymbolConflict[] = [];
 
@@ -190,10 +197,9 @@ export class ASTParser {
         // A class always "changes" when one of its methods does; report the method, not both.
         return conflicts.filter(c => c.symbolType !== 'class' ||
             !conflicts.some(m => m.symbolType === 'method' && m.symbolName.startsWith(`${c.symbolName}.`)));
-    }
 }
 
-const qualify = (s: SymbolInfo): string => (s.parent ? `${s.parent}.${s.name}` : s.name);
+export const qualify = (s: SymbolInfo): string => (s.parent ? `${s.parent}.${s.name}` : s.name);
 
 export interface SymbolConflict {
     symbolName: string;

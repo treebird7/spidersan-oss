@@ -21,6 +21,7 @@ import { resolveSupabaseCredentials } from '../lib/supabase-credentials.js';
 import { loadMachineIdentity } from '../lib/machine.js';
 import { getRepoName, resolveBranchRef } from '../lib/git.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
+import { findOutlineConflicts } from '../lib/outline.js';
 import { getCLIPath } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
@@ -723,14 +724,16 @@ export const conflictsCommand = new Command('conflicts')
 
         // SEMANTIC ANALYSIS with AST parser
         const semanticConflicts: SymbolConflict[] = [];
+        let semanticSkipped = 0; // files we could not analyze — "no conflicts" is unproven if > 0
         if (options.semantic && conflicts.length > 0) {
             console.log('\n🔬 Running semantic (AST) analysis...');
             const astParser = new ASTParser();
 
             for (const conflict of conflicts) {
                 for (const file of conflict.files) {
-                    // Only analyze TypeScript/JavaScript files
-                    if (!/\.(ts|js|tsx|jsx)$/.test(file)) continue;
+                    // TS/JS via tree-sitter; Python via `ast-grep outline` (spike, optional binary)
+                    const isPython = /\.py$/.test(file);
+                    if (!isPython && !/\.(ts|js|tsx|jsx)$/.test(file)) continue;
 
                     try {
                         // Get file content from both branches
@@ -748,11 +751,19 @@ export const conflictsCommand = new Command('conflicts')
                             baseContent = undefined;
                         }
 
-                        const symbolConflicts = astParser.findSymbolConflicts(
-                            currentContent, `${targetBranch}:${file}`,
-                            otherContent, `${conflict.branch}:${file}`,
-                            baseContent
-                        );
+                        const symbolConflicts = isPython
+                            ? findOutlineConflicts('.py', currentContent, `${targetBranch}:${file}`,
+                                otherContent, `${conflict.branch}:${file}`, baseContent)
+                            : astParser.findSymbolConflicts(
+                                currentContent, `${targetBranch}:${file}`,
+                                otherContent, `${conflict.branch}:${file}`,
+                                baseContent
+                            );
+                        if (!symbolConflicts) {
+                            console.log(`  ⚠️  ${file}: semantic analysis unavailable (install ast-grep) — file-level conflict stands`);
+                            semanticSkipped++;
+                            continue;
+                        }
 
                         semanticConflicts.push(...symbolConflicts);
                     } catch {
@@ -868,6 +879,8 @@ export const conflictsCommand = new Command('conflicts')
             console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
             console.log('\n💡 TIP: Coordinate on these specific functions/classes,');
             console.log('   not just the files. One of you should rebase.');
+        } else if (options.semantic && semanticSkipped > 0) {
+            console.log(`\n🔬 SEMANTIC ANALYSIS: incomplete — ${semanticSkipped} file(s) could not be analyzed; no verdict.`);
         } else if (options.semantic && semanticConflicts.length === 0) {
             console.log('\n🔬 SEMANTIC ANALYSIS: No symbol-level conflicts!');
             console.log('   Files overlap, but different functions were modified.');
