@@ -63,6 +63,16 @@ describe.skipIf(!hasJq)('spidersan-overlap-warn.sh', () => {
         expect(run('a.ts').stdout).toBe('');          // checked + no overlap => silent
     });
 
+    it('degraded notices once, then a different not-checked status notices once more (dedupe is per status)', () => {
+        const withCm = (crossMachine: string) => `cat <<'J'\n${JSON.stringify({ conflicts: [], crossMachine })}\nJ`;
+        stub(withCm('degraded'));
+        expect(JSON.parse(run('a.ts').stdout).hookSpecificOutput.additionalContext).toContain('(degraded)');
+        expect(run('a.ts').stdout).toBe('');
+        stub(withCm('no-credentials'));
+        expect(JSON.parse(run('a.ts').stdout).hookSpecificOutput.additionalContext).toContain('(no-credentials)');
+        expect(run('a.ts').stdout).toBe('');
+    });
+
     it('is silent when the overlap is a different file', () => {
         stub(json([{ branch: 'feat-y', files: ['other.ts'], tier: 1 }]));
         expect(run('a.ts').stdout).toBe('');
