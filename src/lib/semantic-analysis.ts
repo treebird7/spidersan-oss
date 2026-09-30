@@ -8,6 +8,7 @@
 import { execFileSync } from 'child_process';
 import { ASTParser, type SymbolConflict } from './ast.js';
 import { findOutlineConflicts } from './outline.js';
+import { resolveBranchRef, resolveLocalBranchRef } from './git.js';
 
 export interface SemanticTarget {
     label: string;
@@ -28,13 +29,38 @@ const PY_FILE = /\.py$/;
 const git = (args: string[], cwd?: string): string =>
     execFileSync('git', args, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], cwd });
 
-/** file content at ref; null if the file doesn't exist there (a legitimate non-conflict). */
+/**
+ * File content at ref; null ONLY when the path genuinely doesn't exist there (a legitimate
+ * non-conflict). Any other git failure throws, so the caller records it as skipped instead of
+ * reading it as "absent".
+ */
 function show(ref: string, file: string, cwd?: string): string | null {
     try {
-        return git(['show', `${ref}:${file}`], cwd);
+        git(['cat-file', '-e', `${ref}:${file}`], cwd);
     } catch {
-        return null;
+        return null; // cat-file -e fails => no such path at that ref
     }
+    return git(['show', `${ref}:${file}`], cwd);
+}
+
+/**
+ * A branch's tip for analysis: the LOCAL branch first (unpushed commits are the point), then
+ * origin's. resolveBranchRef alone prefers the remote and would read a stale tip.
+ */
+export function resolveBranchTip(name: string): string | null {
+    return resolveLocalBranchRef(name) ?? resolveBranchRef(name);
+}
+
+/**
+ * A conflict target's ref from its registry label. A registered branch may be a local branch
+ * (local-first); a cross-machine label "<machine>/<branch>" is another machine's branch, so it
+ * resolves ONLY against origin — a same-named local branch would be the wrong tip.
+ */
+export function resolveTargetRef(label: string): string | null {
+    const local = resolveBranchTip(label);
+    if (local) return local;
+    const remote = resolveBranchRef(label.slice(label.indexOf('/') + 1));
+    return remote?.startsWith('refs/remotes/') ? remote : null;
 }
 
 export function analyzeSemantic(
@@ -61,8 +87,15 @@ export function analyzeSemantic(
                 continue;
             }
 
-            const current = show(currentRef, file, cwd);
-            const other = show(target.ref, file, cwd);
+            let current: string | null;
+            let other: string | null;
+            try {
+                current = show(currentRef, file, cwd);
+                other = show(target.ref, file, cwd);
+            } catch {
+                result.skipped.push(`${file}: could not read from ${target.label}`);
+                continue;
+            }
             if (current === null || other === null) continue; // absent on one side: nothing to conflict
 
             // Three-way against the merge-base; two-way fallback if there isn't one.
@@ -79,9 +112,10 @@ export function analyzeSemantic(
                 found = isPython
                     ? findOutlineConflicts('.py', current, `${currentLabel}:${file}`, other, `${target.label}:${file}`, base)
                     : parser.findSymbolConflicts(current, `${currentLabel}:${file}`, other, `${target.label}:${file}`, base);
-            } catch (err) {
-                // A parser failure is unknown, not "no conflicts".
-                result.skipped.push(`${file}: parse failed (${err instanceof Error ? err.message : String(err)})`);
+            } catch {
+                // A parser failure is unknown, not "no conflicts". No caught message: it can carry
+                // internals and this line is printed.
+                result.skipped.push(`${file}: parse failed`);
                 continue;
             }
             if (!found) {

@@ -21,7 +21,7 @@ import { resolveSupabaseCredentials } from '../lib/supabase-credentials.js';
 import { loadMachineIdentity } from '../lib/machine.js';
 import { getRepoName, resolveBranchRef } from '../lib/git.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
-import { analyzeSemantic } from '../lib/semantic-analysis.js';
+import { analyzeSemantic, resolveBranchTip, resolveTargetRef } from '../lib/semantic-analysis.js';
 import { getCLIPath } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
@@ -735,7 +735,7 @@ export const conflictsCommand = new Command('conflicts')
                 const ref = `refs/spidersan/pr-${n}`;
                 try {
                     // '+' forces the update after a PR force-push (same as the --real arm)
-                    execFileSync('git', ['fetch', '--quiet', 'origin', `+pull/${n}/head:${ref}`], { stdio: 'pipe' });
+                    execFileSync('git', ['fetch', '--quiet', 'origin', `+pull/${n}/head:${ref}`], { stdio: 'pipe', timeout: 30_000 }); // bounded: a stalled origin must not hang the command
                     return ref;
                 } catch {
                     return null;
@@ -746,14 +746,14 @@ export const conflictsCommand = new Command('conflicts')
             const refForLabel = (label: string): string | null => {
                 const n = prNumberByLabel.get(label);
                 if (n !== undefined) return fetchPrRef(n);
-                // ponytail: cross-machine labels are "<machine>/<branch>"; only resolvable if that branch is fetched here
-                return resolveBranchRef(label) ?? resolveBranchRef(label.slice(label.indexOf('/') + 1));
+                // local branch first; "<machine>/<branch>" cross-machine labels resolve only against origin
+                return resolveTargetRef(label);
             };
             // Current side: the PR's own head under --pr (HEAD is just whatever is checked out),
             // else the target branch (HEAD when it is the checked-out one).
             const currentRef = targetPrNumber !== undefined
                 ? fetchPrRef(targetPrNumber)
-                : targetBranch === getCurrentBranch() ? 'HEAD' : resolveBranchRef(targetBranch);
+                : targetBranch === getCurrentBranch() ? 'HEAD' : resolveBranchTip(targetBranch);
 
             const res = analyzeSemantic(
                 targetBranch, currentRef,

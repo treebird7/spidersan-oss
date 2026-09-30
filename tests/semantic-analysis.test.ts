@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'child_process';
 import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { analyzeSemantic } from '../src/lib/semantic-analysis';
+import { analyzeSemantic, resolveBranchTip, resolveTargetRef } from '../src/lib/semantic-analysis';
 
 let repo: string;
 const git = (...a: string[]) => execFileSync('git', a, { cwd: repo, stdio: 'pipe', encoding: 'utf-8' });
@@ -64,5 +64,35 @@ describe('analyzeSemantic', () => {
         const r = analyzeSemantic('bx', 'bx', [{ label: 'by', files: ['big.ts'], ref: 'by' }], repo);
         expect(r.skipped).toEqual([]);
         expect(r.conflicts.map(c => c.symbolName)).toEqual(['big']);
+    });
+
+    describe('ref resolution (P1: a stale origin/<branch> must not shadow the local tip)', () => {
+        let prev: string;
+        beforeAll(() => {
+            // resolveBranchRef/resolveLocalBranchRef run git in process.cwd()
+            prev = process.cwd(); process.chdir(repo);
+            git('checkout', '-q', '-B', 'ahead', 'base');
+            git('update-ref', 'refs/remotes/origin/ahead', 'base');            // stale remote tip
+            writeFileSync(join(repo, 'a.ts'), 'export function login(){ return 99 }\n'); git('commit', '-qam', 'unpushed');
+            git('checkout', '-q', '-B', 'localonly', 'base');
+            git('update-ref', 'refs/remotes/origin/box2branch', 'base');
+            git('checkout', '-q', '-B', 'box2branch', 'base');                  // same-named LOCAL branch, different tip
+        });
+        afterAll(() => process.chdir(prev));
+
+        it('a local branch ahead of a stale origin resolves to the local tip', () => {
+            expect(resolveBranchTip('ahead')).toBe('refs/heads/ahead');
+            expect(resolveTargetRef('ahead')).toBe('refs/heads/ahead');
+        });
+
+        it('falls back to origin when there is no local branch', () => {
+            git('update-ref', 'refs/remotes/origin/remoteonly', 'base');
+            expect(resolveBranchTip('remoteonly')).toBe('refs/remotes/origin/remoteonly');
+        });
+
+        it('a cross-machine label resolves only against origin, never a same-named local branch', () => {
+            expect(resolveTargetRef('otherbox/box2branch')).toBe('refs/remotes/origin/box2branch');
+            expect(resolveTargetRef('otherbox/localonly')).toBeNull(); // local exists, origin does not => unknown
+        });
     });
 });
