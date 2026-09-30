@@ -41,6 +41,17 @@ describe.skipIf(!hasJq)('spidersan-overlap-warn.sh', () => {
         expect(run('a.ts').stdout).toBe('');
     });
 
+    it('names the other session (tbe id) when the registry has one, and still parses without one', () => {
+        stub(json([
+            { branch: 'feat-y', files: ['a.ts'], tier: 2, sessionId: '1a2b3c4d-0000-4000-8000-000000000001' },
+            { branch: 'feat-z', files: ['a.ts'], tier: 1 },
+        ]));
+        const msg: string = JSON.parse(run('a.ts').stdout).hookSpecificOutput.additionalContext;
+        expect(msg).toContain("'feat-y' (TIER 2) — session 1a2b3c4d-0000-4000-8000-000000000001 (tbe watch 1a2b3c4d-0000-4000-8000-000000000001)");
+        // no-session entry: fields must not shift (tier stays 1, no dangling session text)
+        expect(msg).toContain("'feat-z' (TIER 1). Coordinate");
+    });
+
     it('is silent when the overlap is a different file', () => {
         stub(json([{ branch: 'feat-y', files: ['other.ts'], tier: 1 }]));
         expect(run('a.ts').stdout).toBe('');

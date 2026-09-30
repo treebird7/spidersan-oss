@@ -29,7 +29,7 @@ case "$rel" in .spidersan/*) exit 0 ;; esac
 
 out=$(cd "$root" && spidersan conflicts --json 2>/dev/null) || exit 0
 hits=$(printf '%s' "$out" | jq -r --arg f "$rel" \
-    '.conflicts[]? | select(.files | index($f)) | "\(.branch)\t\(.tier)"' 2>/dev/null) || exit 0
+    '.conflicts[]? | select(.files | index($f)) | "\(.branch)\u001f\(.tier)\u001f\(.sessionId // "")"' 2>/dev/null) || exit 0
 [ -n "$hits" ] || exit 0
 
 state_dir="${SPIDERSAN_OVERLAP_STATE_DIR:-$HOME/.spidersan/overlap-warned}"
@@ -38,12 +38,15 @@ state="$state_dir/$(printf '%s' "$root:$branch" | shasum | cut -c1-12)"
 touch "$state" 2>/dev/null || exit 0
 
 msg=""
-while IFS=$'\t' read -r other tier; do
+# \x1f, not tab: read collapses runs of IFS-whitespace, which would shift fields when sessionId is empty
+while IFS=$'\x1f' read -r other tier sid; do
     [ -n "$other" ] || continue
     key="$rel	$other"
     grep -qxF -- "$key" "$state" 2>/dev/null && continue    # already told them
     printf '%s\n' "$key" >> "$state"
-    msg="${msg}⚠️  ${rel} is also registered on '${other}' (TIER ${tier}). Coordinate before going further — check the real overlap: spidersan conflicts --semantic
+    who=""
+    [ -n "$sid" ] && who=" — session ${sid} (tbe watch ${sid})"
+    msg="${msg}⚠️  ${rel} is also registered on '${other}' (TIER ${tier})${who}. Coordinate before going further — check the real overlap: spidersan conflicts --semantic
 "
 done <<< "$hits"
 
