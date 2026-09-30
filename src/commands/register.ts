@@ -27,6 +27,15 @@ export function isExcludedPath(file: string): boolean {
     return EXCLUDED_PATH_SEGMENTS.some(seg => normalised.includes(seg));
 }
 
+/**
+ * The Claude Code session running this command, or undefined. The id is written to the
+ * registry and later printed into agent context, so accept only a plain UUID-ish token.
+ */
+export function resolveSessionId(env: NodeJS.ProcessEnv = process.env): string | undefined {
+    const id = env.CLAUDE_CODE_SESSION_ID?.trim();
+    return id && /^[0-9a-f][0-9a-f-]{7,63}$/i.test(id) ? id : undefined;
+}
+
 export function validateRegistrationFiles(files: string[]): void {
     for (const file of files) {
         validateFilePath(file);
@@ -132,6 +141,8 @@ export const registerCommand = new Command('register')
             }
         }
 
+        const sessionId = resolveSessionId();
+
         // Check if branch already registered
         const existing = await storage.get(branchName);
 
@@ -141,6 +152,8 @@ export const registerCommand = new Command('register')
                 files: [...new Set([...existing.files, ...files])],
                 description: options.description || existing.description,
                 agent: resolvedAgent ?? existing.agent,
+                // latest session to touch the branch is the live one
+                sessionId: sessionId ?? existing.sessionId,
             });
             console.log(renderRegisterResult({
                 branchName,
@@ -158,6 +171,7 @@ export const registerCommand = new Command('register')
                 status: 'active',
                 description: options.description,
                 agent: resolvedAgent,
+                ...(sessionId ? { sessionId } : {}),
             });
             console.log(renderRegisterResult({
                 branchName,
