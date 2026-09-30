@@ -127,17 +127,26 @@ export class ASTParser {
     }
 
     /**
-     * Compare two versions of code and find symbols that differ in content
+     * Compare two versions of code and find symbols that differ in content.
+     * With `baseContent` (the merge-base version) this is a three-way check: a
+     * symbol only conflicts if BOTH sides changed it from base. Without it the
+     * check is two-way and over-reports one-sided edits.
      */
     findSymbolConflicts(
         contentA: string, labelA: string,
-        contentB: string, labelB: string
+        contentB: string, labelB: string,
+        baseContent?: string
     ): SymbolConflict[] {
         const treeA = this.parse(contentA);
         const treeB = this.parse(contentB);
 
         const symbolsA = this.extractSymbols(treeA);
         const symbolsB = this.extractSymbols(treeB);
+
+        const baseContentByName = new Map<string, string | undefined>();
+        if (baseContent !== undefined) {
+            this.extractSymbols(this.parse(baseContent)).forEach(s => baseContentByName.set(s.name, s.content));
+        }
 
         const conflicts: SymbolConflict[] = [];
 
@@ -149,6 +158,11 @@ export class ASTParser {
             const symB = mapB.get(symA.name);
             // If symbol exists in both and content differs
             if (symB && symA.content !== symB.content) {
+                if (baseContent !== undefined) {
+                    const base = baseContentByName.get(symA.name);
+                    // one-sided edit: the other side still equals base, git merges it cleanly
+                    if (symA.content === base || symB.content === base) continue;
+                }
                 conflicts.push({
                     symbolName: symA.name,
                     symbolType: symA.type,
