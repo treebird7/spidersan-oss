@@ -52,6 +52,17 @@ describe.skipIf(!hasJq)('spidersan-overlap-warn.sh', () => {
         expect(msg).toContain("'feat-z' (TIER 1). Coordinate");
     });
 
+    it('says once per checkout that cross-machine was not checked (no creds), and stays silent when it was', () => {
+        const withCm = (crossMachine: string) => `cat <<'J'\n${JSON.stringify({ conflicts: [], crossMachine })}\nJ`;
+        stub(withCm('no-credentials'));
+        const msg: string = JSON.parse(run('a.ts').stdout).hookSpecificOutput.additionalContext;
+        expect(msg).toContain('NOT checked');
+        expect(msg).toContain('SPIDERSAN_SUPABASE_URL/KEY');
+        expect(run('a.ts').stdout).toBe('');          // once per checkout
+        stub(withCm('checked'));
+        expect(run('a.ts').stdout).toBe('');          // checked + no overlap => silent
+    });
+
     it('is silent when the overlap is a different file', () => {
         stub(json([{ branch: 'feat-y', files: ['other.ts'], tier: 1 }]));
         expect(run('a.ts').stdout).toBe('');

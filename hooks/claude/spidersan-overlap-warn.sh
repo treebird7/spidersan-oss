@@ -8,7 +8,7 @@
 #
 # Cross-machine: other machines' branches come from Supabase, so they only show up when this
 # session has SPIDERSAN_SUPABASE_URL/KEY (e.g. launched under `envoak vault inject`). Without them
-# `conflicts` is fail-open and local-only, and this hook stays silent about other machines (tb-f4bl3).
+# `conflicts` is fail-open and local-only; the hook then says so once per checkout (crossMachine field) (tb-f4bl3).
 # ponytail: file-level only (registry + cross-machine when creds are present, same as `conflicts`). No --semantic here:
 # that is 1+N gh calls and belongs on the push path. Known gap: autoreg registers async, so the
 # very first edit of a brand-new file can miss; the next edit of it catches it.
@@ -33,7 +33,9 @@ case "$rel" in .spidersan/*) exit 0 ;; esac
 out=$(cd "$root" && spidersan conflicts --json 2>/dev/null) || exit 0
 hits=$(printf '%s' "$out" | jq -r --arg f "$rel" \
     '.conflicts[]? | select(.files | index($f)) | "\(.branch)\u001f\(.tier)\u001f\(.sessionId // "")"' 2>/dev/null) || exit 0
-[ -n "$hits" ] || exit 0
+# crossMachine (conflicts --json): checked | no-credentials | degraded. Older CLIs omit it => no notice.
+cm=$(printf '%s' "$out" | jq -r '.crossMachine // empty' 2>/dev/null)
+if [ -z "$hits" ]; then case "$cm" in no-credentials|degraded) ;; *) exit 0 ;; esac; fi
 
 state_dir="${SPIDERSAN_OVERLAP_STATE_DIR:-$HOME/.spidersan/overlap-warned}"
 mkdir -p "$state_dir" 2>/dev/null || exit 0
@@ -52,6 +54,16 @@ while IFS=$'\x1f' read -r other tier sid; do
     msg="${msg}⚠️  ${rel} is also registered on '${other}' (TIER ${tier})${who}. Coordinate before going further — check the real overlap: spidersan conflicts --semantic
 "
 done <<< "$hits"
+
+# Local-only is not "no overlap": say so once per checkout, so silence about other machines is explained.
+case "$cm" in no-credentials|degraded)
+    key="*	cross-machine:$cm"
+    if ! grep -qxF -- "$key" "$state" 2>/dev/null; then
+        printf '%s\n' "$key" >> "$state"
+        msg="${msg}ℹ️  Cross-machine overlap NOT checked here (${cm}) — local branches only. Give the session SPIDERSAN_SUPABASE_URL/KEY (e.g. launch under envoak vault inject) to see other machines.
+"
+    fi ;;
+esac
 
 [ -n "$msg" ] || exit 0
 jq -n --arg m "🕷️ Spidersan overlap:
