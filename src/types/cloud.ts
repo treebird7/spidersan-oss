@@ -65,6 +65,7 @@ export interface RegistrySyncResult {
     pushed: number;
     updated: number;
     abandoned: number;                   // local branches removed → marked abandoned
+    abandonedBranches: string[];         // their names — a push that flips rows should say which
     errors: string[];
 }
 

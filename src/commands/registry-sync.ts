@@ -87,6 +87,7 @@ export const registrySyncCommand = new Command('registry-sync')
             console.log(`  ✅ Pushed ${result.pushed} active branch(es)`);
             if (result.updated > 0) console.log(`  🔄 Updated ${result.updated} non-active branch(es)`);
             if (result.abandoned > 0) console.log(`  🗑️  Marked ${result.abandoned} removed branch(es) as abandoned`);
+            for (const name of result.abandonedBranches) console.log(`       - ${name}`);
             console.log(`\n  Machine: ${machine.name} (${machine.hostname})`);
             console.log(`  Repo: ${repoName}`);
         }

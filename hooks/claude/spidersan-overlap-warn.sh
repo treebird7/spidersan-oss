@@ -6,7 +6,10 @@
 # Install (yourself — the user-level Claude config is config-guarded), AFTER spidersan-autoreg.sh in the same matcher:
 #   { "type": "command", "command": "/path/to/spidersan/hooks/claude/spidersan-overlap-warn.sh", "timeout": 8 }
 #
-# ponytail: file-level only (registry + cross-machine, same as `conflicts`). No --semantic here:
+# Cross-machine: other machines' branches come from Supabase, so they only show up when this
+# session has SPIDERSAN_SUPABASE_URL/KEY (e.g. launched under `envoak vault inject`). Without them
+# `conflicts` is fail-open and local-only, and this hook stays silent about other machines (tb-f4bl3).
+# ponytail: file-level only (registry + cross-machine when creds are present, same as `conflicts`). No --semantic here:
 # that is 1+N gh calls and belongs on the push path. Known gap: autoreg registers async, so the
 # very first edit of a brand-new file can miss; the next edit of it catches it.
 set -uo pipefail

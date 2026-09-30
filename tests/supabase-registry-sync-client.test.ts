@@ -78,6 +78,7 @@ describe('SupabaseRegistrySyncClientImpl', () => {
             pushed: 1,
             updated: 1,
             abandoned: 1,
+            abandonedBranches: ['stale-remote'],
             errors: [],
         });
         expect(fetchFn).toHaveBeenCalledTimes(3);
