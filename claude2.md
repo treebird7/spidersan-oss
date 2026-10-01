@@ -91,7 +91,7 @@ Core: `init`, `register`, `list`, `conflicts`, `merge-order`, `ready-check`, `de
 | `workers/api-proxy/` | Cloudflare Worker — hosted LLM proxy with cost guardrails (`wrangler.toml`). |
 | `workers/keys/` | Cloudflare Worker — key issuance, Turnstile-gated. |
 | `migrations/` + `supabase/migrations/` | SQL migrations, range **200–299**, `spidersan` schema. Always `IF NOT EXISTS` / `IF EXISTS`. |
-| `hooks/` | Git hooks: `post-checkout`, `post-checkout-release`. |
+| `hooks/` | `claude/` — Claude Code hooks (e.g. `spidersan-overlap-warn.sh`). The old git `post-checkout` colony-emit hooks were removed (tb-ba69). |
 | `experiments/` | `ast-locking/` + `crdt-sync/` — experimental sub-packages, NOT shipped. |
 | `.colony/signals/` | JSON signal files for the Colony cross-machine signal bus. |
 | `.agent/skills/SPIDERSAN_WORKFLOW.md` | Agent-facing usage skill. |

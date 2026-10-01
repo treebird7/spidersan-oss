@@ -1,33 +1,22 @@
 # Spidersan Colony Integration
 
-Spidersan connects to [Envoak Colony](https://envoak.dev) — a signal bus for multi-agent coordination. It reads and writes Colony signals to keep the agent fleet aware of which branches are actively being worked on.
+> **The emit side was removed (tb-ba69).** Envoak colony signals were pruned on 2026-08-04
+> (ADR-0002), so `hooks/post-checkout` and `hooks/post-checkout-release` — whose only job was
+> `envoak colony signal` — are deleted, and Spidersan no longer emits `work_claim`/`work_release`.
+> Nothing in `src/` installed those hooks, so `init`/`doctor` never did either. The **read** side
+> below (`pulse`, `stale`, `conflicts`, `colony-subscriber`) still queries `colony_state`, which no
+> longer receives new signals from this repo; cross-machine awareness is `registry-sync` +
+> `cross-conflicts` (Supabase). Treat the sections below as historical until the read side is retired.
 
-Colony is an **optional dependency** — all signal emission and reception is guarded by environment variable checks and wrapped in silent try/catch blocks. Spidersan operates normally when Colony is not configured.
+Spidersan connects to [Envoak Colony](https://envoak.dev) — a signal bus for multi-agent coordination. It used to read and write Colony signals to keep the agent fleet aware of which branches were being worked on; only the read side remains.
+
+Colony is an **optional dependency** — signal reception is guarded by environment variable checks and wrapped in silent try/catch blocks. Spidersan operates normally when Colony is not configured.
 
 ---
 
 ## Setup
 
-### 1. Initialize (auto-installs hook)
-
-```bash
-spidersan init
-```
-
-`init` now automatically:
-- Copies `hooks/post-checkout` → `.git/hooks/post-checkout` in the current repo
-- Sets up `~/.git-template/hooks/` so all future `git clone` repos get the hook automatically
-- Sets `git config --global init.templateDir ~/.git-template`
-
-### 2. For existing repos (already initialized before this feature)
-
-```bash
-spidersan doctor --fix
-```
-
-The `Colony Hook` check in `spidersan doctor` detects whether the hook is present and is a Colony hook. `--fix` installs it silently if missing.
-
-### 3. Set environment variables
+### Environment variables
 
 | Variable | Description |
 |---|---|
@@ -36,53 +25,11 @@ The `Colony Hook` check in `spidersan doctor` detects whether the hook is presen
 | `COLONY_SUPABASE_URL` | MycToak Supabase project URL (for reading Colony state). |
 | `COLONY_SUPABASE_KEY` | Supabase anon key (public — no JWT needed, migration 025 grants SELECT). |
 
-`COLONY_SESSION_ID` and `COLONY_AGENT_KEY_ID` are needed for **emitting** signals (hook + abandon/merged commands).
+`COLONY_SESSION_ID` and `COLONY_AGENT_KEY_ID` were only used for **emitting** signals — no longer used here.
 `COLONY_SUPABASE_URL` + `COLONY_SUPABASE_KEY` are needed for **reading** Colony state (`pulse`, `stale`, `conflicts`).
 
 ---
 
-## Signals emitted
-
-### `work_claim` — branch checkout
-
-**Trigger:** `git checkout <branch>` (branch switch only, not file checkout)
-
-**When:** Automatically via the `post-checkout` git hook.
-
-**Payload:**
-```json
-{
-  "branch": "<branch-name>",
-  "files": [],
-  "repo": "<repo-directory-name>"
-}
-```
-
-**Status:** `in-progress`
-
-### `work_release` — branch abandoned or merged
-
-**Trigger:** `spidersan abandon [branch]` or `spidersan merged [branch]`
-
-**When:** After the branch registry is updated.
-
-**Payload:**
-```json
-{
-  "branch": "<branch-name>",
-  "repo": "<repo-directory-name>"
-}
-```
-
-**Status:** `idle`
-
-### Manual release
-
-For scripted cleanup outside the CLI:
-
-```bash
-bash hooks/post-checkout-release <branch-name>
-```
 
 ---
 
@@ -144,23 +91,12 @@ Pulls all other machines' branch registries from Supabase, compares file overlap
 | 🟠 TIER 2 | PAUSE | Coordinate with remote agent before proceeding |
 | 🟡 TIER 1 | WARN | Proceed with caution |
 
-### `spidersan doctor --fix`
-
-```bash
-spidersan doctor          # shows Colony Hook status
-spidersan doctor --fix    # auto-installs hook if missing
-```
 
 ---
 
 ## How it works end-to-end
 
-1. Agent runs `spidersan init` — hook installed in `.git/hooks/` + `~/.git-template/` configured.
-2. Agent starts a Colony session via `envoak colony enlist` — sets `COLONY_SESSION_ID`.
-3. Agent checks out a branch — `post-checkout` hook fires, emits `work_claim` to Colony.
-4. Other agents run `spidersan pulse` — Colony signals sync into their local registry.
-5. `spidersan conflicts` now sees cross-agent file overlap and reports it.
-6. When the agent runs `spidersan abandon` or `spidersan merged` — `work_release` signal emitted; other agents' next `pulse` removes the branch from their registries.
+Removed with the emit side — there is no longer a writer for `colony_state` in this repo.
 
 ---
 
