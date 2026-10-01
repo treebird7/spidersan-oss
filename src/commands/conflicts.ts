@@ -78,19 +78,22 @@ export function crossMachineBranches(views: MachineRegistryView[]): Branch[] {
     return branches;
 }
 
-async function fetchCrossMachineBranches(): Promise<{ branches: Branch[]; degraded: boolean }> {
+/** checked = Supabase answered; no-credentials = never asked (local-only by config); degraded = asked and failed. */
+export type CrossMachineStatus = 'checked' | 'no-credentials' | 'degraded';
+
+async function fetchCrossMachineBranches(): Promise<{ branches: Branch[]; degraded: boolean; status: CrossMachineStatus }> {
     try {
         const creds = await resolveSupabaseCredentials();
-        if (!creds) return { branches: [], degraded: false };
+        if (!creds) return { branches: [], degraded: false, status: 'no-credentials' };
 
         const machine = await loadMachineIdentity();
         const supabase = new SupabaseStorage(creds);
         // Excluding our own machine_id matters: without it this machine's own
         // pushed rows come back and conflict against themselves.
         const views = await supabase.pullRegistries(getRepoName(), machine.id);
-        return { branches: crossMachineBranches(views), degraded: false };
+        return { branches: crossMachineBranches(views), degraded: false, status: 'checked' };
     } catch {
-        return { branches: [], degraded: true };
+        return { branches: [], degraded: true, status: 'degraded' };
     }
 }
 
@@ -811,6 +814,7 @@ export const conflictsCommand = new Command('conflicts')
             console.log(JSON.stringify({
                 branch: targetBranch,
                 conflicts,
+                crossMachine: cross.status,
                 summary: {
                     tier3: tier3Count,
                     tier2: tier2Count,
