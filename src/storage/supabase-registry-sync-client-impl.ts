@@ -75,7 +75,7 @@ export class SupabaseRegistrySyncClientImpl implements SupabaseRegistrySyncClien
         repoPath: string,
         branches: Branch[],
     ): Promise<RegistrySyncResult> {
-        const result: RegistrySyncResult = { pushed: 0, updated: 0, abandoned: 0, errors: [] };
+        const result: RegistrySyncResult = { pushed: 0, updated: 0, abandoned: 0, abandonedBranches: [], errors: [] };
         const now = new Date().toISOString();
 
         const rows = branches.map((branch) => ({
@@ -142,6 +142,7 @@ export class SupabaseRegistrySyncClientImpl implements SupabaseRegistrySyncClien
 
                 if (patchResp.ok) {
                     result.abandoned += toAbandon.length;
+                    result.abandonedBranches.push(...toAbandon.map((row) => row.branch_name));
                 } else {
                     result.errors.push(`Failed to batch abandon: ${await patchResp.text()}`);
                 }
