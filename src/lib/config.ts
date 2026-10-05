@@ -33,6 +33,8 @@ export interface SpidersanConfig {
     conflicts: {
         highSeverityPatterns: string[];
         mediumSeverityPatterns: string[];
+        /** Repo paths scanned by `conflicts --ecosystem` (see lib/ecosystem-env.ts). */
+        ecosystemRepos: string[];
     };
     storage: {
         type: 'local' | 'supabase';
@@ -68,6 +70,7 @@ const DEFAULT_CONFIG: SpidersanConfig = {
     conflicts: {
         highSeverityPatterns: ['package\\.json$', 'migrations/', '\\.env', 'middleware\\.', 'route\\.ts$'],
         mediumSeverityPatterns: ['components/ui/', 'lib/', 'hooks/', 'utils/'],
+        ecosystemRepos: [],
     },
     storage: {
         type: 'local',
@@ -118,6 +121,16 @@ function validateConfig(config: unknown): ValidationError[] {
             }
             if (rc.enableWipDetection !== undefined && typeof rc.enableWipDetection !== 'boolean') {
                 errors.push({ path: 'readyCheck.enableWipDetection', message: 'Must be a boolean' });
+            }
+        }
+    }
+
+    // Validate conflicts.ecosystemRepos
+    if (obj.conflicts !== undefined && typeof obj.conflicts === 'object' && obj.conflicts !== null) {
+        const cf = obj.conflicts as Record<string, unknown>;
+        if (cf.ecosystemRepos !== undefined) {
+            if (!Array.isArray(cf.ecosystemRepos) || !cf.ecosystemRepos.every((p) => typeof p === 'string')) {
+                errors.push({ path: 'conflicts.ecosystemRepos', message: 'Must be an array of strings' });
             }
         }
     }

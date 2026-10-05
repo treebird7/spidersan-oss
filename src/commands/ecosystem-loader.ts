@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 import { createRequire } from 'module';
 import { loadConfig } from '../lib/config.js';
+import { isPluginDisabledByEnv } from '../lib/ecosystem-env.js';
 
 interface EcosystemStatus {
     available: boolean;
@@ -14,11 +15,6 @@ interface EcosystemStatus {
 
 const require = createRequire(import.meta.url);
 const status: EcosystemStatus = { available: false, loaded: false };
-
-function isEnvDisabled(value?: string): boolean {
-    if (!value) return false;
-    return ['0', 'false', 'no', 'off'].includes(value.toLowerCase());
-}
 
 function readCoreVersion(): string | undefined {
     try {
@@ -58,8 +54,7 @@ function isMajorMismatch(coreVersion?: string, requiredRange?: string): boolean 
 async function loadEcosystemModule(): Promise<unknown | null> {
     try {
         const config = await loadConfig();
-        const envDisable = isEnvDisabled(process.env.SPIDERSAN_ECOSYSTEM) ||
-            isEnvDisabled(process.env.SPIDERSAN_CORE_ONLY);
+        const envDisable = isPluginDisabledByEnv();
         if (!config.ecosystem.enabled || envDisable) {
             return null;
         }

@@ -12,6 +12,7 @@ import { createInterface } from 'readline/promises';
 import { stdin as input, stdout as output } from 'process';
 import { resolveSupabaseEnv } from '../lib/supabase-credentials.js';
 import { CONFIG_FILES, loadConfigWithSources } from '../lib/config.js';
+import { isPluginDisabledByEnv, resolveEcosystemRepos } from '../lib/ecosystem-env.js';
 
 const DEFAULT_CONFIG_FILENAME = CONFIG_FILES[0];
 
@@ -101,11 +102,6 @@ function getNestedValue(obj: unknown, path: string): unknown {
         current = (current as Record<string, unknown>)[part];
     }
     return current;
-}
-
-function isEnvDisabled(value?: string): boolean {
-    if (!value) return false;
-    return ['0', 'false', 'no', 'off'].includes(value.toLowerCase());
 }
 
 function upsertEnvVar(content: string, key: string, value: string): string {
@@ -234,8 +230,8 @@ export const _testable = {
 
 async function printConfig(options: { json?: boolean } = {}): Promise<void> {
     const result = await loadConfigWithSources();
-    const envDisable = isEnvDisabled(process.env.SPIDERSAN_ECOSYSTEM) ||
-        isEnvDisabled(process.env.SPIDERSAN_CORE_ONLY);
+    const envDisable = isPluginDisabledByEnv();
+    const ecosystemRepos = resolveEcosystemRepos(result.config);
     // Shared resolution: reporting only the bare SUPABASE_* names made
     // `spidersan config` claim "not set" under `envoak vault inject` (which only
     // passes the scoped SPIDERSAN_SUPABASE_* names) — misleading on the exact
@@ -249,6 +245,8 @@ async function printConfig(options: { json?: boolean } = {}): Promise<void> {
             ecosystem: {
                 enabled: result.config.ecosystem.enabled && !envDisable,
                 disabledByEnv: envDisable,
+                repos: ecosystemRepos.repos,
+                reposSource: ecosystemRepos.source,
             },
             supabase: {
                 envConfigured: Boolean(envSupabaseUrl && envSupabaseKey),
@@ -275,6 +273,7 @@ async function printConfig(options: { json?: boolean } = {}): Promise<void> {
     if (envDisable) {
         console.log('   - disabled by environment override');
     }
+    console.log(`  Ecosystem repos (conflicts --ecosystem): ${ecosystemRepos.repos.length} (${ecosystemRepos.source})`);
 
     const agentName = result.config.agent.name?.trim();
     console.log(`  Agent: ${agentName ? agentName : 'not set'}`);

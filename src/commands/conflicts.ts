@@ -12,7 +12,6 @@ import { Command } from 'commander';
 import { compilePatterns } from '../lib/regex-utils.js';
 import { execFileSync, spawnSync } from 'child_process';
 import { basename } from 'path';
-import { homedir } from 'os';
 import { getStorage } from '../storage/index.js';
 import { SupabaseStorage } from '../storage/supabase.js';
 import type { Branch } from '../storage/adapter.js';
@@ -25,6 +24,7 @@ import { analyzeSemantic, resolveBranchTip, resolveCrossMachineRef } from '../li
 import { getCLIPath } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
+import { ECOSYSTEM_UNCONFIGURED_HINT, resolveEcosystemRepos } from '../lib/ecosystem-env.js';
 import { logActivity } from '../lib/activity.js';
 import { isGhAvailable, getPRDetails, getPRLabels, listOpenPRs, getPRChangedFiles } from '../lib/github.js';
 import { analyzeCarries, type CarriesReport } from '../lib/carries.js';
@@ -168,52 +168,6 @@ function suggestAddAddResolution(conflicts: Array<{ branch: string; files: strin
 }
 
 // ── Ecosystem scan ────────────────────────────────────────────────────────────
-
-/**
- * Default ecosystem repos. Configurable via SPIDERSAN_ECOSYSTEM env var.
- * Falls back to ~/Dev/ structure (old) or ~/Dev/projects/ structure (new).
- */
-function getDefaultEcosystemRepos(): string[] {
-    if (process.env.SPIDERSAN_ECOSYSTEM) {
-        return process.env.SPIDERSAN_ECOSYSTEM.split(':').map((r) => r.trim()).filter(Boolean);
-    }
-    const homeDir = process.env.HOME || homedir();
-    return [
-        `${homeDir}/Dev/Envoak`,
-        `${homeDir}/Dev/treebird-internal`,
-        `${homeDir}/Dev/spidersan`,
-        `${homeDir}/Dev/Toak`,
-        `${homeDir}/Dev/flockview`,
-        `${homeDir}/Dev/mappersan`,
-        `${homeDir}/Dev/treebird`,
-        `${homeDir}/Dev/treementor`,
-        // Agent repos
-        `${homeDir}/Dev/Artisan`,
-        `${homeDir}/Dev/Birdsan`,
-        `${homeDir}/Dev/Cosan`,
-        `${homeDir}/Dev/Marksan`,
-        `${homeDir}/Dev/Sherlocksan`,
-        `${homeDir}/Dev/Teachersan`,
-        `${homeDir}/Dev/Watsan`,
-        `${homeDir}/Dev/Yosef`,
-        // Tools & libs
-        `${homeDir}/Dev/boidz`,
-        `${homeDir}/Dev/beads`,
-        `${homeDir}/Dev/birdseye`,
-        `${homeDir}/Dev/invoak`,
-        `${homeDir}/Dev/myceliumail`,
-        `${homeDir}/Dev/nanoclaw`,
-        `${homeDir}/Dev/nanoclaw-private`,
-        `${homeDir}/Dev/proaksy`,
-        `${homeDir}/Dev/sasu`,
-        `${homeDir}/Dev/skills`,
-        `${homeDir}/Dev/spidersan`,
-        `${homeDir}/Dev/treebird-heavy`,
-        `${homeDir}/Dev/Recovery-Tree-New`,
-    ];
-}
-
-const DEFAULT_ECOSYSTEM_REPOS = getDefaultEcosystemRepos();
 
 interface EcosystemRepoResult {
     repo: string;
@@ -566,9 +520,14 @@ export const conflictsCommand = new Command('conflicts')
 
         // ── Ecosystem shortcut ───────────────────────────────────────────────
         if (options.ecosystem) {
-            const repos = options.repos
-                ? (options.repos as string).split(',').map((r: string) => r.trim()).filter(Boolean)
-                : DEFAULT_ECOSYSTEM_REPOS;
+            // No built-in repo list ships with the package: the list comes from
+            // --repos, SPIDERSAN_ECOSYSTEM (path list) or conflicts.ecosystemRepos.
+            const { repos } = resolveEcosystemRepos(await loadConfig(), {
+                reposFlag: options.repos as string | undefined,
+            });
+            if (repos.length === 0) {
+                console.error(`ℹ️  ${ECOSYSTEM_UNCONFIGURED_HINT}`);
+            }
             runEcosystemScan(repos, !!options.json);
             finish(0);
             return;
