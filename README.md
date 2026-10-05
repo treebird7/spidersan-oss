@@ -88,7 +88,7 @@ spidersan merge-order
 | `spidersan register --files` | Register a branch with the files being modified |
 | `spidersan list` | List all registered branches and their file ownership |
 | `spidersan conflicts` | Detect file conflicts between branches (tiered: T1/T2/T3) |
-| `spidersan conflicts --ecosystem` | Aggregate conflict scan across all repos in your dev folder |
+| `spidersan conflicts --ecosystem` | Aggregate conflict scan across the repos you configure (see [Ecosystem scan](#ecosystem-scan-repo-list)) |
 | `spidersan conflicts --real` | Compute TRUE merge conflicts via `git merge-tree` (vs registry overlap) |
 | `spidersan merge-order` | Get topologically-sorted optimal merge order |
 | `spidersan ready-check` | Verify branch is ready to merge (no WIP, no conflicts) |
@@ -108,6 +108,22 @@ spidersan merge-order
 | `spidersan daily` | Show branch-relevant entries from daily collab logs |
 | `spidersan rebase-helper` | Detect and guide through local git rebase states |
 | `spidersan git-watch` | Subscribe to GitHub webhook events — cross-machine push/PR/create/delete with AI conflict routing |
+
+#### Ecosystem scan repo list
+
+`conflicts --ecosystem` ships with no built-in repo list. Pick one (first match wins):
+
+1. `--repos /path/to/repo-a,/path/to/repo-b`
+2. `SPIDERSAN_ECOSYSTEM=/path/to/repo-a:/path/to/repo-b` (colon-separated)
+3. A config file (`~/.spidersanrc`, `.spidersanrc`, `.spidersanrc.json` or `.spidersan.config.json`):
+
+```json
+{ "conflicts": { "ecosystemRepos": ["~/code/repo-a", "/path/to/repo-b"] } }
+```
+
+A project-level file's list replaces the global one rather than extending it. With nothing configured the scan prints a hint and checks no repos.
+
+Plugin switches (separate from the repo list): `SPIDERSAN_CORE_ONLY=1` or `SPIDERSAN_ECOSYSTEM=0` disables the optional `spidersan-ecosystem` plugin. Neither value is read as a repo path.
 
 ### 🧠 AI Commands (Gemma 4 / LM Studio)
 
