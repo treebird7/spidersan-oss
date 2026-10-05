@@ -19,7 +19,7 @@
  * - Field mapping: task (branch name), files (top-level column), agent_label
  *   (top-level from colony_state view — no payload parsing needed).
  *
- * 🍄 hey tsan — the mycelium remembers. migration 025 opened the gradient.
+ * 🍄 hey treesan — the mycelium remembers. migration 025 opened the gradient.
  *    your spiders can smell the pheromones now. — mycsan
  */
 

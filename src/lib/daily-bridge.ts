@@ -12,7 +12,7 @@ export interface DailyEntry {
     date: string;         // YYYY-MM-DD
     time: string;         // from table cell or 'unknown'
     agent: string;        // raw agent cell text
-    agentId: string;      // normalised lowercase id e.g. 'birdsan', 'ssan'
+    agentId: string;      // normalised lowercase id e.g. 'birdsan', 'spidersan'
     content: string;      // full entry text
     excerpt: string;      // first ~120 chars
     matchedTerms: string[]; // which search terms matched
@@ -44,7 +44,7 @@ const DAILY_FILE_REGEX = /^\d{4}-\d{2}-\d{2}-daily\.md$/;
 const AGENT_EMOJI_MAP: Record<string, string> = {
     '🌳': 'treesan',
     '🐦': 'birdsan',
-    '🔍': 'sherlocksan',
+    '🔍': 'sherlock',
     '🍄': 'mycsan',
     '🕷️': 'spidersan',
     '🤖': 'codex',
@@ -81,7 +81,7 @@ function looksLikeTimeOrAgent(s: string): boolean {
     if (/^(dawn|today|morning|closing|late|evening|afternoon|session|--|\d+:\d+|`\d+:\d+`)$/i.test(s)) return true;
     // Agent-like: contains emoji or known agent name
     if (/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/u.test(s)) return true;
-    if (/\b(treesan|birdsan|sherlocksan|mycsan|spidersan|codex|artisan|watsan|nanoclaw|sasusan|mappersan|teachersan|copilot)\b/i.test(s)) return true;
+    if (/\b(treesan|birdsan|sherlock|sherlocksan|mycsan|spidersan|codex|artisan|watsan|nanoclaw|sasusan|mappersan|teachersan|copilot)\b/i.test(s)) return true;
     return false;
 }
 

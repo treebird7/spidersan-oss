@@ -21,7 +21,7 @@ const VALID_FILE_PATH = /^[./a-zA-Z0-9][a-zA-Z0-9/_.@\- ]{0,200}$/;
 const SHELL_METACHARACTERS = /[`$(){}[\]|;&<>\\]/g;
 
 /**
- * Validate agent ID (e.g., "sherlocksan", "watsan-1", "agent_01")
+ * Validate agent ID (e.g., "sherlock", "watsan-1", "agent_01")
  * @throws Error if invalid
  */
 export function validateAgentId(agentId: string): string {

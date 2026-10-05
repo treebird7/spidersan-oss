@@ -38,7 +38,7 @@ function commitFile(name: string, content: string, msg: string): void {
 }
 
 beforeAll(() => {
-    repo = mkdtempSync(join(tmpdir(), 'ssan-squash-'));
+    repo = mkdtempSync(join(tmpdir(), 'spidersan-squash-'));
     prevCwd = process.cwd();
     git('init', '-b', 'main');
     commitFile('base.txt', 'base\n', 'base');

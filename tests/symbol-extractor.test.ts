@@ -10,7 +10,7 @@ import {
 
 describe('extractSymbols', () => {
     let dir: string;
-    beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'ssan-symx-')); });
+    beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'spidersan-symx-')); });
     afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 
     function write(name: string, content: string): string {

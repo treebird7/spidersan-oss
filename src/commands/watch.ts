@@ -347,7 +347,7 @@ Press Ctrl+C to stop.
         }
 
         // Start watching
-        // SECURITY FIX: Always limit depth to prevent EMFILE errors (Sherlocksan 2026-01-02)
+        // SECURITY FIX: Always limit depth to prevent EMFILE errors (Sherlock 2026-01-02)
         const watcher = chokidar.watch(watchTargets, {
             ignored: !options.legacy ? [
                 ...smartIgnores,
@@ -561,7 +561,7 @@ async function runObserverTick(
             broadcastedConflicts.add(key);
             const repoName = path.basename(alert.repo);
             const filesStr = alert.files.length > 0 ? alert.files.join(', ') : 'multiple files';
-            const message = `ssan TIER 3: conflict in ${repoName} — ${filesStr}. Halt writes on affected files.`;
+            const message = `spidersan TIER 3: conflict in ${repoName} — ${filesStr}. Halt writes on affected files.`;
 
             if (dryRun) {
                 console.log(`[DRY-RUN] Would broadcast TIER 3 alert: ${message}`);

@@ -12,7 +12,8 @@ import { queryActivityLog } from '../lib/activity.js';
 const AGENT_COLORS: Record<string, (s: string) => string> = {
     treesan: chalk.green,
     birdsan: chalk.cyan,
-    sherlocksan: chalk.red,
+    sherlock: chalk.red,
+    sherlocksan: chalk.red,   // historical name, still in old dailies
     mycsan: chalk.magenta,
     spidersan: chalk.yellow,
     codex: chalk.gray,
@@ -36,7 +37,7 @@ export function dailyCommand(program: Command) {
         .option('-b, --branch <name>', 'Filter entries mentioning this branch')
         .option('-d, --date <YYYY-MM-DD>', 'Specific date (default: today)')
         .option('-l, --lookback <days>', 'Days to scan back (default: 14)', '14')
-        .option('-a, --agent <id>', 'Filter by agent (e.g. birdsan, ssan)')
+        .option('-a, --agent <id>', 'Filter by agent (e.g. birdsan, spidersan)')
         .option('--tldr', 'One-line-per-entry summary mode')
         .option('--context', 'Full context: activity log + daily entries for the branch')
         .option('--all', 'Show all entries, not just branch-relevant ones')
