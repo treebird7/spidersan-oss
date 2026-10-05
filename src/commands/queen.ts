@@ -269,14 +269,14 @@ Dry-run:  ${dryRun}
 
         // Generate job scripts
         const scriptDir = dryRun
-            ? path.join(os.tmpdir(), 'ssan-queen-dry-run')
-            : mkdtempSync(path.join(os.tmpdir(), 'ssan-queen-'));
+            ? path.join(os.tmpdir(), 'spidersan-queen-dry-run')
+            : mkdtempSync(path.join(os.tmpdir(), 'spidersan-queen-'));
         const manifest: Array<{ repo: string; script: string; queenSignalId: string | null }> = [];
 
         for (const repo of repos) {
             const script = buildGroundJobScript(repo, options.task, jobType, queenSignalId);
             const repoName = path.basename(repo);
-            const scriptPath = path.join(scriptDir, `sub-ssan-${repoName}.sh`);
+            const scriptPath = path.join(scriptDir, `sub-spidersan-${repoName}.sh`);
 
             if (!dryRun) {
                 try {
@@ -303,7 +303,7 @@ Dry-run:  ${dryRun}
 [QUEEN] ${repos.length} job script(s) written to ${scriptDir}
 [QUEEN] Run all in parallel:
 
-  for f in ${scriptDir}/sub-ssan-*.sh; do bash "$f" & done; wait
+  for f in ${scriptDir}/sub-spidersan-*.sh; do bash "$f" & done; wait
 
 [QUEEN] Monitor via: spidersan queen status --queen-signal-id ${queenSignalId ?? '<id>'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);

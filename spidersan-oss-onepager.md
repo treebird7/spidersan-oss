@@ -12,7 +12,7 @@ Most agents are isolated islands. Spidersan connects them.
 ### 2. 🔒 The "Digital Talking Stick" (Locking)
 Prevent the "too many cooks" problem where agents overwrite each other.
 *   **How it works:** Before touching a file or function, an agent grabs a lock (`spidersan lock`).
-*   **The Magic:** Other agents check the lock status before acting. If `Sherlocksan` is securing the database class, `Birdsan` knows to wait. It turns chaos into a queue.
+*   **The Magic:** Other agents check the lock status before acting. If `Sherlock` is securing the database class, `Birdsan` knows to wait. It turns chaos into a queue.
 
 ### 3. 🧬 DNA-Level Security (AST Hashing)
 Locking by filename isn't enough—files change lines all the time.

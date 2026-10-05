@@ -68,7 +68,7 @@ export async function analyzeSalvage(
     return report;
   }
 
-  const tmpDir = mkdtempSync(join(tmpdir(), 'ssan-salvage-'));
+  const tmpDir = mkdtempSync(join(tmpdir(), 'spidersan-salvage-'));
 
   try {
     for (const file of branchFiles) {

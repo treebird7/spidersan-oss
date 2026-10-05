@@ -20,7 +20,7 @@ interface Branch {
     name: string;           // git branch name
     files: string[];        // files the agent declared it will modify
     registeredAt: Date;
-    agent?: string;         // e.g. "ssan", "copilot", "birdsan"
+    agent?: string;         // e.g. "spidersan", "copilot", "birdsan"
     status: 'active' | 'completed' | 'abandoned';
     description?: string;
 }

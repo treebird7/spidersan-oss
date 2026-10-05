@@ -58,16 +58,15 @@ function spidersanEnv(): NodeJS.ProcessEnv {
 
 const TIERS: Record<string, { agents: string[]; commands: string[] }> = {
   coordinator: {
-    agents: ['birdsan', 'bsan', 'treebird', 'trbr'],
+    agents: ['birdsan', 'treebird'],
     commands: ['sync', 'pull', 'push', 'status', 'conflicts', 'log'],
   },
   specialist: {
-    agents: ['spidersan', 'ssan', 'sherlock', 'srlk', 'watsan', 'wsan',
-             'treesan', 'tsan', 'mycsan', 'mycs'],
+    agents: ['spidersan', 'sherlock', 'watsan', 'treesan', 'mycsan'],
     commands: ['sync', 'pull', 'push', 'status', 'conflicts', 'log'],
   },
   worker: {
-    agents: ['nemosan', 'nemo', 'codex', 'codx', 'goose', 'goos'],
+    agents: ['nemosan', 'codex', 'goose'],
     commands: ['status', 'log'],
   },
 };
