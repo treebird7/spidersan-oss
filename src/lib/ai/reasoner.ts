@@ -49,7 +49,7 @@ Decision: If \`rescue --symbols\` identifies salvageable code → cherry-pick. I
 - TIER 3 (BLOCK): Critical file (auth, secrets, env) — halt, coordinate immediately.
 - TIER 2 (PAUSE): Important file (package.json, config, server) — coordinate before merging.
 - TIER 1 (WARN): Adjacent/related files — proceed with caution.
-Commands: conflicts → conflicts --tier 3 → conflicts --strict → conflicts --json → conflicts --wake
+Commands: conflicts → conflicts --tier 3 → conflicts --strict → conflicts --json → conflicts --notify
 Reminder: Tier escalation is mandatory for TIER 3 conflicts. Always reference the TIER level when reporting conflicts.
 
 ### SCENARIO 4: WIP / Not-Ready Code
@@ -69,7 +69,7 @@ Commands: torrent decompose <TASK> -c N → torrent create <CHILD> -a <agent> �
 Reminder: Ensure all child tasks are marked completed before executing \`torrent merge-order\`.
 
 ### SCENARIO 7: Tangled Dependencies
-Commands: merge-order → merge-order --json → merge-order --blocking-count → depends <branch> → conflicts --wake
+Commands: merge-order → merge-order --json → merge-order --blocking-count → depends <branch> → conflicts --notify
 Pattern: Merge foundation first → resolve blockers → re-check dependencies → merge dependents.
 
 ### SCENARIO 8: Stale Branch Cleanup
@@ -142,7 +142,7 @@ About to merge? → conflicts → ready-check → depends --show → merge-order
 Branches piling up? → stale → cleanup → sync
 Parallelizing across agents? → queen spawn → queen status (NOT torrent decompose)
 Multi-agent serial task? → torrent decompose → create → complete → tree
-Blocked by another? → conflicts --wake → depends → merge-order
+Blocked by another? → conflicts --notify → depends → merge-order
 Cross-machine issues? → pulse → cross-conflicts → doctor --remote
 Need a summary? → daily --branch <name> --tldr
 Investigating recent activity? → log → log --since 7d → daily → daily --context

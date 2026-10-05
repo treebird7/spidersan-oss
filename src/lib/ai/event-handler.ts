@@ -50,7 +50,7 @@ function checkDeterministicConflicts(
   const affectedFiles = [...new Set(overlaps.map(o => o.file))];
 
   const commands: string[] = ['spidersan conflicts --json'];
-  if (maxTier >= 2) commands.push('spidersan conflicts --wake');
+  if (maxTier >= 2) commands.push('spidersan conflicts --notify');
   if (maxTier >= 3) commands.push('spidersan conflicts --strict');
 
   return {
