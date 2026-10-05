@@ -226,10 +226,10 @@ spidersan key-import <other-agent-key>     # Import recipient's public key
 
 ### EMFILE Error Prevention
 **Problem:** `EMFILE: too many open files` on macOS  
-**Solution:** Always use `--smart` flag for collabs:
+**Solution:** the default watcher already prevents it (ignore list + depth 5). There is no `--smart` flag — that was the old name for what is now the default. Only `--legacy` (depth 10, more file descriptors) can hit the limit:
 ```bash
-spidersan watch --smart collab/   # ✅ Use this
-spidersan watch collab/           # ❌ Can hit file limits
+spidersan watch collab/            # ✅ default — EMFILE-safe
+spidersan watch --legacy collab/   # ❌ can hit file limits
 ```
 
 ### Canonical Paths for Collabs
