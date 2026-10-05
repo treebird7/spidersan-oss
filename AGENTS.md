@@ -63,7 +63,7 @@ only. Override them in `.spidersanrc` / `.spidersanrc.json` / `.spidersan.config
 | `SPIDERSAN_SUPABASE_URL` / `SPIDERSAN_SUPABASE_KEY` | Cloud registry credentials; take precedence over `SUPABASE_URL` / `SUPABASE_KEY`, then `storage.*` in config |
 | `SPIDERSAN_AGENT` | Default agent id for `register`, `watch`, `auto`, `torrent` when `-a` is not given |
 | `SPIDERSAN_ECOSYSTEM` | Colon-separated repo paths for `conflicts --ecosystem`; `0`/`false`/`no`/`off` disables the ecosystem plugin |
-| `SPIDERSAN_CORE_ONLY` | `0`/`false`/`no`/`off` also disables the ecosystem plugin |
+| `SPIDERSAN_CORE_ONLY` | `1`/`true`/`yes`/`on` disables the ecosystem plugin (it was inverted before #313) |
 | `SPIDERSAN_ROOM_TOKEN` | Alert room for `conflicts --notify`; unset reports `NOT NOTIFIED` locally |
 
 ## CI auto-register (OIDC)

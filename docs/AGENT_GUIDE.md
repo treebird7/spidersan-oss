@@ -226,9 +226,9 @@ spidersan key-import <other-agent-key>     # Import recipient's public key
 
 ### EMFILE Error Prevention
 **Problem:** `EMFILE: too many open files` on macOS  
-**Solution:** the default watcher already prevents it (ignore list + depth 5). There is no `--smart` flag — that was the old name for what is now the default. Only `--legacy` (depth 10, more file descriptors) can hit the limit:
+**Solution:** the default watcher (the old `--smart` mode, default since 183c5c7) ignores `node_modules`/`.git`/build dirs and caps depth at 5, which avoided EMFILE on the collab trees it was tuned on. It is not a hard descriptor bound — a huge tree within depth 5 can still hit it. `--legacy` (depth 10) is the riskier mode:
 ```bash
-spidersan watch collab/            # ✅ default — EMFILE-safe
+spidersan watch collab/            # ✅ default — ignore list + depth 5
 spidersan watch --legacy collab/   # ❌ can hit file limits
 ```
 
