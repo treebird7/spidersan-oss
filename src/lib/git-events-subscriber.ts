@@ -136,14 +136,25 @@ function appendLog(file: string, entry: Record<string, unknown>): void {
  * Scans provided repoPaths first; if empty, scans all registered repos
  * by reading their .spidersan/registry.json locations from ~/.spidersan.
  */
-function normalizeRemoteUrl(url: string): string {
-    // Normalize ssh and https to "owner/repo"
-    // git@github.com:treebird7/Envoak.git  →  treebird7/Envoak
-    // https://github.com/treebird7/Envoak.git  →  treebird7/Envoak
+export function normalizeRemoteUrl(url: string): string {
+    // Normalize ssh and https to a lowercase "owner/repo" key
+    // git@github.com:treebird7/Envoak.git  →  treebird7/envoak
+    // https://github.com/Treebird-Ecosystem/treebird.git  →  treebird-ecosystem/treebird
+    // Lowercase because GitHub names are case-insensitive and event.repo is GitHub's
+    // canonical casing, which a hand-set remote URL need not match.
     return url
         .replace(/^git@github\.com:/, '')
         .replace(/^https?:\/\/github\.com\//, '')
-        .replace(/\.git$/, '');
+        .replace(/\.git$/, '')
+        .toLowerCase();
+}
+
+// treebird moved to the Treebird-Ecosystem org on 2026-10-11; the old name still
+// redirects, and a webhook or a not-yet-updated clone can report either.
+const TREEBIRD_REPOS = new Set(['treebird-ecosystem/treebird', 'treebird7/treebird']);
+
+export function isTreebirdRepo(repo: string): boolean {
+    return TREEBIRD_REPOS.has(repo.toLowerCase());
 }
 
 function getRemoteForPath(repoPath: string): string | null {
@@ -276,7 +287,7 @@ const TREE_ACTION_HINTS: Record<string, string> = {
 };
 
 /**
- * When a push lands on treebird7/treebird, compare before..after via GitHub API
+ * When a push lands on treebird (either org name), compare before..after via GitHub API
  * and detect newly added gold-pair JSON files. Emits a targeted pending entry
  * per tree so the validation cue is specific and actionable.
  */
@@ -499,7 +510,7 @@ async function handlePush(event: GitEvent, localPaths: string[], log: (m: string
     appendLog(PENDING_LOG, entry);
 
     // Detect newly committed gold pairs in sql-tree / ts-tree
-    if (event.repo === 'treebird7/treebird') {
+    if (isTreebirdRepo(event.repo)) {
         await detectTreePairs(event, log);
     }
 
@@ -709,7 +720,7 @@ async function handleDelete(event: GitEvent, localPaths: string[], log: (m: stri
 
 async function dispatchEvent(event: GitEvent, repoMap: Map<string, string[]>, opts: GitWatchOptions): Promise<void> {
     const log = opts.logger ?? (opts.quiet ? () => {} : (m: string) => console.log(`[git-watch] ${m}`));
-    const localPaths = repoMap.get(event.repo) ?? [];
+    const localPaths = repoMap.get(event.repo.toLowerCase()) ?? [];
 
     opts.onEvent?.(event);
 
