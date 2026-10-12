@@ -62,7 +62,7 @@
     },
     "homepage": "https://github.com/treebird7/spidersan-oss#readme",
     "engines": {
-        "node": ">=18.0.0"
+        "node": ">=20.0.0"
     },
     "dependencies": {
         "@types/blessed": "^0.1.27",
