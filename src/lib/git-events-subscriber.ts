@@ -30,6 +30,10 @@ import { handleEvent } from './ai/event-handler.js';
 import type { EventPayload } from './ai/types.js';
 import { createNotifier, deliver, type Notifier } from './notify.js';
 import { logActivity } from './activity.js';
+import {
+    branchToRegister, agentFor, pushRegistryCreds, repoNameFor, upsertPushRow, abandonPushRow,
+    defaultBranchOf, filesVsTrunk,
+} from './push-registry.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -484,12 +488,69 @@ async function enrichFilesFromGit(repoPath: string, beforeSha: string | null, af
 
 // ─── Event handlers ───────────────────────────────────────────────────────────
 
+// ─── Pushed-branch registration (replaces the auto-register Actions workflow) ─
+
+let warnedNoPushCreds = false;
+const warnedNoTrunk = new Set<string>();
+
+/**
+ * Register a pushed branch in spider_registries so `conflicts` on every machine sees
+ * it, whoever pushed it. Needs SPIDERSAN_SUPABASE_* (service role); without it, skip
+ * with one log line. Skips repos with no local clone: repo_name must be the clone's
+ * basename to match what `conflicts` queries.
+ */
+export async function registerPushedBranch(
+    event: GitEvent,
+    localPaths: string[],
+    log: (m: string) => void,
+    env: NodeJS.ProcessEnv = process.env,
+    fetchFn: typeof fetch = fetch,
+): Promise<'registered' | 'skipped' | 'failed'> {
+    if (event.event_type !== 'push' || !localPaths.length) return 'skipped';
+    const creds = pushRegistryCreds(env);
+    if (!creds) {
+        if (!warnedNoPushCreds) {
+            warnedNoPushCreds = true;
+            log('ℹ  pushed branches are not registered: SPIDERSAN_SUPABASE_URL/KEY not set for git-watch');
+        }
+        return 'skipped';
+    }
+    if (event.sender_login?.endsWith('[bot]')) return 'skipped';   // dependency bots: lockfile churn, not work
+    const token = resolveGithubToken(env);
+    const trunk = await defaultBranchOf(event.repo, token, fetchFn);
+    if (!trunk) {
+        if (!warnedNoTrunk.has(event.repo)) {
+            warnedNoTrunk.add(event.repo);
+            log(`⚠  pushed branches in ${event.repo} are not registered: GitHub would not return its default branch` +
+                (token ? '' : ' (no SPIDERSAN_GITHUB_TOKEN — a private repo answers 404)'));
+        }
+        return 'skipped';
+    }
+    const branch = branchToRegister(event, trunk);
+    if (!branch) return 'skipped';
+    const files = await filesVsTrunk(event.repo, trunk, event.after_sha as string, token, fetchFn);
+    if (!files?.length) return 'skipped';
+    const ok = await upsertPushRow(creds, {
+        repoName: repoNameFor(localPaths[0]),
+        repoPath: localPaths[0],
+        branch,
+        files,
+        agent: agentFor(branch, event.sender_login),
+    }, fetchFn);
+    log(ok
+        ? `🕸  registered pushed branch ${event.repo} ${branch} (${files.length} file(s))`
+        : `⚠  could not register pushed branch ${event.repo} ${branch}`);
+    return ok ? 'registered' : 'failed';
+}
+
 async function handlePush(event: GitEvent, localPaths: string[], log: (m: string) => void): Promise<void> {
     const shortSha = event.after_sha?.slice(0, 7) ?? 'unknown';
     const who = event.sender_login ?? 'unknown';
     const branch = event.branch ?? event.ref ?? 'unknown';
 
     log(`⚠  git push: ${event.repo} ${branch} by ${who} (${shortSha}) — run \`spidersan pulse\` to check conflicts`);
+
+    await registerPushedBranch(event, localPaths, log).catch(() => 'failed');
 
     // sp-8iqm: the main-updated fleet announce was removed, not re-pointed. It
     // fired into a dead `envoak hive signal` for a month and nobody missed it;
@@ -568,11 +629,18 @@ async function handlePush(event: GitEvent, localPaths: string[], log: (m: string
     }
 }
 
-async function handlePR(event: GitEvent, _localPaths: string[], log: (m: string) => void): Promise<void> {
+async function handlePR(event: GitEvent, localPaths: string[], log: (m: string) => void): Promise<void> {
     const action = event.action ?? 'event';
     const branch = event.branch ?? 'unknown';
     const who = event.sender_login ?? 'unknown';
     log(`ℹ  PR ${action}: ${event.repo} ${branch} by ${who}`);
+
+    // Most fleet repos keep merged branches, so a closed PR — not a branch delete — is
+    // usually the end of the pushed-branch row. A later push re-activates it (upsert).
+    if (action === 'closed' && event.branch && localPaths.length) {
+        const pushCreds = pushRegistryCreds();
+        if (pushCreds) await abandonPushRow(pushCreds, repoNameFor(localPaths[0]), event.branch).catch(() => false);
+    }
     appendLog(ACTIVITY_LOG, { type: 'pull_request', action, repo: event.repo, branch, sender: who, received_at: event.received_at, ts: new Date().toISOString(), source: 'git-watch' });
 
     // Phase C2: AI merge-readiness advice
@@ -655,6 +723,11 @@ async function handleDelete(event: GitEvent, localPaths: string[], log: (m: stri
     const branch = event.branch ?? 'unknown';
     const who = event.sender_login ?? 'unknown';
     log(`🗑  branch deleted remotely: ${event.repo}/${branch} by ${who} — archiving in local registries`);
+
+    const pushCreds = pushRegistryCreds();
+    if (pushCreds && localPaths.length && event.branch) {
+        await abandonPushRow(pushCreds, repoNameFor(localPaths[0]), event.branch).catch(() => false);
+    }
 
     // Only fire the conflict notification once even if multiple local paths exist
     let notified = false;
@@ -741,7 +814,12 @@ interface SupabaseConfig {
 }
 
 function getConfig(): SupabaseConfig | null {
-    const { url, key } = resolveSupabaseEnv();
+    // SPIDERSAN_GIT_WATCH_URL/KEY, when set, is the event reader's own pair (an anon
+    // read key), so the service key registerPushedBranch needs is not also the key on a
+    // long-lived realtime socket. Otherwise the usual SPIDERSAN_* > SUPABASE_* order.
+    const env = resolveSupabaseEnv();
+    const url = process.env.SPIDERSAN_GIT_WATCH_URL || env.url;
+    const key = process.env.SPIDERSAN_GIT_WATCH_KEY || env.key;
     if (!url) return null;
 
     const jwt = process.env.COLONY_SESSION_JWT;

@@ -1,3 +1,4 @@
+import { dropShadowedPushRows } from '../lib/push-registry.js';
 import { classifyTier } from '../lib/conflict-tier.js';
 import type { Branch } from './adapter.js';
 import type { SupabaseRegistrySyncClient } from './supabase-registry-sync-client.js';
@@ -136,6 +137,7 @@ export class SupabaseRegistrySyncClientImpl implements SupabaseRegistrySyncClien
                 const encodedNames = toAbandon.map((row) => encodeURIComponent(row.branch_name));
                 const patchResp = await this.fetchFromSupabase(
                     `spider_registries?machine_id=eq.${encodeURIComponent(machine.id)}` +
+                    `&repo_name=eq.${encodeURIComponent(repoName)}` +
                     `&branch_name=in.(${encodedNames.join(',')})`,
                     { method: 'PATCH', body: JSON.stringify({ status: 'abandoned', synced_at: now }) },
                 );
@@ -152,12 +154,11 @@ export class SupabaseRegistrySyncClientImpl implements SupabaseRegistrySyncClien
         return result;
     }
 
-    async pull(repoName: string, excludeMachine?: string): Promise<MachineRegistryView[]> {
-        let query = `spider_registries?machine_id=not.is.null&repo_name=eq.${encodeURIComponent(repoName)}` +
+    async pull(repoName: string, excludeMachine?: string, ownBranches: Iterable<string> = []): Promise<MachineRegistryView[]> {
+        // The caller's own machine is excluded AFTER de-duplication, not in the query:
+        // its rows are what shadow a pushed-branch row for a branch it registered itself.
+        const query = `spider_registries?machine_id=not.is.null&repo_name=eq.${encodeURIComponent(repoName)}` +
             '&status=eq.active&order=synced_at.desc';
-        if (excludeMachine) {
-            query += `&machine_id=neq.${encodeURIComponent(excludeMachine)}`;
-        }
 
         const response = await this.fetchFromSupabase(query);
         if (!response.ok) {
@@ -197,7 +198,8 @@ export class SupabaseRegistrySyncClientImpl implements SupabaseRegistrySyncClien
             }
         }
 
-        return Array.from(byMachine.values());
+        return dropShadowedPushRows(Array.from(byMachine.values()), ownBranches)
+            .filter((view) => view.machine_id !== excludeMachine);
     }
 
     async getStatus(repoName?: string): Promise<RegistryStatus[]> {

@@ -88,9 +88,25 @@ describe('SupabaseRegistrySyncClientImpl', () => {
         const fetchFn = vi.fn(async (input: string | URL) => {
             const url = String(input);
             expect(url).toContain('repo_name=eq.spidersan');
-            expect(url).toContain('machine_id=neq.machine-1');
+            // The caller's machine is excluded after de-duplication (its rows shadow
+            // pushed-branch rows), so the query returns it and pull() drops it.
+            expect(url).not.toContain('machine_id=neq.');
 
             return jsonResponse([
+                {
+                    branch_name: 'own-branch',
+                    status: 'active',
+                    files: ['src/own.ts'],
+                    agent: 'me',
+                    description: null,
+                    created_at: '2026-05-01T12:00:00.000Z',
+                    synced_at: '2026-05-05T12:00:00.000Z',
+                    machine_id: 'machine-1',
+                    machine_name: 'm5',
+                    hostname: 'm5.local',
+                    repo_name: 'spidersan',
+                    repo_path: '/repos/spidersan',
+                },
                 {
                     branch_name: 'feature-a',
                     status: 'active',

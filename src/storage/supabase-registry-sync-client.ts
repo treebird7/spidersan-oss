@@ -14,7 +14,7 @@ export interface SupabaseRegistrySyncClient {
         repoPath: string,
         branches: Branch[],
     ): Promise<RegistrySyncResult>;
-    pull(repoName: string, excludeMachine?: string): Promise<MachineRegistryView[]>;
+    pull(repoName: string, excludeMachine?: string, ownBranches?: Iterable<string>): Promise<MachineRegistryView[]>;
     getStatus(repoName?: string): Promise<RegistryStatus[]>;
     detectCrossMachineConflicts(
         repoName: string,

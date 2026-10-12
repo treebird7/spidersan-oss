@@ -61,26 +61,37 @@ only. Override them in `.spidersanrc` / `.spidersanrc.json` / `.spidersan.config
 | Variable | Effect |
 |---|---|
 | `SPIDERSAN_SUPABASE_URL` / `SPIDERSAN_SUPABASE_KEY` | Cloud registry credentials; take precedence over `SUPABASE_URL` / `SUPABASE_KEY`, then `storage.*` in config |
+| `SPIDERSAN_GIT_WATCH_URL` / `SPIDERSAN_GIT_WATCH_KEY` | git-watch's event reader only (an anon read key); checked first, so the service key used to register pushed branches is not the realtime socket's key |
 | `SPIDERSAN_AGENT` | Default agent id for `register`, `watch`, `auto`, `torrent` when `-a` is not given |
 | `SPIDERSAN_ECOSYSTEM` | Colon-separated repo paths for `conflicts --ecosystem`; `0`/`false`/`no`/`off` disables the ecosystem plugin |
 | `SPIDERSAN_CORE_ONLY` | `1`/`true`/`yes`/`on` disables the ecosystem plugin (it was inverted before #313) |
 | `SPIDERSAN_ROOM_TOKEN` | Alert room for `conflicts --notify`; unset reports `NOT NOTIFIED` locally |
 
-## CI auto-register (OIDC)
+## Pushed branches register themselves (git-watch)
 
-Pushed branches self-register via `.github/workflows/auto-register.yml`: CI mints
-a GitHub OIDC token and the `register-branch` edge function
-(`supabase/functions/register-branch/`) verifies it and writes the registry
-server-side. Zero secrets in this repo — never add a Supabase key of any kind to
-Actions secrets (the old workflow was retired for exactly that, c9a449b). Don't
-manually register a branch you just pushed.
+Every push to a branch reaches `spidersan git-watch` through the repo's GitHub
+webhook (no Actions minutes). For a non-trunk branch, git-watch upserts one row in
+`spider_registries` under the virtual machine `github`, with the files the branch
+changes against trunk (GitHub compare API). `conflicts` on every machine then sees
+the branch whoever pushed it — Codex, Copilot, a cloud agent, the web editor, a
+person — even though no Claude Code hook ran. Closing the branch's PR, or deleting
+the branch, marks the row `abandoned`; a later push re-activates it. Pushes from
+`[bot]` senders are skipped.
 
-- The workflow posts to the repo **variable** `SPIDERSAN_REGISTER_URL`. Unset →
-  the job warns "Branch NOT registered" and exits green; nothing registers.
-- The repo must be in the `registry_allowed_repos` table allowlist (#293);
-  otherwise the function returns 403 and the job fails.
-- Trunk is the repo's **default branch**, not a hardcoded `main` (#292): a push
-  to it registers nothing.
+- Needs `SPIDERSAN_SUPABASE_URL` / `SPIDERSAN_SUPABASE_KEY` (service role) in
+  git-watch's environment, plus `SPIDERSAN_GITHUB_TOKEN` for private repos. Without
+  them it logs once and registers nothing; the plain `SUPABASE_*` pair is never used
+  for this write.
+- Only repos with a local clone that git-watch watches: `repo_name` is the main
+  clone's directory name (a worktree resolves to it), the value `conflicts` queries.
+- A pushed-branch row is dropped on read whenever a real machine (or the caller's
+  own local registry / current branch) has the same branch, so nothing shows twice
+  or conflicts with itself.
+- Trunk is the repo's default branch from the GitHub API, not a hardcoded `main`.
+
+The old Actions workflow (`auto-register.yml` → `branch_registry` via the
+`register-branch` edge function) was removed on 2026-10-12 because nothing read
+`branch_registry`. The function and table are dormant, not deleted.
 
 ## Knowledge graph (graphify)
 

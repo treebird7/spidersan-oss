@@ -368,43 +368,25 @@ tail -f /tmp/spidersan-git-watch.log
 
 | Event | Action |
 |-------|--------|
-| `push` | Logs to `activity.jsonl`, warns to run `spidersan pulse`. Detects new gold pairs in `sql-tree/pairs/` and `ts-tree/pairs/` — emits `🌱 tree_pairs_ready` cue to `~/.spidersan/git-events-pending.jsonl` |
-| `delete` | Marks branch `abandoned` in registry, archives to `~/.spidersan/archive.jsonl` |
+| `push` | Registers a non-trunk branch in `spider_registries` (see below). Logs to `activity.jsonl`, warns to run `spidersan pulse`. Detects new gold pairs in `sql-tree/pairs/` and `ts-tree/pairs/` — emits `🌱 tree_pairs_ready` cue to `~/.spidersan/git-events-pending.jsonl` |
+| `delete` | Marks branch `abandoned` in the local registry and its pushed-branch row, archives to `~/.spidersan/archive.jsonl` |
 | `pull_request` / `create` | Logged only |
 
-### 🤖 GitHub Actions Auto-Register (OIDC)
+### 🤖 Pushed branches register themselves
 
-**Zero-secret branch registration via GitHub workflow**
+Every push reaches `git-watch` through the GitHub webhook, so a branch pushed by
+any tool — Codex, Copilot, a cloud agent, the web editor, a person — is registered
+in `spider_registries` and shows up in `conflicts` on every machine, even though no
+local hook ran. No GitHub Actions workflow and no secret in any repo.
 
-On every push (except `main` / `staging/*`), CI mints a short-lived GitHub
-OIDC token and POSTs the branch's changed files to the `register-branch`
-edge function. The function verifies the token (issuer, audience, and a
-`repository` claim allowlist — the only real gate) and writes
-`branch_registry` server-side. Branch name and actor come from verified
-token claims, never from the request body.
+git-watch needs `SPIDERSAN_SUPABASE_URL` / `SPIDERSAN_SUPABASE_KEY` (service role)
+for the write, and `SPIDERSAN_GITHUB_TOKEN` for private repos; without them it
+registers nothing. A closed PR or a deleted branch retires the row. Rows sit under the virtual
+machine `github`, files are computed against the repo's default branch, and a row
+is ignored wherever a real machine already has the same branch.
 
-**No database credential ever lives in this repo's CI secrets.** An earlier
-version of this workflow was retired (c9a449b) because it wrote the registry
-with a DB key stored in public-repo Actions secrets; the OIDC flow is its
-replacement.
-
-**Setup (registry operator, once):**
-1. Create an `sb_secret_...` API key in the Supabase dashboard
-2. `supabase functions deploy register-branch --no-verify-jwt`
-3. `supabase secrets set REGISTRY_SB_SECRET=<sb_secret key>` (plus optional
-   `REGISTRY_ALLOWED_REPOS` / `REGISTRY_ALLOWED_REPO_IDS`)
-4. Set the repo variable `SPIDERSAN_REGISTER_URL` to the function URL
-   (the workflow is a no-op until this variable exists)
-
-**Behavior:**
-- New branch → registered with agent parsed from branch prefix
-  (`claude/feature` → `claude`), state `active`
-- Existing branch → only `files_changed` is refreshed; state and
-  attribution are never touched (a push can't re-activate a merged branch)
-
-**Note:** This complements (doesn't replace) local `spidersan watch` for real-time file monitoring. Conflict checking stays with the CLI — registry reads require an agent identity since the RLS hardening, so the workflow only registers.
-
-**Adopting this in your own repo/Supabase project (BYK):** Claude Code users can run the guided skill — [`.claude/skills/setup-oidc-autoregister/SKILL.md`](./.claude/skills/setup-oidc-autoregister/SKILL.md). Everything else needed (function + workflow) already lives in this repo.
+The earlier OIDC Actions workflow (`auto-register.yml` → `register-branch` edge
+function → `branch_registry`) was removed: nothing read `branch_registry`.
 
 ### 🦺 Rescue Mode
 
