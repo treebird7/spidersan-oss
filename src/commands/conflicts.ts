@@ -81,7 +81,7 @@ export function crossMachineBranches(views: MachineRegistryView[]): Branch[] {
 /** checked = Supabase answered; no-credentials = never asked (local-only by config); degraded = asked and failed. */
 export type CrossMachineStatus = 'checked' | 'no-credentials' | 'degraded';
 
-async function fetchCrossMachineBranches(): Promise<{ branches: Branch[]; degraded: boolean; status: CrossMachineStatus }> {
+async function fetchCrossMachineBranches(ownBranches: Iterable<string> = []): Promise<{ branches: Branch[]; degraded: boolean; status: CrossMachineStatus }> {
     try {
         const creds = await resolveSupabaseCredentials();
         if (!creds) return { branches: [], degraded: false, status: 'no-credentials' };
@@ -90,7 +90,9 @@ async function fetchCrossMachineBranches(): Promise<{ branches: Branch[]; degrad
         const supabase = new SupabaseStorage(creds);
         // Excluding our own machine_id matters: without it this machine's own
         // pushed rows come back and conflict against themselves.
-        const views = await supabase.pullRegistries(getRepoName(), machine.id);
+        // ownBranches: a branch pushed from here can reach the registry as a pushed-branch
+        // row before this machine's own registry-sync lands; it must not conflict with itself.
+        const views = await supabase.pullRegistries(getRepoName(), machine.id, ownBranches);
         return { branches: crossMachineBranches(views), degraded: false, status: 'checked' };
     } catch {
         return { branches: [], degraded: true, status: 'degraded' };
@@ -621,11 +623,13 @@ export const conflictsCommand = new Command('conflicts')
         // skips them). Self (same headBranch) is excluded.
         // ponytail: 1 + N gh calls (list + per-PR diff); fine for typical open-PR counts,
         // parallelise if a repo ever carries hundreds of open PRs.
+        const prHeadBranches: string[] = [];
         if (options.vsPrs) {
             if (!isGhAvailable()) {
                 console.error('⚠️  --vs-prs needs gh (unavailable/unauthenticated); checking registered branches only.');
             } else {
                 const openPRs = (await listOpenPRs()).filter(pr => pr.headBranch !== targetBranch);
+                prHeadBranches.push(...openPRs.map(pr => pr.headBranch));
                 openPRs.forEach(pr => prNumberByLabel.set(`PR #${pr.number} (${pr.headBranch})`, pr.number));
                 const prBranches = await Promise.all(openPRs.map(async pr => ({
                     name: `PR #${pr.number} (${pr.headBranch})`,
@@ -642,7 +646,7 @@ export const conflictsCommand = new Command('conflicts')
         // too. Automatic (not opt-in) so the pre-push/pre-merge hook — which calls
         // plain `conflicts` — actually catches a teammate on another machine
         // touching the same file. Fail-open: degraded => local-only (tb-ly0b).
-        const cross = await fetchCrossMachineBranches();
+        const cross = await fetchCrossMachineBranches([targetBranch, ...allBranches.map(b => b.name), ...prHeadBranches]);
         allBranches.push(...cross.branches);
         const crossMachineLabels = new Set(cross.branches.map(b => b.name)); // origin-only refs for these
 

@@ -73,8 +73,8 @@ export class SupabaseStorage implements StorageAdapter {
         return this.syncClient.push(machine, repoName, repoPath, branches);
     }
 
-    async pullRegistries(repoName: string, excludeMachine?: string): Promise<MachineRegistryView[]> {
-        return this.syncClient.pull(repoName, excludeMachine);
+    async pullRegistries(repoName: string, excludeMachine?: string, ownBranches?: Iterable<string>): Promise<MachineRegistryView[]> {
+        return this.syncClient.pull(repoName, excludeMachine, ownBranches);
     }
 
     async getRegistryStatus(repoName?: string): Promise<RegistryStatus[]> {
