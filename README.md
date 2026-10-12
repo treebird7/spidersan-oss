@@ -380,7 +380,8 @@ in `spider_registries` and shows up in `conflicts` on every machine, even though
 local hook ran. No GitHub Actions workflow and no secret in any repo.
 
 git-watch needs `SPIDERSAN_SUPABASE_URL` / `SPIDERSAN_SUPABASE_KEY` (service role)
-for the write; without them it registers nothing. Rows sit under the virtual
+for the write, and `SPIDERSAN_GITHUB_TOKEN` for private repos; without them it
+registers nothing. A closed PR or a deleted branch retires the row. Rows sit under the virtual
 machine `github`, files are computed against the repo's default branch, and a row
 is ignored wherever a real machine already has the same branch.
 

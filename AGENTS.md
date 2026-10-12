@@ -61,6 +61,7 @@ only. Override them in `.spidersanrc` / `.spidersanrc.json` / `.spidersan.config
 | Variable | Effect |
 |---|---|
 | `SPIDERSAN_SUPABASE_URL` / `SPIDERSAN_SUPABASE_KEY` | Cloud registry credentials; take precedence over `SUPABASE_URL` / `SUPABASE_KEY`, then `storage.*` in config |
+| `SPIDERSAN_GIT_WATCH_URL` / `SPIDERSAN_GIT_WATCH_KEY` | git-watch's event reader only (an anon read key); checked first, so the service key used to register pushed branches is not the realtime socket's key |
 | `SPIDERSAN_AGENT` | Default agent id for `register`, `watch`, `auto`, `torrent` when `-a` is not given |
 | `SPIDERSAN_ECOSYSTEM` | Colon-separated repo paths for `conflicts --ecosystem`; `0`/`false`/`no`/`off` disables the ecosystem plugin |
 | `SPIDERSAN_CORE_ONLY` | `1`/`true`/`yes`/`on` disables the ecosystem plugin (it was inverted before #313) |
@@ -73,14 +74,16 @@ webhook (no Actions minutes). For a non-trunk branch, git-watch upserts one row 
 `spider_registries` under the virtual machine `github`, with the files the branch
 changes against trunk (GitHub compare API). `conflicts` on every machine then sees
 the branch whoever pushed it — Codex, Copilot, a cloud agent, the web editor, a
-person — even though no Claude Code hook ran. Deleting the branch marks the row
-`abandoned`.
+person — even though no Claude Code hook ran. Closing the branch's PR, or deleting
+the branch, marks the row `abandoned`; a later push re-activates it. Pushes from
+`[bot]` senders are skipped.
 
 - Needs `SPIDERSAN_SUPABASE_URL` / `SPIDERSAN_SUPABASE_KEY` (service role) in
-  git-watch's environment. Without them it logs once and registers nothing; the
-  plain `SUPABASE_*` pair is never used for this write.
-- Only repos with a local clone that git-watch watches: `repo_name` is the clone's
-  directory name, the same value `registry-sync` and `conflicts` use.
+  git-watch's environment, plus `SPIDERSAN_GITHUB_TOKEN` for private repos. Without
+  them it logs once and registers nothing; the plain `SUPABASE_*` pair is never used
+  for this write.
+- Only repos with a local clone that git-watch watches: `repo_name` is the main
+  clone's directory name (a worktree resolves to it), the value `conflicts` queries.
 - A pushed-branch row is dropped on read whenever a real machine (or the caller's
   own local registry / current branch) has the same branch, so nothing shows twice
   or conflicts with itself.

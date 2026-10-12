@@ -11,7 +11,8 @@
  * read — whenever a real machine has the same branch, so a branch registered by the
  * machine that pushed it never shows twice or conflicts with itself (see dropShadowedPushRows).
  */
-import { basename } from 'path';
+import { basename, dirname } from 'path';
+import { execFileSync } from 'child_process';
 import type { MachineIdentity } from '../types/cloud.js';
 import type { MachineRegistryView } from '../types/cloud.js';
 
@@ -54,15 +55,26 @@ export function pushRegistryCreds(env: NodeJS.ProcessEnv = process.env): { url: 
     return url && key ? { url, key } : null;
 }
 
-/** Same value registry-sync stamps (`getRepoName()` = clone dir basename), or reads return nothing. */
+/**
+ * Same value registry-sync stamps (`getRepoName()` = clone dir basename), or reads
+ * return nothing. Resolved through --git-common-dir so a sibling worktree
+ * (`spidersan-topic`) still names the main clone (`spidersan`).
+ */
 export function repoNameFor(localPath: string): string {
-    return basename(localPath);
+    try {
+        const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'],
+            { cwd: localPath, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).trim();
+        return basename(dirname(common));
+    } catch {
+        return basename(localPath);
+    }
 }
 
 type Fetch = typeof fetch;
 
 async function supabase(creds: { url: string; key: string }, path: string, init: RequestInit, fetchFn: Fetch): Promise<Response> {
     return fetchFn(`${creds.url}/rest/v1/${path}`, {
+        signal: AbortSignal.timeout(10_000),
         ...init,
         headers: {
             apikey: creds.key,
@@ -133,7 +145,7 @@ export async function defaultBranchOf(repo: string, token?: string, fetchFn: Fet
     const hit = defaultBranchCache.get(key);
     if (hit) return hit;
     try {
-        const res = await fetchFn(`https://api.github.com/repos/${repo}`, { headers: ghHeaders(token) });
+        const res = await fetchFn(`https://api.github.com/repos/${repo}`, { headers: ghHeaders(token), signal: AbortSignal.timeout(10_000) });
         if (!res.ok) return null;
         const name = ((await res.json()) as { default_branch?: string }).default_branch;
         if (!name) return null;
@@ -153,7 +165,7 @@ export async function filesVsTrunk(repo: string, base: string, head: string, tok
     try {
         const res = await fetchFn(
             `https://api.github.com/repos/${repo}/compare/${encodeURIComponent(base)}...${head}`,
-            { headers: ghHeaders(token) });
+            { headers: ghHeaders(token), signal: AbortSignal.timeout(10_000) });
         if (!res.ok) return null;
         const data = await res.json() as { files?: Array<{ filename: string }> };
         return (data.files ?? []).map(f => f.filename);

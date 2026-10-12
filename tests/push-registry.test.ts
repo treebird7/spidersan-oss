@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { branchToRegister, dropShadowedPushRows, PUSH_MACHINE } from '../src/lib/push-registry';
+import { execFileSync } from 'child_process';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { branchToRegister, dropShadowedPushRows, PUSH_MACHINE, repoNameFor } from '../src/lib/push-registry';
 import { registerPushedBranch, type GitEvent } from '../src/lib/git-events-subscriber';
 import { SupabaseRegistrySyncClientImpl } from '../src/storage/supabase-registry-sync-client-impl';
 import type { MachineRegistryView } from '../src/types/cloud';
@@ -90,6 +94,12 @@ describe('registerPushedBranch', () => {
         expect(calls).toHaveLength(0);
     });
 
+    it('skips pushes from dependency bots', async () => {
+        const calls: Array<{ url: string; init?: RequestInit }> = [];
+        expect(await registerPushedBranch(ev({ sender_login: 'dependabot[bot]' }), ['/x/treebird'], () => {}, creds, fakeFetch(calls))).toBe('skipped');
+        expect(calls).toHaveLength(0);
+    });
+
     it('skips a repo with no local clone', async () => {
         const calls: Array<{ url: string; init?: RequestInit }> = [];
         expect(await registerPushedBranch(ev(), [], () => {}, creds, fakeFetch(calls))).toBe('skipped');
@@ -109,5 +119,20 @@ describe('registry-sync push abandon is repo-scoped', () => {
         await client.push({ id: 'm5', name: 'm5', hostname: 'h' }, 'treebird', '/x', []);
         const patch = calls.find(u => u.includes('branch_name=in.'))!;
         expect(patch).toContain('repo_name=eq.treebird');
+    });
+});
+
+describe('repoNameFor', () => {
+    it('a sibling worktree resolves to the main clone name', () => {
+        const root = mkdtempSync(join(tmpdir(), 'ss-reponame-'));
+        try {
+            const main = join(root, 'spidersan'); mkdirSync(main);
+            const g = (...a: string[]) => execFileSync('git', a, { cwd: main, stdio: 'ignore' });
+            g('init', '-q'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't');
+            writeFileSync(join(main, 'a'), 'a'); g('add', '.'); g('commit', '-qm', 'a');
+            g('worktree', 'add', '-q', '-b', 'topic', join(root, 'spidersan-topic'));
+            expect(repoNameFor(main)).toBe('spidersan');
+            expect(repoNameFor(join(root, 'spidersan-topic'))).toBe('spidersan');
+        } finally { rmSync(root, { recursive: true, force: true }); }
     });
 });
