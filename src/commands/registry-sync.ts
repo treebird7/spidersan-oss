@@ -15,7 +15,7 @@ import { LocalStorage } from '../storage/local.js';
 import { SupabaseStorage } from '../storage/supabase.js';
 import { resolveSupabaseCredentials } from '../lib/supabase-credentials.js';
 import { loadMachineIdentity } from '../lib/machine.js';
-import { getRepoName } from '../lib/git.js';
+import { getRepoName, registryRepoNames } from '../lib/git.js';
 
 /**
  * Get the repo root path.
@@ -96,7 +96,7 @@ export const registrySyncCommand = new Command('registry-sync')
         if (options.pull) {
             console.log(`🕷️ Pulling registries for ${repoName} (excluding ${machine.name})...\n`);
 
-            const views = await supabase.pullRegistries(repoName, machine.id);
+            const views = await supabase.pullRegistries(options.repo ? [options.repo] : registryRepoNames(), machine.id);
 
             if (views.length === 0) {
                 console.log('  No other machines have registered branches for this repo.');
