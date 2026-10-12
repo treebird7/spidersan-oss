@@ -7,12 +7,10 @@ on:
       - '**.md'
       - 'docs/**'
       - 'specs/**'
+  # No paths-ignore here: build/test-cli are required checks, and a skipped
+  # required check never reports, so a docs-only PR could never merge.
   pull_request:
     branches: [main]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'specs/**'
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
