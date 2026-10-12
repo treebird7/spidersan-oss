@@ -104,6 +104,22 @@ export function getRepoName(): string {
     }
 }
 
+/**
+ * Every repo_name a read should match: the clone's directory name (what registry-sync
+ * writes) plus the lowercased GitHub repo name from `origin` (what the spidersan-webhook
+ * edge function writes for pushed branches — it never sees the local directory). They
+ * differ for spidersan-oss cloned as `spidersan`, or `toak` cloned as `Toak`.
+ */
+export function registryRepoNames(): string[] {
+    const names = [getRepoName()];
+    try {
+        const url = execGit(['remote', 'get-url', 'origin']).trim();
+        const m = url.match(/[/:]([^/]+?)(?:\.git)?$/);
+        if (m && !names.includes(m[1].toLowerCase())) names.push(m[1].toLowerCase());
+    } catch { /* no origin: directory name only */ }
+    return names;
+}
+
 export function getChangedFiles(options?: { base?: string }): string[] {
     const baseRef = options?.base ?? 'main';
     const strategies = [`${baseRef}...HEAD`, 'HEAD~1', 'HEAD'];

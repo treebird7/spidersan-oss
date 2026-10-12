@@ -11,6 +11,7 @@
  * 4. Produce a GlobalConflictReport
  */
 
+import { registryRepoNames } from '../lib/git.js';
 import { Command } from 'commander';
 import { getStorage } from '../storage/index.js';
 import { LocalStorage } from '../storage/local.js';
@@ -279,7 +280,7 @@ export const crossConflictsCommand = new Command('cross-conflicts')
             // Step 2: Pull remote registries
             let remoteMachines: MachineRegistryView[] = [];
             try {
-                remoteMachines = await supabase.pullRegistries(repoName, machineId);
+                remoteMachines = await supabase.pullRegistries(opts.repo ? [opts.repo] : registryRepoNames(), machineId);
             } catch (err: unknown) {
                 const errorMsg = err instanceof Error ? err.message : String(err);
                 console.log(`⚠️  Could not pull remote registries: ${errorMsg}`);

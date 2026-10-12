@@ -87,7 +87,7 @@ describe('SupabaseRegistrySyncClientImpl', () => {
     it('pulls and groups remote branch state by machine', async () => {
         const fetchFn = vi.fn(async (input: string | URL) => {
             const url = String(input);
-            expect(url).toContain('repo_name=eq.spidersan');
+            expect(decodeURIComponent(url)).toContain('repo_name=in.("spidersan")');
             // The caller's machine is excluded after de-duplication (its rows shadow
             // pushed-branch rows), so the query returns it and pull() drops it.
             expect(url).not.toContain('machine_id=neq.');

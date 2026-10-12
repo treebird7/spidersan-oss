@@ -154,10 +154,12 @@ export class SupabaseRegistrySyncClientImpl implements SupabaseRegistrySyncClien
         return result;
     }
 
-    async pull(repoName: string, excludeMachine?: string, ownBranches: Iterable<string> = []): Promise<MachineRegistryView[]> {
+    async pull(repoName: string | string[], excludeMachine?: string, ownBranches: Iterable<string> = []): Promise<MachineRegistryView[]> {
         // The caller's own machine is excluded AFTER de-duplication, not in the query:
         // its rows are what shadow a pushed-branch row for a branch it registered itself.
-        const query = `spider_registries?machine_id=not.is.null&repo_name=eq.${encodeURIComponent(repoName)}` +
+        // Several names: a pushed-branch row carries the GitHub repo name, not the clone's.
+        const names = (Array.isArray(repoName) ? repoName : [repoName]).map(n => `"${n.replace(/"/g, '')}"`);
+        const query = `spider_registries?machine_id=not.is.null&repo_name=in.(${encodeURIComponent(names.join(','))})` +
             '&status=eq.active&order=synced_at.desc';
 
         const response = await this.fetchFromSupabase(query);

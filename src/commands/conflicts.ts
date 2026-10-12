@@ -18,7 +18,7 @@ import type { Branch } from '../storage/adapter.js';
 import type { MachineRegistryView } from '../types/cloud.js';
 import { resolveSupabaseCredentials } from '../lib/supabase-credentials.js';
 import { loadMachineIdentity } from '../lib/machine.js';
-import { getRepoName, resolveBranchRef } from '../lib/git.js';
+import { getRepoName, registryRepoNames, resolveBranchRef } from '../lib/git.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
 import { analyzeSemantic, resolveBranchTip, resolveCrossMachineRef } from '../lib/semantic-analysis.js';
 import { getCLIPath } from '../lib/security.js';
@@ -92,7 +92,7 @@ async function fetchCrossMachineBranches(ownBranches: Iterable<string> = []): Pr
         // pushed rows come back and conflict against themselves.
         // ownBranches: a branch pushed from here can reach the registry as a pushed-branch
         // row before this machine's own registry-sync lands; it must not conflict with itself.
-        const views = await supabase.pullRegistries(getRepoName(), machine.id, ownBranches);
+        const views = await supabase.pullRegistries(registryRepoNames(), machine.id, ownBranches);
         return { branches: crossMachineBranches(views), degraded: false, status: 'checked' };
     } catch {
         return { branches: [], degraded: true, status: 'degraded' };

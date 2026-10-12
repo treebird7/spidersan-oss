@@ -368,22 +368,21 @@ tail -f /tmp/spidersan-git-watch.log
 
 | Event | Action |
 |-------|--------|
-| `push` | Registers a non-trunk branch in `spider_registries` (see below). Logs to `activity.jsonl`, warns to run `spidersan pulse`. Detects new gold pairs in `sql-tree/pairs/` and `ts-tree/pairs/` — emits `🌱 tree_pairs_ready` cue to `~/.spidersan/git-events-pending.jsonl` |
-| `delete` | Marks branch `abandoned` in the local registry and its pushed-branch row, archives to `~/.spidersan/archive.jsonl` |
+| `push` | Logs to `activity.jsonl`, warns to run `spidersan pulse`. Detects new gold pairs in `sql-tree/pairs/` and `ts-tree/pairs/` — emits `🌱 tree_pairs_ready` cue to `~/.spidersan/git-events-pending.jsonl` |
+| `delete` | Marks branch `abandoned` in the local registry, archives to `~/.spidersan/archive.jsonl` |
 | `pull_request` / `create` | Logged only |
 
 ### 🤖 Pushed branches register themselves
 
-Every push reaches `git-watch` through the GitHub webhook, so a branch pushed by
-any tool — Codex, Copilot, a cloud agent, the web editor, a person — is registered
-in `spider_registries` and shows up in `conflicts` on every machine, even though no
-local hook ran. No GitHub Actions workflow and no secret in any repo.
+Every push to a watched repo reaches the `spidersan-webhook` edge function through
+the GitHub webhook, so a branch pushed by any tool — Codex, Copilot, a cloud agent,
+the web editor, a person — is registered in `spider_registries` and shows up in
+`conflicts` on every machine, even though no local hook ran. No GitHub Actions
+workflow, and no write credential outside Supabase.
 
-git-watch needs `SPIDERSAN_SUPABASE_URL` / `SPIDERSAN_SUPABASE_KEY` (service role)
-for the write, and `SPIDERSAN_GITHUB_TOKEN` for private repos; without them it
-registers nothing. A closed PR or a deleted branch retires the row. Rows sit under the virtual
-machine `github`, files are computed against the repo's default branch, and a row
-is ignored wherever a real machine already has the same branch.
+Rows sit under the virtual machine `github`, files are computed against the repo's
+default branch, and a row is ignored wherever a real machine already has the same
+branch. A closed PR or a deleted branch retires it.
 
 The earlier OIDC Actions workflow (`auto-register.yml` → `register-branch` edge
 function → `branch_registry`) was removed: nothing read `branch_registry`.
