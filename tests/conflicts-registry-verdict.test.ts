@@ -68,6 +68,12 @@ describe('conflicts (registry overlap) — zero-conflict output', () => {
         expect(out).toContain('NOT a merge simulation');
     });
 
+    it('says the cloud registry was skipped when there are no credentials', async () => {
+        await run([]);
+
+        expect(logged()).toContain('Cloud registry not checked (no Supabase credentials)');
+    });
+
     it('never claims merge-readiness — registry overlap is not a merge', async () => {
         await run([]);
 

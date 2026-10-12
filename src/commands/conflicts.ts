@@ -805,6 +805,9 @@ export const conflictsCommand = new Command('conflicts')
             // silent false confidence is the whole bug this path fixes (tb-ly0b).
             if (cross.degraded) {
                 console.error('   ⚠️  Cross-machine check unavailable — LOCAL branches only.');
+            } else if (cross.status === 'no-credentials') {
+                // Same lie, quieter: no creds in this shell reads exactly like a clean cloud check.
+                console.log('   ℹ️  Cloud registry not checked (no Supabase credentials) — LOCAL branches only.');
             }
             finish(0);
             return;
