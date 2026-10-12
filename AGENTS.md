@@ -90,7 +90,8 @@ branch marks the row `abandoned`; `[bot]` senders, tags and fork PRs are skipped
 
 The old Actions workflow (`auto-register.yml` → `branch_registry` via the
 `register-branch` edge function) was removed on 2026-10-12 because nothing read
-`branch_registry`. The function and table are dormant, not deleted.
+`branch_registry`; the workflow left every repo and the function was deleted on
+2026-10-12. The `branch_registry` table remains, unread, until mycsan drops it.
 
 ## Knowledge graph (graphify)
 
