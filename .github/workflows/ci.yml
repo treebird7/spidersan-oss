@@ -77,6 +77,13 @@ jobs:
           node dist/bin/spidersan.js init
           ls -la .spidersan/
 
+  ts-review-detect:
+    name: ts-review detect step
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash .github/actions/ts-review/test-detect.sh
+
   security:
     name: Dependency and secret scan
     runs-on: ubuntu-latest

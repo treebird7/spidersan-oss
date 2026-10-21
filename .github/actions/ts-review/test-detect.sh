@@ -53,4 +53,5 @@ check "force push, before unreachable"    0 "w.ts,x.ts" BEFORE_SHA=deadbeefdeadb
 check "pull_request, base not in clone"   0 "w.ts,x.ts" PR_BASE_SHA="$M"
 check "files input bypasses git"          0 "p.ts,q.ts" INPUT_FILES=$'p.ts\nq.ts'
 check "no base can be found: must fail"   1 ""          DEFAULT_BRANCH=nosuchbranch
+check "diff cannot run: must fail"        1 ""          BEFORE_SHA="$F1" AFTER_SHA=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef
 exit $fail
