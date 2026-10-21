@@ -51,22 +51,39 @@ runs:
       env:
         INPUT_FILES: ${{ inputs.files }}
         BEFORE_SHA: ${{ github.event.before }}
-        AFTER_SHA: ${{ github.sha }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        AFTER_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       run: |
+        # A failed diff must fail the job. It used to be swallowed (2>/dev/null || true),
+        # so a shallow clone without the base commit reported "Found 0 TS file(s)" and
+        # passed while scanning nothing (ci-review 2026-10-19).
+        set -euo pipefail
         if [[ -n "$INPUT_FILES" ]]; then
-          echo "$INPUT_FILES" > /tmp/ts_files.txt
-        elif [[ "$BEFORE_SHA" == "0000000000000000000000000000000000000000" || -z "$BEFORE_SHA" ]]; then
-          # First push to branch — diff against main
-          git diff --name-only origin/main..."$AFTER_SHA" -- '*.ts' 2>/dev/null \
-            | grep -v '\.d\.ts$' | grep -v 'node_modules' > /tmp/ts_files.txt || true
+          printf '%s\n' "$INPUT_FILES" > /tmp/ts_files.txt
         else
-          git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" -- '*.ts' 2>/dev/null \
-            | grep -v '\.d\.ts$' | grep -v 'node_modules' > /tmp/ts_files.txt || true
+          # The base commit is usually outside a shallow checkout: fetch full history.
+          if [[ "$(git rev-parse --is-shallow-repository)" == true ]]; then
+            git fetch --quiet --no-tags --unshallow origin
+          fi
+          if [[ -n "$PR_BASE_SHA" ]]; then
+            git cat-file -e "$PR_BASE_SHA^{commit}" 2>/dev/null || git fetch --quiet --no-tags origin "$PR_BASE_SHA"
+            base=$PR_BASE_SHA
+          elif [[ -n "$BEFORE_SHA" && ! "$BEFORE_SHA" =~ ^0+$ ]] && git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+            base=$BEFORE_SHA
+          else
+            # First push of a branch, or a force push that dropped BEFORE_SHA.
+            git fetch --quiet --no-tags origin "$DEFAULT_BRANCH"
+            base=$(git merge-base FETCH_HEAD "$AFTER_SHA")
+            echo "Diffing against merge-base with $DEFAULT_BRANCH (${base:0:7})"
+          fi
+          git diff --name-only "$base...$AFTER_SHA" -- '*.ts' > /tmp/ts_all.txt
+          grep -v -e '\.d\.ts$' -e 'node_modules' /tmp/ts_all.txt > /tmp/ts_files.txt || [[ $? == 1 ]]
         fi
-        count=$(wc -l < /tmp/ts_files.txt 2>/dev/null | tr -d ' ') || count=0
+        count=$(grep -c . /tmp/ts_files.txt || true)
         echo "count=$count" >> "$GITHUB_OUTPUT"
         echo "Found $count TS file(s) to scan:"
-        cat /tmp/ts_files.txt || true
+        cat /tmp/ts_files.txt
 
     - name: Run ts-review scanner
       id: scan
