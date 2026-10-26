@@ -4,8 +4,13 @@
  * Reconcile the local registry against git truth and prune dead entries.
  *
  * Prunes BOTH:
- *   - orphaned — branch ref gone from local and remote
+ *   - orphaned — no local or tracking ref AND `git ls-remote` confirms the
+ *                branch is gone from origin (or status `abandoned`)
  *   - merged   — branch tip is an ancestor of trunk (or status `completed`)
+ *
+ * A missing ref alone only proves "not fetched here": the branch may be live on
+ * another machine. Those entries are kept, and so is every orphan when origin
+ * can't be asked (sp-slemub).
  *
  * Previously sync only removed orphans, so a merged branch lingered in the
  * registry forever and kept producing phantom conflicts (tb-8sa.1 / §1.2).
@@ -15,7 +20,7 @@
 import { Command } from 'commander';
 import { getStorage } from '../storage/index.js';
 import { logActivity } from '../lib/activity.js';
-import { reconcileBranches } from '../lib/reconcile.js';
+import { reconcileBranches, splitOrphans } from '../lib/reconcile.js';
 
 export const syncCommand = new Command('sync')
     .description('Sync registry with actual git branches')
@@ -28,7 +33,17 @@ export const syncCommand = new Command('sync')
             process.exit(1);
         }
 
-        const { merged, orphaned } = reconcileBranches(await storage.list());
+        const branches = await storage.list();
+        const { merged, orphaned: noRef } = reconcileBranches(branches);
+        // `abandoned` is terminal registry status — prune it without asking origin.
+        const abandoned = new Set(branches.filter(b => b.status === 'abandoned').map(b => b.name));
+        const { gone, kept, remoteChecked } = splitOrphans(noRef.filter(n => !abandoned.has(n)));
+        const orphaned = [...noRef.filter(n => abandoned.has(n)), ...gone];
+        if (kept.length > 0) {
+            console.log(remoteChecked
+                ? `🕷️ Kept ${kept.length} entr${kept.length === 1 ? 'y' : 'ies'} with no ref here but still on origin (unfetched): ${kept.join(', ')}`
+                : `⚠️  Could not reach origin — kept ${kept.length} entr${kept.length === 1 ? 'y' : 'ies'} with no ref here (deleted, or just unfetched). Fetch and re-run to prune.`);
+        }
         const stale = [
             ...merged.map(name => ({ name, reason: 'merged' as const })),
             ...orphaned.map(name => ({ name, reason: 'orphaned' as const })),

@@ -157,8 +157,23 @@ export function reconcileBranches(
  */
 export function activeBranches(branches: Branch[], deps: ReconcileDeps = defaultReconcileDeps()): Branch[] {
     const { live, orphaned } = reconcileBranches(branches, deps);
-    // Only hit the network when there is an orphan to decide.
-    const heads = orphaned.length > 0 ? (deps.remoteHeads?.() ?? null) : null;
-    const keep = new Set([...live.map(b => b.name), ...orphaned.filter(n => heads === null || heads.has(n))]);
+    const keep = new Set([...live.map(b => b.name), ...splitOrphans(orphaned, deps).kept]);
     return branches.filter(b => b.status === 'active' && keep.has(b.name));
+}
+
+/**
+ * Split orphans (no local or tracking ref) into those the remote confirms are
+ * `gone` and those to `kept` — still on the remote (unfetched here), or every
+ * one of them when the remote can't be asked (`remoteChecked: false`). Shared by
+ * {@link activeBranches} (read side) and `sync` (which deletes `gone` only, sp-slemub).
+ * Only hits the network when there is an orphan to decide.
+ */
+export function splitOrphans(
+    orphaned: string[],
+    deps: Pick<ReconcileDeps, 'remoteHeads'> = { remoteHeads: () => listRemoteHeads() },
+): { gone: string[]; kept: string[]; remoteChecked: boolean } {
+    if (orphaned.length === 0) return { gone: [], kept: [], remoteChecked: true };
+    const heads = deps.remoteHeads?.() ?? null;
+    if (heads === null) return { gone: [], kept: orphaned, remoteChecked: false };
+    return { gone: orphaned.filter(n => !heads.has(n)), kept: orphaned.filter(n => heads.has(n)), remoteChecked: true };
 }
