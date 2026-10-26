@@ -13,7 +13,7 @@ export class GitError extends Error {
     }
 }
 
-type GitExecOptions = Pick<ExecFileSyncOptionsWithStringEncoding, 'stdio' | 'env'>;
+type GitExecOptions = Pick<ExecFileSyncOptionsWithStringEncoding, 'stdio' | 'env' | 'timeout'>;
 
 type GitExecError = Error & {
     message?: string;
@@ -623,6 +623,21 @@ export function resolveBranchRef(name: string, remote = 'origin'): string | null
         }
     }
     return null;
+}
+
+/**
+ * Branch names that exist on `remote` right now (`git ls-remote --heads`), or
+ * `null` when the remote can't be asked (offline, no remote, timeout). A missing
+ * local/tracking ref only proves "not fetched here"; this is the call that
+ * proves "deleted". One network round-trip for the whole registry.
+ */
+export function listRemoteHeads(remote = 'origin'): Set<string> | null {
+    try {
+        const out = execGit(['ls-remote', '--heads', remote], { stdio: ['pipe', 'pipe', 'ignore'], timeout: 15_000 });
+        return new Set(out.split('\n').map(l => l.split('\trefs/heads/')[1]).filter((b): b is string => !!b));
+    } catch {
+        return null;
+    }
 }
 
 /** Resolve only the LOCAL ref (`refs/heads/<name>`), or `null` if none. */
