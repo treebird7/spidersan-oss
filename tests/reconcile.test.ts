@@ -151,12 +151,28 @@ describe('activeBranches (read-path helper)', () => {
         expect(out.map(b => b.name)).toEqual(['feat/live']);
     });
 
-    it('KEEPS orphaned (no-ref) branches — could be unfetched on another machine', () => {
+    it('excludes an orphan the remote confirms is deleted — e.g. squash-merged then deleted', () => {
         const out = activeBranches(
-            [branch('feat/unfetched')],
-            deps({ gone: ['feat/unfetched'] }),
+            [branch('feat/live'), branch('feat/squashed-deleted')],
+            { ...deps({ gone: ['feat/squashed-deleted'] }), remoteHeads: () => new Set(['feat/live']) },
         );
-        expect(out.map(b => b.name)).toEqual(['feat/unfetched']);
+        expect(out.map(b => b.name)).toEqual(['feat/live']);
+    });
+
+    it('KEEPS an orphan that still exists on the remote (live elsewhere, not fetched here)', () => {
+        const out = activeBranches(
+            [branch('feat/live'), branch('feat/unfetched')],
+            { ...deps({ gone: ['feat/unfetched'] }), remoteHeads: () => new Set(['feat/unfetched']) },
+        );
+        expect(out.map(b => b.name)).toEqual(['feat/live', 'feat/unfetched']);
+    });
+
+    it('KEEPS orphans when the remote cannot be asked (offline) or no probe is injected', () => {
+        const list = [branch('feat/live'), branch('feat/maybe')];
+        const offline = activeBranches(list, { ...deps({ gone: ['feat/maybe'] }), remoteHeads: () => null });
+        const noProbe = activeBranches(list, deps({ gone: ['feat/maybe'] }));
+        expect(offline.map(b => b.name)).toEqual(['feat/live', 'feat/maybe']);
+        expect(noProbe.map(b => b.name)).toEqual(['feat/live', 'feat/maybe']);
     });
 
     it('excludes non-active (completed/abandoned) entries', () => {

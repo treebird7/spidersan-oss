@@ -18,7 +18,7 @@
  * already marked `completed` / `abandoned` are honoured without a git probe.
  */
 
-import { resolveBranchRef, resolveLocalBranchRef, isMergedInto, isSquashMergedInto } from './git.js';
+import { resolveBranchRef, resolveLocalBranchRef, isMergedInto, isSquashMergedInto, listRemoteHeads } from './git.js';
 import { getTrunkBranch } from './trunk.js';
 import type { Branch } from '../storage/adapter.js';
 
@@ -53,6 +53,12 @@ export interface ReconcileDeps {
      * the tip an ancestor. Optional for injectors.
      */
     isSquashMerged?: (ref: string, trunkRef: string) => boolean;
+    /**
+     * Branch names that exist on the remote now, or `null` if it can't be asked.
+     * {@link activeBranches} drops an orphan only when this confirms it is gone.
+     * Absent (injectors) behaves like `null`: orphans are kept.
+     */
+    remoteHeads?: () => Set<string> | null;
     /** Bare trunk branch name (e.g. `main`) — never reconciled away. */
     trunkName: string;
     /** Ref used as the merge target for is-ancestor (prefers `origin/main`). */
@@ -68,6 +74,7 @@ export function defaultReconcileDeps(): ReconcileDeps {
         resolveLocalRef: (name) => resolveLocalBranchRef(name),
         isMerged: (ref, trunk) => isMergedInto(ref, trunk),
         isSquashMerged: (ref, trunk) => isSquashMergedInto(ref, trunk),
+        remoteHeads: () => listRemoteHeads(),
         trunkName,
         trunkRef,
     };
@@ -133,20 +140,25 @@ export function reconcileBranches(
 
 /**
  * Read-path convenience for conflict detection: registered `active` branches
- * minus those PROVEN merged into trunk (is-ancestor true, or status
- * `completed`).
+ * minus those PROVEN merged into trunk (is-ancestor / squash-equivalent, or
+ * status `completed`) and those PROVEN deleted.
  *
- * Deliberately KEEPS orphaned (no-ref) branches. A missing ref can mean
- * "merged + deleted" but equally "active on another machine, not fetched
- * here" — dropping it would silently miss a real cross-machine conflict.
- * A false phantom from a truly-deleted branch is the safer error, and
- * `spidersan sync` is the intentional op that prunes those.
+ * An orphan (no local or tracking ref) is ambiguous: deleted, or live on
+ * another machine and never fetched here. A squash-merged, deleted branch is
+ * never an ancestor of trunk, so it only ever reads as orphaned — keeping every
+ * orphan made those phantom-conflict forever. So an orphan is dropped only when
+ * `git ls-remote` confirms the branch is gone from the remote; if the remote
+ * can't be asked, orphans are kept (a phantom beats a missed conflict). This
+ * matters most for ready-check, which gets no cross-machine registry pull.
  *
- * This is what conflicts / ready-check / merge-order should call; `sync`
- * uses {@link reconcileBranches} directly to prune orphans too.
+ * Read-side filter only — nothing is deleted. This is what conflicts /
+ * ready-check / merge-order should call; `sync` uses {@link reconcileBranches}
+ * directly to actually prune merged and orphaned entries.
  */
-export function activeBranches(branches: Branch[], deps?: ReconcileDeps): Branch[] {
-    const { merged } = reconcileBranches(branches, deps);
-    const mergedSet = new Set(merged);
-    return branches.filter(b => b.status === 'active' && !mergedSet.has(b.name));
+export function activeBranches(branches: Branch[], deps: ReconcileDeps = defaultReconcileDeps()): Branch[] {
+    const { live, orphaned } = reconcileBranches(branches, deps);
+    // Only hit the network when there is an orphan to decide.
+    const heads = orphaned.length > 0 ? (deps.remoteHeads?.() ?? null) : null;
+    const keep = new Set([...live.map(b => b.name), ...orphaned.filter(n => heads === null || heads.has(n))]);
+    return branches.filter(b => b.status === 'active' && keep.has(b.name));
 }
