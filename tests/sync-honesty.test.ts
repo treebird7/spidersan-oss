@@ -26,6 +26,8 @@ vi.mock('../src/lib/reconcile.js', () => ({
         merged: [],
         orphaned: branches.map(b => b.name),
     }),
+    // ...and origin confirms every one of them is gone.
+    splitOrphans: (names: string[]) => ({ gone: names, kept: [], remoteChecked: true }),
 }));
 
 import { syncCommand } from '../src/commands/sync.js';

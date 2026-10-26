@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { reconcileBranches, activeBranches, type ReconcileDeps } from '../src/lib/reconcile.js';
+import { describe, it, expect, vi } from 'vitest';
+import { reconcileBranches, activeBranches, splitOrphans, type ReconcileDeps } from '../src/lib/reconcile.js';
 import type { Branch } from '../src/storage/adapter.js';
 
 function branch(name: string, status: Branch['status'] = 'active'): Branch {
@@ -181,5 +181,15 @@ describe('activeBranches (read-path helper)', () => {
             deps(),
         );
         expect(out.map(b => b.name)).toEqual(['feat/a']);
+    });
+});
+
+describe('splitOrphans (sp-slemub)', () => {
+    it('splits by remote heads, keeps all when the remote is unreachable, and skips the probe when empty', () => {
+        expect(splitOrphans(['a', 'b'], { remoteHeads: () => new Set(['b']) })).toEqual({ gone: ['a'], kept: ['b'], remoteChecked: true });
+        expect(splitOrphans(['a', 'b'], { remoteHeads: () => null })).toEqual({ gone: [], kept: ['a', 'b'], remoteChecked: false });
+        const probe = vi.fn(() => new Set<string>());
+        expect(splitOrphans([], { remoteHeads: probe })).toEqual({ gone: [], kept: [], remoteChecked: true });
+        expect(probe).not.toHaveBeenCalled();
     });
 });
