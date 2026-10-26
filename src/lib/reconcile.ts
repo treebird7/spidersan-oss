@@ -133,20 +133,19 @@ export function reconcileBranches(
 
 /**
  * Read-path convenience for conflict detection: registered `active` branches
- * minus those PROVEN merged into trunk (is-ancestor true, or status
- * `completed`).
+ * minus those PROVEN merged into trunk (is-ancestor / squash-equivalent, or
+ * status `completed`) AND those orphaned (ref gone from local and remote).
  *
- * Deliberately KEEPS orphaned (no-ref) branches. A missing ref can mean
- * "merged + deleted" but equally "active on another machine, not fetched
- * here" — dropping it would silently miss a real cross-machine conflict.
- * A false phantom from a truly-deleted branch is the safer error, and
- * `spidersan sync` is the intentional op that prunes those.
+ * Orphans used to be kept in case the branch was live on another machine but
+ * unfetched here. But a squash-merged, deleted branch is never an ancestor of
+ * trunk, so it only ever reads as orphaned and phantom-conflicted forever.
+ * Another machine's live branches now reach `conflicts` via the cross-machine
+ * registry pull (tb-ly0b), which covers the unfetched case.
  *
- * This is what conflicts / ready-check / merge-order should call; `sync`
- * uses {@link reconcileBranches} directly to prune orphans too.
+ * Read-side filter only — nothing is deleted. This is what conflicts /
+ * ready-check / merge-order should call; `sync` uses {@link reconcileBranches}
+ * directly to actually prune merged and orphaned entries.
  */
 export function activeBranches(branches: Branch[], deps?: ReconcileDeps): Branch[] {
-    const { merged } = reconcileBranches(branches, deps);
-    const mergedSet = new Set(merged);
-    return branches.filter(b => b.status === 'active' && !mergedSet.has(b.name));
+    return reconcileBranches(branches, deps).live.filter(b => b.status === 'active');
 }

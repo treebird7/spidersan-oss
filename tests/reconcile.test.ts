@@ -151,12 +151,12 @@ describe('activeBranches (read-path helper)', () => {
         expect(out.map(b => b.name)).toEqual(['feat/live']);
     });
 
-    it('KEEPS orphaned (no-ref) branches — could be unfetched on another machine', () => {
+    it('excludes orphaned (no-ref) branches — e.g. squash-merged then deleted', () => {
         const out = activeBranches(
-            [branch('feat/unfetched')],
-            deps({ gone: ['feat/unfetched'] }),
+            [branch('feat/live'), branch('feat/squashed-deleted')],
+            deps({ gone: ['feat/squashed-deleted'] }),
         );
-        expect(out.map(b => b.name)).toEqual(['feat/unfetched']);
+        expect(out.map(b => b.name)).toEqual(['feat/live']);
     });
 
     it('excludes non-active (completed/abandoned) entries', () => {
