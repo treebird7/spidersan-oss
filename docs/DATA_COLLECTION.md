@@ -12,7 +12,9 @@ Spidersan is designed with a **local-first** architecture. Your code and branch 
 
 ### Local Mode
 
-**Nothing.** The CLI operates entirely locally with no network calls.
+**Nothing.** Nothing is sent to Spidersan or any third party.
+
+The CLI does read from **your own git remote** (`origin`), the same way `git fetch` does. When a registry entry has no branch ref on this machine, `conflicts`, `ready-check`, `merge-order` and `sync` run `git ls-remote --heads origin` to tell a deleted branch from one that is simply unfetched. This is one call, made only in that case. `--pr` and `--vs-prs` use the `gh` CLI against your GitHub repo.
 
 ### Optional Cloud Sync
 
@@ -42,7 +44,7 @@ When using a cloud backend (Supabase):
 
 Spidersan 0.4.0 **core** has:
 - ✅ Zero telemetry
-- ✅ Zero network calls (unless you opt-in to cloud sync)
+- ✅ No data sent anywhere but your own git remote and, for `--pr`/`--vs-prs`, GitHub via `gh` (unless you opt in to cloud sync)
 - ✅ All data stays local
 - ✅ Open source (MIT license) - audit the code yourself
 
