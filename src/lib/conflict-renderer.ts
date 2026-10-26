@@ -54,11 +54,6 @@ export function renderConflictReport(report: ConflictReport, options: RenderOpti
         `📊 Summary: 🔴 ${branchSummary.tier3} BLOCK | 🟠 ${branchSummary.tier2} PAUSE | 🟡 ${branchSummary.tier1} WARN`,
     );
 
-    const addAddHelper = renderAddAddResolution(report);
-    if (addAddHelper) {
-        lines.push(addAddHelper);
-    }
-
     return lines.join('\n');
 }
 
@@ -188,32 +183,4 @@ function inferBranchOrder(report: ConflictReport): string[] {
     return [...firstSeen.entries()]
         .sort((left, right) => left[1] - right[1])
         .map(([branch]) => branch);
-}
-
-function renderAddAddResolution(report: ConflictReport): string {
-    const addAddFiles = report.conflicts
-        .map((conflict) => conflict.file)
-        .filter((file) => /\.md$/.test(file) || /docs\//.test(file));
-
-    if (addAddFiles.length === 0) {
-        return '';
-    }
-
-    const uniqueFiles = [...new Set(addAddFiles)];
-
-    return [
-        '',
-        '💡 Add/Add Conflict Helper',
-        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-        'Detected files added in both branches. Recommended actions:',
-        '  1. Preserve incoming variant for auditability:',
-        '       git checkout --theirs <file> && mv <file> <file>.<their-branch>.incoming && git add <file>.<their-branch>.incoming',
-        '  2. Keep canonical version in main branch and include note linking the incoming variant.',
-        '  3. Commit and continue rebase: git add -A && git rebase --continue',
-        '',
-        'Examples:',
-        ...uniqueFiles.map((file) => `   • ${file} -> preserve incoming as ${file}.incoming`),
-        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-        '',
-    ].join('\n');
 }
