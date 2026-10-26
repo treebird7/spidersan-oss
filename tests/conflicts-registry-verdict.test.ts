@@ -81,3 +81,42 @@ describe('conflicts (registry overlap) — zero-conflict output', () => {
         expect(logged()).not.toMatch(/merges? clean/i);
     });
 });
+
+// Registry overlap knows only that both sides touch a path, not whether either
+// side ADDED it. It used to print "Add/Add Conflict Helper — Detected files added
+// in both branches" for any .md or docs/ path, telling the reader to
+// `git checkout --theirs` a long-lived CLAUDE.md both branches had merely edited.
+// Genuine add/add is reported by the --real half, from merge-tree.
+describe('conflicts (registry overlap) — no add/add guess', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        (execFileSync as Mock).mockImplementation((_cmd: string, args?: string[]) => {
+            if (Array.isArray(args) && args.includes('--is-ancestor')) {
+                throw new Error('not an ancestor');
+            }
+            return 'feat/current\n';
+        });
+        const mine = { name: 'feat/current', files: ['CLAUDE.md'], status: 'active', registeredAt: new Date() };
+        const other = { name: 'feat/other', files: ['CLAUDE.md'], status: 'active', registeredAt: new Date() };
+        (getStorage as Mock).mockResolvedValue({
+            isInitialized: vi.fn(async () => true),
+            get: vi.fn(async () => mine),
+            list: vi.fn(async () => [mine, other]),
+        });
+    });
+
+    it('does not call a .md both branches touch an add/add conflict', async () => {
+        // run() resets parsed options, so --tier's default is gone; pass it.
+        await run(['--tier', '1']);
+
+        const out = logged();
+        // The overlap must actually render, or the negatives below pass vacuously.
+        expect(out).toContain('feat/other');
+        expect(out).toContain('CLAUDE.md');
+        expect(out).not.toContain('Add/Add');
+        expect(out).not.toContain('added in both branches');
+        expect(out).not.toContain('.incoming');
+    });
+});

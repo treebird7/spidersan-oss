@@ -106,6 +106,17 @@ describe('renderConflictReport', () => {
         expect(output).not.toContain('setSecret');
     });
 
+    // Overlap cannot tell add/add from modify/modify; see conflicts-registry-verdict.test.ts.
+    it('does not call an overlapping .md an add/add conflict', () => {
+        const output = renderConflictReport(createReport([
+            createConflict({ file: 'CLAUDE.md' }),
+        ]));
+
+        expect(output).toContain('CLAUDE.md');
+        expect(output).not.toContain('Add/Add');
+        expect(output).not.toContain('.incoming');
+    });
+
     it('returns the same string for the same report every time', () => {
         const report = createReport([
             createConflict({

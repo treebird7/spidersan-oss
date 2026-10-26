@@ -137,38 +137,6 @@ async function notifyConflicts(branch: string, conflicts: Array<{ branch: string
     }, (m) => console.error(m));
 }
 
-/**
- * Suggest simple resolutions for add/add style conflicts where both branches added the same file
- * Typically occurs with docs or generated files. This prints guidance and a recommended sequence
- * to preserve both variants for auditability (e.g., create a .incoming copy).
- */
-function suggestAddAddResolution(conflicts: Array<{ branch: string; files: string[]; tier: number }>): void {
-    const addAddFiles = new Set<string>();
-    for (const conflict of conflicts) {
-        for (const f of conflict.files) {
-            // Simple heuristic: docs and markdown files are common add/add candidates
-            if (/\.md$/.test(f) || /docs\//.test(f)) {
-                addAddFiles.add(f);
-            }
-        }
-    }
-
-    if (addAddFiles.size === 0) return;
-
-    console.log('\n💡 Add/Add Conflict Helper');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('Detected files added in both branches. Recommended actions:');
-    console.log('  1. Preserve incoming variant for auditability:');
-    console.log('       git checkout --theirs <file> && mv <file> <file>.<their-branch>.incoming && git add <file>.<their-branch>.incoming');
-    console.log('  2. Keep canonical version in main branch and include note linking the incoming variant.');
-    console.log('  3. Commit and continue rebase: git add -A && git rebase --continue');
-    console.log('\nExamples:');
-    for (const f of addAddFiles) {
-        console.log(`   • ${f} -> preserve incoming as ${f}.incoming`);
-    }
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-}
-
 // ── Ecosystem scan ────────────────────────────────────────────────────────────
 
 interface EcosystemRepoResult {
@@ -833,9 +801,6 @@ export const conflictsCommand = new Command('conflicts')
 
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log(`📊 Summary: 🔴 ${tier3Count} BLOCK | 🟠 ${tier2Count} PAUSE | 🟡 ${tier1Count} WARN`);
-
-        // Offer add/add resolution suggestions for likely add/add files
-        suggestAddAddResolution(conflicts);
 
         // Show semantic analysis results
         if (options.semantic && semanticConflicts.length > 0) {
