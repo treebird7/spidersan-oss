@@ -186,17 +186,6 @@ export function validateRepoPath(filePath: string, rootDir: string = process.cwd
 }
 
 /**
- * Escape text for blessed TUI to prevent markup injection.
- * Replaces '{' with '{open}' and '}' with '{close}'.
- */
-export function escapeBlessed(text: string): string {
-    if (!text || typeof text !== 'string') {
-        return '';
-    }
-    return text.replace(/[{}]/g, (char) => char === '{' ? '{open}' : '{close}');
-}
-
-/**
  * Safely resolves the CLI entry point path.
  * Replaces insecure usage of process.argv[1] which can be manipulated.
  */

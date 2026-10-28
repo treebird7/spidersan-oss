@@ -16,7 +16,7 @@ import { HOSTED_API_BASE_URL } from './types.js';
 export type AiTier = 'free' | 'contributor' | 'byom' | 'local';
 
 export interface AiSetupConfig {
-  /** How spidersan ask routes LLM requests */
+  /** How the AI layer routes LLM requests */
   tier: AiTier;
   /** Saved BYOM URL (only when tier=byom or explicit BYOM preference alongside hosted) */
   byomUrl?: string;

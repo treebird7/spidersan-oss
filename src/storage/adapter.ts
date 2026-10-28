@@ -23,10 +23,9 @@ export interface Branch {
     /** PR that merged this branch (`spidersan merged --pr`). */
     prNumber?: number;
     /**
-     * Per-file claims: who's actively touching which file on this branch,
-     * right now. Populated automatically by `watch` on every registered
-     * change (so an agent that's never heard of spidersan still gets
-     * claimed), or explicitly via `spidersan claim`/`release`.
+     * Per-file claims from before 0.20.0, when `watch` and `spidersan
+     * claim`/`release` wrote them. Nothing writes this any more; it stays
+     * so registries that still carry it keep parsing.
      */
     claims?: Record<string, { agent: string; at: string }>;
 }

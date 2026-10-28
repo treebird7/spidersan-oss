@@ -5,11 +5,11 @@
  * Branch coordination for AI coding agents.
  *
  * Startup performance: commands are lazy-loaded. Importing from
- * `../commands/index.js` would pull in all ~38 command modules (and their heavy
- * transitive deps — blessed, chokidar, tree-sitter — ~700ms)
+ * `../commands/index.js` would pull in all ~24 command modules (and their heavy
+ * transitive deps — chokidar, tree-sitter)
  * just to print `--version`. Instead we register only the invoked command's
  * module on the hot path, and fall back to loading everything only for help /
- * unknown / ecosystem commands.
+ * unknown commands.
  */
 
 import 'dotenv/config';
@@ -83,39 +83,16 @@ async function main(): Promise<void> {
     }
 
     if (cmd && LOADER_BY_NAME.has(cmd)) {
-        // Hot path: a known core command — load only that module. Core commands
-        // always win over ecosystem ones (see dedup below), so ecosystem loading
-        // is unnecessary here.
+        // Hot path: a known command — load only that module.
         await LOADER_BY_NAME.get(cmd)!(program);
     } else {
-        // Cold path: help / no command / unknown command / ecosystem command.
+        // Cold path: help / no command / unknown command.
         // Register lightweight stubs (name + description) so commander can render
         // the full command listing WITHOUT importing every module; a core command
         // is never *executed* here (it would have taken the hot path above), so
-        // the stubs need no options or action. Ecosystem commands are loaded for
-        // real below so they remain routable.
+        // the stubs need no options or action.
         for (const entry of COMMANDS) {
             program.command(entry.name).description(entry.description);
-        }
-
-        const { loadEcosystemCommands, getEcosystemStatus } = await import('../commands/ecosystem-loader.js');
-        const ecosystemCommands = await loadEcosystemCommands();
-        ecosystemCommands.forEach((command) => {
-            const existing = program.commands.find(c => c.name() === command.name());
-            if (existing) {
-                if (isDebugMode()) {
-                    console.log(`⚠️  Skipping duplicate ecosystem command: ${command.name()}`);
-                }
-                return;
-            }
-            program.addCommand(command);
-        });
-
-        const ecosystemStatus = getEcosystemStatus();
-        if (ecosystemStatus.versionMismatch && ecosystemStatus.requiredRange && ecosystemStatus.coreVersion) {
-            console.warn(
-                `⚠️ Ecosystem expects spidersan@${ecosystemStatus.requiredRange}, but core is ${ecosystemStatus.coreVersion}`
-            );
         }
     }
 

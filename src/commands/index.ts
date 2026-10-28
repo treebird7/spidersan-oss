@@ -7,53 +7,26 @@ export { readyCheckCommand } from './ready-check.js';
 export { dependsCommand } from './depends.js';
 export { staleCommand } from './stale.js';
 export { cleanupCommand } from './cleanup.js';
-export { rescueCommand } from './rescue.js';
 export { abandonCommand } from './abandon.js';
 export { mergedCommand } from './merged.js';
 export { syncCommand } from './sync.js';
 export { watchCommand } from './watch.js';
-export { claimCommand, releaseCommand, whosHereCommand } from './coord.js';
 export { doctorCommand } from './doctor.js';
 export { configCommand } from './config.js';
-export { autoCommand } from './auto.js';
-export { welcomeCommand } from './welcome.js';
 export { rebaseHelperCommand } from './rebase-helper.js';
 export { registrySyncCommand } from './registry-sync.js';
 export { crossConflictsCommand } from './cross-conflicts.js';
-export { pulseCommand } from './pulse.js';
 export { gitWatchCommand } from './git-watch.js';
-export { fleetStatusCommand } from './fleet-status.js';
 
-export { loadEcosystemCommands, getEcosystemStatus } from './ecosystem-loader.js';
-
-// F2/F4: GitHub inventory and sync advisor
+// F2: GitHub inventory
 export { githubSyncCommand } from './github-sync.js';
-export { syncAdvisorCommand } from './sync-advisor.js';
 
-// PR coordination: merge-plan, pr-check, verify-trunk, mq
-export { mergePlanCommand } from './merge-plan.js';
-export { mqCommand } from './mq.js';
+// PR coordination: pr-check, verify-trunk
 export { prCheckCommand } from './pr-check.js';
 export { verifyTrunkCommand } from './verify-trunk.js';
-
-// F5: TUI Dashboard
-export { dashboardCommand } from './dashboard.js';
 
 // L1: Activity Log
 export { logCommand } from './log.js';
 
-// L2: Daily Bridge
-export { dailyCommand } from './daily.js';
-
-// Task Torrenting
-export { torrentCommand } from './torrent.js';
-
-// Mode 3: Queen Spider
-export { queenCommand } from './queen.js';
-
-// Bot: message-driven git ops via smalltoak
-export { botCommand } from './bot.js';
-
-// AI Core: Context, Ask, Advise, Explain
+// Context
 export { contextCommand } from './context.js';
-export { askCommand, adviseCommand, explainCommand, aiPingCommand, aiSetupCommand, aiTelemetryCommand, checkOptOutCommand } from './ai.js';
