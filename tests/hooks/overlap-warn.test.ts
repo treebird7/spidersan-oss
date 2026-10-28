@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, chmodSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 
-const SCRIPT = resolve(__dirname, '../../hooks/claude/spidersan-overlap-warn.sh');
+const SCRIPT = resolve(__dirname, '../../plugin/hooks/spidersan-overlap-warn.sh');
 const hasJq = spawnSync('jq', ['--version']).status === 0;
 
 let repo: string, bin: string, state: string;
@@ -16,9 +16,9 @@ function stub(body: string) {
     chmodSync(join(bin, 'spidersan'), 0o755);
 }
 const json = (conflicts: unknown[]) => `cat <<'J'\n${JSON.stringify({ conflicts })}\nJ`;
-const run = (file: string) => spawnSync('bash', [SCRIPT], {
+const run = (file: string, extraEnv: Record<string, string> = {}) => spawnSync('bash', [SCRIPT], {
     input: JSON.stringify({ tool_input: { file_path: join(repo, file) } }),
-    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, SPIDERSAN_OVERLAP_STATE_DIR: state },
+    env: { ...process.env, SPIDERSAN_SESSION_HINT: '', PATH: `${bin}:${process.env.PATH}`, SPIDERSAN_OVERLAP_STATE_DIR: state, ...extraEnv },
     encoding: 'utf-8',
 });
 
@@ -41,15 +41,21 @@ describe.skipIf(!hasJq)('spidersan-overlap-warn.sh', () => {
         expect(run('a.ts').stdout).toBe('');
     });
 
-    it('names the other session (tbe id) when the registry has one, and still parses without one', () => {
+    it('names the other session when the registry has one, and still parses without one', () => {
         stub(json([
             { branch: 'feat-y', files: ['a.ts'], tier: 2, sessionId: '1a2b3c4d-0000-4000-8000-000000000001' },
             { branch: 'feat-z', files: ['a.ts'], tier: 1 },
         ]));
-        const msg: string = JSON.parse(run('a.ts').stdout).hookSpecificOutput.additionalContext;
-        expect(msg).toContain("'feat-y' (TIER 2) — session 1a2b3c4d-0000-4000-8000-000000000001 (tbe watch 1a2b3c4d-0000-4000-8000-000000000001)");
+        const msg: string = JSON.parse(run('a.ts', { SPIDERSAN_SESSION_HINT: 'sessions watch {session_id}' }).stdout).hookSpecificOutput.additionalContext;
+        expect(msg).toContain("'feat-y' (TIER 2) — session 1a2b3c4d-0000-4000-8000-000000000001 (sessions watch 1a2b3c4d-0000-4000-8000-000000000001)");
         // no-session entry: fields must not shift (tier stays 1, no dangling session text)
         expect(msg).toContain("'feat-z' (TIER 1). Coordinate");
+    });
+
+    it('without SPIDERSAN_SESSION_HINT names the session id alone', () => {
+        stub(json([{ branch: 'feat-y', files: ['a.ts'], tier: 2, sessionId: '1a2b3c4d-0000-4000-8000-000000000001' }]));
+        const msg: string = JSON.parse(run('a.ts').stdout).hookSpecificOutput.additionalContext;
+        expect(msg).toContain("— session 1a2b3c4d-0000-4000-8000-000000000001. Coordinate");
     });
 
     it('says once per checkout that cross-machine was not checked (no creds), and stays silent when it was', () => {

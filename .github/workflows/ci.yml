@@ -77,6 +77,35 @@ jobs:
           node dist/bin/spidersan.js init
           ls -la .spidersan/
 
+  plugin-hooks:
+    name: Plugin hook suites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate the plugin and marketplace JSON
+        run: |
+          for f in .claude-plugin/marketplace.json plugin/.claude-plugin/plugin.json plugin/hooks/spidersan-hooks.json; do
+            jq empty "$f" || { echo "bad JSON: $f"; exit 1; }
+          done
+          # every hook the plugin wires must exist
+          jq -r '.. | .command? // empty' plugin/hooks/spidersan-hooks.json \
+            | sed -E 's#.*CLAUDE_PLUGIN_ROOT\}/([^"]+)".*#plugin/\1#' | sort -u \
+            | while read -r f; do [ -f "$f" ] || { echo "wired but missing: $f"; exit 1; }; done
+      # Each suite builds its own fixtures (stub CLIs on PATH, temp repos), so it
+      # needs nothing installed beyond git, jq and python3.
+      - name: Run the hook suites
+        run: |
+          set -uo pipefail
+          git config --global user.email ci@example.invalid
+          git config --global user.name ci
+          failed=()
+          for t in plugin/tests/test-*.sh; do
+            echo "::group::$t"
+            if bash "$t"; then echo "PASS $t"; else echo "FAIL $t"; failed+=("$t"); fi
+            echo "::endgroup::"
+          done
+          [ ${#failed[@]} -eq 0 ] || { printf 'FAILED: %s\n' "${failed[@]}"; exit 1; }
+
   ts-review-detect:
     name: ts-review detect step
     runs-on: ubuntu-latest
