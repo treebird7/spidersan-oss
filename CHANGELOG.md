@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-28
+
+A trim to the core, plus the git safety hooks as a Claude Code plugin. Pre-1.0 on
+purpose: it gets a week of use before 1.0. The last full build is tagged
+`v0.11.0-full`, and any removed command can be restored from it.
+
+### Added
+
+- **Claude Code plugin** (`plugin/`, #331). `/plugin marketplace add treebird7/spidersan-oss`,
+  then `/plugin install spidersan@spidersan`. It installs six hooks:
+  - `force-push-guard`: blocks plain force-pushes.
+  - `same-file-warn`: warns when two sessions share a checkout, and blocks a commit
+    that would sweep up another session's files.
+  - `spidersan-pre` and `spidersan-post`: conflict, ownership and dead-branch advisories,
+    plus trunk-poison repair.
+  - `spidersan-overlap-warn` and `spidersan-worktree-guard`.
+
+  Agent identity is optional, via `SPIDERSAN_IDENTITY_FILE` / `SPIDERSAN_IDENTITY_KEY` /
+  `SPIDERSAN_AGENT` / `SPIDERSAN_SESSION_HINT`. Four shell suites (153 cases) run in CI.
+- A parity test that every name the AI reasoner treats as a real command is one the CLI
+  registers. The old list included the removed commands and `collab`, which never existed.
+
+### Removed (breaking)
+
+- **15 commands that a usage audit found nothing calls** (#330): `daily`, `pulse`,
+  `queen`, `torrent`, `bot`, `ask` / `advise` / `explain` / `ai-ping` / `ai-setup` /
+  `ai-telemetry` / `check-opt-out`, `mq`, `dashboard`, `rescue`, `welcome`, `fleet-status`,
+  `merge-plan`, `sync-advisor`, `auto`, `claim` / `release` / `whos-here`.
+- **The `spidersan-ecosystem` plugin loader**, so `SPIDERSAN_CORE_ONLY` and
+  `SPIDERSAN_ECOSYSTEM=0` no longer switch anything. `conflicts --ecosystem` (the
+  multi-repo scan) is unrelated and stays.
+- `watch` no longer writes per-file claims or puts an in-file coordination marker into
+  your files. Old registries that carry `claims` still load.
+- The public export `escapeBlessed`, and the dependencies `blessed`, `@types/blessed` and `ts-morph`.
+- MCP server (`spidersan-mcp` 2.0.0): the `pulse_remote_drift` tool, which called `pulse`.
+- `config` wizard questions about the ecosystem plugin and auto-watch.
+
+
 ### Added
 
 - **A graphify knowledge graph of the repo, regenerated on demand into the now-gitignored `graphify-out/`.** ~1,980 nodes and ~4,280 edges over 247 code files, queryable with `graphify explain` / `affected` / `path` instead of grepping; `AGENTS.md` carries the commands, each run verbatim first. Nothing is committed — it rebuilds in ~30s. Extraction is local tree-sitter AST under `--code-only`, with the wrapper running under `env -i` because `extract` picks its backend from *whichever API key is set*: the stripped environment is the control, the flag is only the intent. `--with tree-sitter-sql` fails silently without the grammar, parsing the 26 `.sql` files to nothing behind a single warning and exit 0. The freshness check is `git rev-list --count HEAD..origin/main` rather than an mtime comparison, because a checkout behind the remote rebuilds into a graph that *looks* fresh — `built_at_commit` agrees with `HEAD` while both are stale. Measured on this repo: every file parsed with no syntax errors, `path` returns meaningful short routes (`conflictsCommand` → `fetchCrossMachineBranches()` → `SupabaseStorage`), `god-nodes` mixes framework fan-in (`vitest` 67, `commander` 45) with real hubs (`getStorage()` 63, `Branch` 54), and 176 labels are shared by more than one node — which matters because the verbs disagree about ambiguity: `explain` refuses and lists the candidate ids, `affected` refuses with *No unique node match*, and `path` does neither, answering *No directed path found* exactly as it would for a genuine negative.

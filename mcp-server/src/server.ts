@@ -47,7 +47,7 @@ function validateWatchDirectory(dir: string | undefined): string {
 // Create the MCP server
 const server = new McpServer({
     name: 'spidersan',
-    version: '1.2.3',
+    version: '2.0.0',
 });
 
 const execFileAsync = promisify(execFile);
