@@ -1,6 +1,6 @@
 {
   "name": "spidersan",
-  "version": "0.20.0",
+  "version": "0.20.1",
   "description": "Git safety hooks for teams of AI coding agents: block force-pushes and sweeping commits, warn on shared checkouts, branch overlap, and dead branches.",
   "author": {
     "name": "Treebird",
@@ -9,6 +9,12 @@
   "homepage": "https://github.com/treebird7/spidersan-oss",
   "repository": "https://github.com/treebird7/spidersan-oss",
   "license": "MIT",
-  "keywords": ["git", "multi-agent", "hooks", "safety", "worktree"],
+  "keywords": [
+    "git",
+    "multi-agent",
+    "hooks",
+    "safety",
+    "worktree"
+  ],
   "hooks": "./hooks/spidersan-hooks.json"
 }
