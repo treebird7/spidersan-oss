@@ -31,6 +31,13 @@ missing, and the others don't need it.
 so agents in separate worktrees never warn each other. Working in your own worktree
 (`git worktree add ../<repo>-<topic>`) is the fix most warnings point to.
 
+## The `/spidersan` skill
+
+The plugin also installs a `/spidersan` skill: how to register a branch, read conflict
+tiers, get a *real* merge answer (`git merge-tree`, other open PRs) rather than a registry
+guess, and tidy stale branches. It ships `bin/pr-conflicts <N>`, which merges PR N onto
+its base and then checks every other open PR against that result.
+
 ## Telling agents apart (optional)
 
 Two hooks compare a branch's prefix (`builder/fix-login`) with the current agent's

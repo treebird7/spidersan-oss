@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# pr-conflicts <N> — real `git merge-tree` check of PR N against its base, then
+# against every other open PR: "if N merges first, which PRs gain a conflict?"
+# Replaces `spidersan conflicts --pr N --real --vs-prs`, whose PR half only
+# compared file names.
+#
+# Merging two PR heads directly is wrong: a PR that is behind its base drags the
+# base's changes in and blames N for its own staleness. So N is merged onto the
+# base first (a throwaway commit, never referenced), each other PR is merged onto
+# that, and only conflicts it does NOT already have against the base are reported.
+#
+# Run inside a clone whose `origin` is the GitHub repo. Needs gh, jq, git >= 2.38.
+# Exit: 0 clean, 1 conflicts found, 2 error (the check did not complete).
+set -euo pipefail
+# Any unhandled failure (gh auth, network, fetch, jq) is exit 2: gh's own exit 1 must not read as "conflicts".
+trap 'exit 2' ERR
+
+n=${1:?usage: pr-conflicts <PR number>}
+[[ $n =~ ^[0-9]+$ ]] || { echo "pr-conflicts: not a PR number: $n" >&2; exit 2; }
+
+base=$(gh pr view "$n" --json baseRefName | jq -r .baseRefName)
+max=200
+prs=$(gh pr list --state open --limit $((max + 1)) --json number,baseRefName)
+[ "$(jq length <<<"$prs")" -le "$max" ] || {
+    echo "pr-conflicts: more than $max open PRs; refusing a partial check (raise max)" >&2; exit 2; }
+others=$(jq -r --argjson n "$n" --arg b "$base" \
+    '.[] | select(.number != $n and .baseRefName == $b) | .number' <<<"$prs")
+
+# Per-run namespace: concurrent runs in one clone must not delete each other's refs.
+ns=refs/pr-conflicts/$$
+trap 'git for-each-ref --format="delete %(refname)" "$ns" | git update-ref --stdin' EXIT
+refs=("+refs/heads/$base:$ns/base" "+refs/pull/$n/head:$ns/$n")
+for o in $others; do refs+=("+refs/pull/$o/head:$ns/$o"); done
+git fetch -q origin "${refs[@]}"
+
+# merge A B: sets $files (conflicted paths) and $rc (0 clean, 1 conflicts).
+# Runs in this shell, not in $(…), so a merge-tree error really exits the script.
+merge() {
+    rc=0
+    files=$(git merge-tree --write-tree --name-only --no-messages "$1" "$2") || rc=$?
+    [ "$rc" -le 1 ] || { echo "pr-conflicts: merge-tree failed on $1 + $2 (exit $rc)" >&2; exit 2; }
+    files=$(tail -n +2 <<<"$files" | sed '/^$/d')
+}
+
+echo "PR #$n → $base"
+merge "$ns/base" "$ns/$n"
+if [ "$rc" = 0 ]; then
+    echo "✅ clean vs $base"
+else
+    echo "⚠️  conflicts vs $base (rebase first; PR-vs-PR check skipped):"
+    sed 's/^/     /' <<<"$files"
+    exit 1
+fi
+
+tree=$(git merge-tree --write-tree "$ns/base" "$ns/$n")
+landed=$(git commit-tree "$tree" -p "$ns/base" -p "$ns/$n" -m "pr-conflicts: #$n on $base")
+
+found=0
+for o in $others; do
+    merge "$ns/base" "$ns/$o"; before=$files
+    merge "$landed" "$ns/$o"; after=$files
+    new=$(comm -13 <(sort <<<"$before") <(sort <<<"$after") | sed '/^$/d')
+    if [ -n "$new" ]; then
+        found=1
+        echo "⚠️  PR #$o would conflict after #$n lands:"
+        sed 's/^/     /' <<<"$new"
+    else
+        echo "✅ PR #$o unaffected${before:+ (already conflicts with $base on its own)}"
+    fi
+done
+exit "$found"
