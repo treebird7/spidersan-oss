@@ -141,7 +141,7 @@ out=$(pl "cd ~/.spidersan-testrepo && git commit -m y" | SPIDERSAN_IDENTITY_FILE
 no "no identity configured -> no ownership warning" "$out" "not your handle"
 out=$(pl "cd ~/.spidersan-testrepo && git commit -m y" | SPIDERSAN_IDENTITY_FILE= SPIDERSAN_AGENT=builder bash "$PRE")
 ok "SPIDERSAN_AGENT alone is enough" "$out" "('builder')"
-# own branch (and a 2nd colony instance of it) is not a stray commit
+# own branch (and a 2nd instance of it) is not a stray commit
 ( cd "$TH" && git checkout -q -b builder/topic )
 out=$(pl "cd ~/.spidersan-testrepo && git commit -m y" | bash "$PRE")
 no "own branch -> no ownership warning" "$out" "not your handle"
