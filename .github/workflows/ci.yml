@@ -99,7 +99,7 @@ jobs:
           git config --global user.email ci@example.invalid
           git config --global user.name ci
           failed=()
-          for t in plugin/tests/test-*.sh; do
+          for t in plugin/tests/test-*.sh plugin/skills/*/bin/*.test.sh; do
             echo "::group::$t"
             if bash "$t"; then echo "PASS $t"; else echo "FAIL $t"; failed+=("$t"); fi
             echo "::endgroup::"

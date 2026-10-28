@@ -241,7 +241,7 @@ The hooks ship as a Claude Code plugin, so checks happen **automatically** and n
 /plugin install spidersan@spidersan
 ```
 
-It blocks force-pushes and commits that would sweep up another session's files. It also warns when two sessions share a checkout, when an edited file is registered on another branch, when a branch's PR already merged, and when a worktree holds someone else's uncommitted work. On push, merge and rebase it runs `spidersan conflicts`. See [plugin/README.md](plugin/README.md) for each hook, its requirements and the optional agent-identity settings.
+It blocks force-pushes and commits that would sweep up another session's files. It also warns when two sessions share a checkout, when an edited file is registered on another branch, when a branch's PR already merged, and when a worktree holds someone else's uncommitted work. On push, merge and rebase it runs `spidersan conflicts`. See [plugin/README.md](plugin/README.md) for each hook, its requirements and the optional agent-identity settings. The plugin also adds the `/spidersan` skill.
 
 ---
 
