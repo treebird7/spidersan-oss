@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "spidersan",
+  "description": "Git coordination and safety for teams of AI coding agents.",
+  "owner": {
+    "name": "Treebird",
+    "url": "https://github.com/treebird7"
+  },
+  "plugins": [
+    {
+      "name": "spidersan",
+      "description": "Git safety hooks for multi-agent work: force-push and sweeping-commit blocks, shared-checkout, overlap and dead-branch warnings.",
+      "source": "./plugin",
+      "category": "development"
+    }
+  ]
+}

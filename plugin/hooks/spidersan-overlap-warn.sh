@@ -2,20 +2,18 @@
 # PostToolUse(Write|Edit|MultiEdit|NotebookEdit): warn EARLY when the file you just edited is
 # also registered on another branch. Advisory-only, fail-open, once per (file, other-branch)
 # per checkout — a guard that repeats itself gets ignored.
-#
-# Install (yourself — the user-level Claude config is config-guarded), AFTER spidersan-autoreg.sh in the same matcher:
-#   { "type": "command", "command": "/path/to/spidersan/hooks/claude/spidersan-overlap-warn.sh", "timeout": 8 }
+# Wired by the spidersan plugin (hooks/spidersan-hooks.json).
 #
 # Cross-machine: other machines' branches come from Supabase, so they only show up when this
-# session has SPIDERSAN_SUPABASE_URL/KEY (e.g. launched under `envoak vault inject`). Without them
-# `conflicts` is fail-open and local-only; the hook then says so once per status per checkout (crossMachine field) (tb-f4bl3).
+# session has SPIDERSAN_SUPABASE_URL/KEY. Without them `conflicts` is fail-open and local-only;
+# the hook then says so once per status per checkout (crossMachine field).
 # ponytail: file-level only (registry + cross-machine when creds are present, same as `conflicts`). No --semantic here:
-# that is 1+N gh calls and belongs on the push path. Known gap: autoreg registers async, so the
-# very first edit of a brand-new file can miss; the next edit of it catches it.
+# that is 1+N gh calls and belongs on the push path.
 set -uo pipefail
 
 command -v jq >/dev/null 2>&1 || exit 0
 command -v spidersan >/dev/null 2>&1 || exit 0
+. "$(dirname "$0")/spidersan-identity.sh"
 
 file=$(jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' 2>/dev/null)
 [ -n "$file" ] || exit 0
@@ -50,7 +48,7 @@ while IFS=$'\x1f' read -r other tier sid; do
     grep -qxF -- "$key" "$state" 2>/dev/null && continue    # already told them
     printf '%s\n' "$key" >> "$state"
     who=""
-    [ -n "$sid" ] && who=" — session ${sid} (tbe watch ${sid})"
+    [ -n "$sid" ] && who=" — session ${sid}$(h=$(spidersan_session_hint "$sid"); [ -n "$h" ] && printf ' (%s)' "${h#    }")"
     msg="${msg}⚠️  ${rel} is also registered on '${other}' (TIER ${tier})${who}. Coordinate before going further — check the real overlap: spidersan conflicts --semantic
 "
 done <<< "$hits"
@@ -60,7 +58,7 @@ case "$cm" in no-credentials|degraded)
     key="*	cross-machine:$cm"
     if ! grep -qxF -- "$key" "$state" 2>/dev/null; then
         printf '%s\n' "$key" >> "$state"
-        msg="${msg}ℹ️  Cross-machine overlap NOT checked here (${cm}) — local branches only. Give the session SPIDERSAN_SUPABASE_URL/KEY (e.g. launch under envoak vault inject) to see other machines.
+        msg="${msg}ℹ️  Cross-machine overlap NOT checked here (${cm}) — local branches only. Give the session SPIDERSAN_SUPABASE_URL/KEY to see other machines.
 "
     fi ;;
 esac
