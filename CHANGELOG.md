@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-10-28
+
+### Fixed
+
+- **The plugin's dangerous-`rm` block did not block** (`spidersan-pre.sh` v2.7). It
+  answered `{"continue": false}`, and Claude Code ran the command anyway and only stopped
+  the agent afterwards. It now returns `permissionDecision: "deny"`, the form
+  `force-push-guard` already used.
+- **It also fired on safe commands.** It searched the whole line for a bare `~` or `/`, so
+  `cd ~ && rm -rf /tmp/x` was "blocked". It now reads only the arguments of a command that
+  is `rm` (per `&&`, `||`, `;` and `|` segment, after `sudo` or `VAR=`), parsed with
+  `shlex`, so a quoted `"$HOME"` or `'/'` counts and `echo 'rm -rf ~'` doesn't. `git rm`
+  is not `rm`. 22 new cases, all red before the fix.
+- **The soft "rm detected" warning** uses the same parse, so a path containing `-rm-` or a
+  `git rm` no longer triggers it. One `python3` call per Bash command fewer.
+
+### Added
+
+- **The `/spidersan` skill ships with the plugin** (`plugin/skills/spidersan`, #333):
+  conflict tiers, real merge checks (`bin/pr-conflicts <N>`), and branch tidying. The same
+  skill is published as `skill-spidersan` in treebird7/treebird-oss-skills.
+
 ## [0.20.0] - 2026-10-28
 
 A trim to the core, plus the git safety hooks as a Claude Code plugin. Pre-1.0 on

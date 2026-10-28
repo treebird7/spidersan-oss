@@ -200,8 +200,28 @@ hash -r 2>/dev/null; export PATH="${PATH#/tmp/fakebin7:}"; unset FAKE_PR_LINE
 rm -rf "$D" /tmp/fakebin7
 cd "$T"
 
+echo "═══ dangerous rm: a real deny, judged on rm's own arguments ═══"
+# The block must be permissionDecision "deny". `{"continue": false}` let the command run
+# and only stopped the agent afterwards (seen live, 0.20.0).
+deny(){ [ "$(printf '%s' "$2" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)" = deny ] \
+    && { echo "  ✅ $1"; PASS=$((PASS+1)); } || { echo "  ❌ $1 (not denied)"; echo "     got: $2"; FAIL=$((FAIL+1)); }; }
+notdeny(){ [ "$(printf '%s' "$2" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)" != deny ] \
+    && ! printf '%s' "$2" | grep -q '"continue": false' \
+    && { echo "  ✅ $1"; PASS=$((PASS+1)); } || { echo "  ❌ $1 (blocked)"; echo "     got: $2"; FAIL=$((FAIL+1)); }; }
+for c in 'rm -rf /' 'rm -rf ~' 'rm -rf ~/' 'rm -rf $HOME' 'rm -r /tmp/x /' 'cd /tmp && rm -rf ~' 'ls; rm -rf /' 'rm --no-preserve-root -rf /x' \
+         'rm -rf "$HOME"' "rm -rf '/'" 'rm -rf "${HOME}/"' 'sudo rm -rf /'; do
+    out=$(pl "$c" | bash "$PRE"); deny "denied: $c" "$out"
+done
+ok "  ...and says why" "$(pl 'rm -rf ~' | bash "$PRE")" "Dangerous rm blocked"
+for c in 'cd ~ && rm -rf /tmp/scratch/x' 'rm -rf /tmp/x' 'rm -rf ~/scratch/x' 'cd / && rm -f x' 'rm -rf ./build' 'git rm -r --cached .spidersan' \
+         "echo 'rm -rf ~'" 'git commit -m "never rm -rf /"' 'rm -rf "$HOME/scratch"'; do
+    out=$(pl "$c" | bash "$PRE"); notdeny "allowed: $c" "$out"
+done
+ok "  ...an allowed rm still gets the soft warning" "$(pl 'cd ~ && rm -rf /tmp/scratch/x' | bash "$PRE")" "rm detected"
+no "no soft warning when 'rm' is only part of a path" "$(pl 'cd ~/code/app-rm-guard && git status' | bash "$PRE")" "rm detected"
+no "no soft warning for git rm" "$(pl 'git rm --cached x' | bash "$PRE")" "rm detected"
+
 echo "═══ regression: existing behavior intact ═══"
-out=$(pl "rm -rf /" | bash "$PRE"); ok "dangerous rm still hard-blocked" "$out" "Dangerous rm blocked"
 out=$(pl "git merge origin/x" | bash "$PRE"); ok "git merge still runs conflicts advisory" "$out" "Spidersan pre-merge/rebase"
 
 echo ""

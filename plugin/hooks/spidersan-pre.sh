@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# === SPIDERSAN_PRE_HOOK v=2.6 (spidersan plugin) ===
+# === SPIDERSAN_PRE_HOOK v=2.7 (spidersan plugin) ===
 # PreToolUse(Bash). Advisory-only (never blocks) except the dangerous-rm hard
 # block. Checks: force-push-to-trunk (#3), gh-pr-merge stacked/red state (#1), a
 # blind-spot reminder on git push (#4), a concurrent-checkout busy guard on
@@ -20,26 +20,39 @@ sid="${sid:-${CLAUDE_CODE_SESSION_ID:-}}"
 # First line only — prevents heredoc false positives
 cmd_first=$(echo "$cmd" | head -1 | sed 's/<<.*//')
 
-# Strip quoted strings before rm checks — prevents echo 'rm ~/' false-blocking
-cmd_unquoted=$(echo "$cmd_first" | python3 -c "
-import re, sys
-s = sys.stdin.read()
-s = re.sub(r'\"[^\"]*\"', '', s)
-s = re.sub(r\"'[^']*'\", '', s)
-print(s)
+# rm: DENY when an rm command's own arguments name the root or home dir (or pass
+# --no-preserve-root). Judged per command segment (split on && || ; |), so a `cd ~`
+# elsewhere in the line no longer counts, and `git rm` is not rm.
+# The answer is permissionDecision "deny": `{"continue": false}` let the command run
+# and only stopped the agent afterwards.
+# Parsed with shlex from the UNstripped line, so a quoted target ("\$HOME", '/') counts,
+# while `echo 'rm ~'` is an echo segment and never an rm.
+rm_danger=$(printf '%s' "$cmd_first" | python3 -c "
+import re, shlex, sys
+for seg in re.split(r'&&|\|\||;|\|', sys.stdin.read()):
+    try:
+        w = shlex.split(seg)
+    except ValueError:
+        w = seg.split()
+    while w and (re.match(r'^[A-Za-z_][A-Za-z0-9_]*=', w[0]) or w[0] in ('sudo', 'command', 'env', 'nohup')):
+        w = w[1:]
+    if not w or w[0].rsplit('/', 1)[-1] != 'rm':
+        continue
+    found = True
+    for a in w[1:]:
+        if a == '--no-preserve-root' or a.rstrip('/') in ('', '~', '\$HOME', '\${HOME}'):
+            print('y'); sys.exit()
+if 'found' in dir():
+    print('w')   # an rm, but not at home or root: soft warning only
 " 2>/dev/null)
-
-# rm: hard block dangerous targets (home dir, root). Match the target when it's
-# bare root/home followed by whitespace, EOL, or a single trailing slash — the old
-# pattern required a trailing SPACE, so `rm -rf /` (slash at EOL) slipped to soft-warn.
-if echo "$cmd_unquoted" | grep -qE '\brm\b' && \
-   echo "$cmd_unquoted" | grep -qE '((^|[[:space:]])(~|\$HOME|/)/?([[:space:]]|$)|--no-preserve-root)'; then
-    python3 -c "import json; print(json.dumps({'continue': False, 'stopReason': '🛑 Dangerous rm blocked: targets home dir or root. Verify before proceeding.'}))"
+if [ "$rm_danger" = y ]; then
+    python3 -c "import json; print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny', 'permissionDecisionReason': '🛑 Dangerous rm blocked: targets home dir or root. Verify before proceeding.'}}))"
     exit 0
 fi
 
-# rm: soft warn any other rm (allows through)
-if echo "$cmd_unquoted" | grep -qE '\brm\b'; then
+# rm: soft warn any other rm command (allows through). Same parse as above, so a
+# path that merely contains "-rm-" or a `git rm` stays quiet.
+if [ "$rm_danger" = w ]; then
     python3 -c "import json; print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'additionalContext': '⚠️  rm detected — double-check paths are correct before proceeding.'}}))"
     exit 0
 fi
