@@ -25,7 +25,7 @@ purpose: it gets a week of use before 1.0. The last full build is tagged
   - `spidersan-overlap-warn` and `spidersan-worktree-guard`.
 
   Agent identity is optional, via `SPIDERSAN_IDENTITY_FILE` / `SPIDERSAN_IDENTITY_KEY` /
-  `SPIDERSAN_AGENT` / `SPIDERSAN_SESSION_HINT`. Four shell suites (153 cases) run in CI.
+  `SPIDERSAN_AGENT` / `SPIDERSAN_SESSION_HINT`. Four shell suites (151 cases) run in CI.
 - A parity test that every name the AI reasoner treats as a real command is one the CLI
   registers. The old list included the removed commands and `collab`, which never existed.
 
