@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.2] - 2026-10-28
+
+Same code as 0.20.1. **0.20.1 on npm is broken and deprecated.** It was published by hand
+from a machine whose `~/.npmrc` sets `ignore-scripts=true`, which also skips `prepublishOnly`,
+so the build never ran and the tarball held 5 files and no `dist/`, so there's no CLI. Publish by
+hand only after an explicit `npm run build`, and check that `npm pack --dry-run` lists
+`dist/bin/spidersan.js` before uploading.
+
 ## [0.20.1] - 2026-10-28
 
 ### Fixed

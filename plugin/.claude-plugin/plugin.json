@@ -1,6 +1,6 @@
 {
   "name": "spidersan",
-  "version": "0.20.1",
+  "version": "0.20.2",
   "description": "Git safety hooks for teams of AI coding agents: block force-pushes and sweeping commits, warn on shared checkouts, branch overlap, and dead branches.",
   "author": {
     "name": "Treebird",
