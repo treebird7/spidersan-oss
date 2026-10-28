@@ -12,7 +12,7 @@
  *   spidersan git-watch --json             # machine-readable log output
  *
  * Notifications:
- *   push events   → warns agent to run `spidersan pulse`
+ *   push events   → warns agent to run `spidersan conflicts`
  *   branch delete → marks registry entry abandoned, archives it
  *   PR/create     → logged to activity.jsonl
  *

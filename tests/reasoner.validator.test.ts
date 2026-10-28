@@ -16,16 +16,15 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { COMMANDS } from '../src/bin/command-registry.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');
 const REASONER_PATH = join(REPO_ROOT, 'src/lib/ai/reasoner.ts');
 const COMMANDS_DIR = join(REPO_ROOT, 'src/commands');
 
-// Files in src/commands/ that aren't themselves commands (routers, helpers, subcommand hosts).
-// ai.ts exports several subcommands (ask/advise/explain/ai-ping/ai-setup/ai-telemetry/check-opt-out);
-// those are covered by the SCENARIO_PLAYBOOK test below, not the filesystem test.
-const NON_COMMAND_FILES = new Set(['index.ts', 'ecosystem-loader.ts', 'ai.ts', 'coord.ts']);
+// Files in src/commands/ that aren't themselves commands (routers, helpers).
+const NON_COMMAND_FILES = new Set(['index.ts']);
 
 function extractKnownSet(source: string): Set<string> {
     const match = source.match(/const KNOWN_SPIDERSAN_COMMANDS\s*=\s*new Set\(\[([\s\S]*?)\]\)/);
@@ -82,6 +81,17 @@ describe('reasoner — KNOWN_SPIDERSAN_COMMANDS parity', () => {
             missing,
             `Commands referenced in SCENARIO_PLAYBOOK but missing from KNOWN_SPIDERSAN_COMMANDS: [${missing.join(', ')}]. ` +
             `Fix by adding them to the Set, or renaming/removing the playbook reference.`,
+        ).toEqual([]);
+    });
+
+    // The other direction: a name in the Set that the CLI does not register lets the
+    // validator pass a hallucinated (or removed) command as real (0.20.0 trim).
+    it('every name in the Set is a registered CLI command', () => {
+        const registered = new Set(COMMANDS.map(c => c.name));
+        const unknown = [...known].filter(c => !registered.has(c)).sort();
+        expect(
+            unknown,
+            `KNOWN_SPIDERSAN_COMMANDS names commands the CLI does not register: [${unknown.join(', ')}].`,
         ).toEqual([]);
     });
 

@@ -13,8 +13,6 @@ import { computeDriftResult } from '../lib/remote-drift.js';
 import { renderFetchPollDrift, renderFetchPollHeartbeat } from '../lib/watch-renderer.js';
 import { getCLIPath } from '../lib/security.js';
 import type { DriftResult, DriftSkipped } from '../lib/remote-drift.js';
-import { mergeClaims } from './coord.js';
-import { injectCoordComment, removeCoordComment } from '../lib/coord-comment.js';
 
 const DEBOUNCE_MS = 1000;  // Debounce file changes
 
@@ -24,11 +22,6 @@ let _notifier: Notifier | null = null;
 function notifier(): Notifier {
     return (_notifier ??= createNotifier());
 }
-
-// Cooldown so watch's own coordination-comment writes don't re-trigger themselves
-// through chokidar into an infinite inject-detect-inject loop.
-const recentlyInjected = new Map<string, number>();
-const INJECT_COOLDOWN_MS = 3000;
 
 interface WatchOptions {
     dir?: string;
@@ -222,29 +215,22 @@ Press Ctrl+C to stop.
 
             // Register files
             const existing = await storage.get(branch);
-            // ponytail: capture the pre-write agent/files/claims — storage.update below
+            // ponytail: capture the pre-write agent/files — storage.update below
             // overwrites them with ours, so this is the only chance to see who else was
-            // just here (branch-level agent, and now per-file via claims).
+            // just here.
             const previousAgent = existing?.agent;
             const previousFiles = existing?.files ?? [];
-            const previousClaims = existing?.claims;
             const allFiles = existing
                 ? [...new Set([...existing.files, ...files])]
                 : files;
-            // Auto-claim: an agent never has to call `spidersan claim` — watch stamps
-            // every file it sees change, so even an agent that's never heard of
-            // spidersan shows up in `claims`/`whos-here`.
-            const claims = mergeClaims(previousClaims, files, agent);
-
             if (existing) {
-                await storage.update(branch, { files: allFiles, agent, claims });
+                await storage.update(branch, { files: allFiles, agent });
             } else {
                 await storage.register({
                     name: branch,
                     files: allFiles,
                     status: 'active',
                     agent,
-                    claims,
                 });
             }
 
@@ -261,39 +247,11 @@ Press Ctrl+C to stop.
 
             // Same-branch conflict: another agent's edits to the same file(s) on this
             // branch, still visible only because we grabbed `existing` before overwriting it.
-            let sameBranchOverlap: string[] = [];
             if (previousAgent && previousAgent !== agent) {
-                sameBranchOverlap = previousFiles.filter(f => filesSet.has(f));
+                const sameBranchOverlap = previousFiles.filter(f => filesSet.has(f));
                 if (sameBranchOverlap.length > 0) {
                     conflicts.push({ branch: `${branch} (agent: ${previousAgent})`, files: sameBranchOverlap });
-
-                    // Reach the ignorant agent: it never called `spidersan claim` and
-                    // never will, but it's about to read or re-read this file — so the
-                    // warning goes into the file itself, not just this log.
-                    for (const file of sameBranchOverlap) {
-                        const claim = previousClaims?.[file];
-                        const claimantAgent = claim?.agent ?? previousAgent;
-                        const claimedAt = claim?.at ?? new Date().toISOString();
-                        const now = Date.now();
-                        const lastInjected = recentlyInjected.get(file) ?? 0;
-                        if (now - lastInjected < INJECT_COOLDOWN_MS) continue;
-
-                        const absPath = path.isAbsolute(file) ? file : path.join(repoRoot, file);
-                        if (injectCoordComment(absPath, claimantAgent, claimedAt)) {
-                            recentlyInjected.set(file, now);
-                        }
-                    }
                 }
-            }
-
-            // A file that came back to a single writer this cycle (no overlap above)
-            // has its conflict resolved from our vantage point — strip any marker a
-            // past collision left behind, so it can't squat forever reading falsely
-            // "still live" long after everyone moved on.
-            for (const file of files) {
-                if (sameBranchOverlap.includes(file)) continue;
-                const absPath = path.isAbsolute(file) ? file : path.join(repoRoot, file);
-                removeCoordComment(absPath);
             }
 
             for (const otherBranch of allBranches) {
@@ -340,7 +298,6 @@ Press Ctrl+C to stop.
             '**/package-lock.json', '**/yarn.lock', '**/pnpm-lock.yaml',
             '**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.gif', '**/*.ico',
             '**/*.woff', '**/*.woff2', '**/*.ttf', '**/*.pdf',
-            '**/*.spidersan-coord-*.tmp', // transient rename-target from injectCoordComment
         ];
         if (options.legacy) {
             console.log('⚠️ Legacy mode: Using old watcher settings (more file descriptors)');

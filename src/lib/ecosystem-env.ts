@@ -1,19 +1,14 @@
 /**
  * Ecosystem environment resolution.
  *
- * Two unrelated things are both called "ecosystem" in spidersan:
+ * The repo list scanned by `spidersan conflicts --ecosystem`. It comes from
+ * `--repos`, then `SPIDERSAN_ECOSYSTEM` when that holds a path list
+ * (colon-separated), then `conflicts.ecosystemRepos` in a config file.
+ * There is no built-in default: unconfigured means no repos.
  *
- *   1. The optional `spidersan-ecosystem` plugin (extra commands). It can be
- *      switched off by `SPIDERSAN_ECOSYSTEM=0|false|no|off`, by
- *      `SPIDERSAN_CORE_ONLY=1|true|yes|on`, or by `ecosystem.enabled: false`
- *      in a config file.
- *   2. The repo list scanned by `spidersan conflicts --ecosystem`. It comes from
- *      `--repos`, then `SPIDERSAN_ECOSYSTEM` when that holds a path list
- *      (colon-separated), then `conflicts.ecosystemRepos` in a config file.
- *      There is no built-in default: unconfigured means no repos.
- *
- * A boolean-looking SPIDERSAN_ECOSYSTEM value is a plugin switch, never a path
- * list — so `SPIDERSAN_ECOSYSTEM=0` no longer scans a repo literally named "0".
+ * A boolean-looking SPIDERSAN_ECOSYSTEM value was the switch for the
+ * `spidersan-ecosystem` plugin, removed in 0.20.0. It is still never read as a
+ * path list, so `SPIDERSAN_ECOSYSTEM=0` does not scan a repo named "0".
  */
 
 import { homedir } from 'os';
@@ -35,15 +30,6 @@ export function isOffToken(value?: string): boolean {
 
 export function isOnToken(value?: string): boolean {
     return ON_TOKENS.includes(norm(value));
-}
-
-/**
- * True when the environment disables the ecosystem plugin.
- * SPIDERSAN_CORE_ONLY=1 means "core only" — plugin disabled. Before this fix
- * the check was inverted: CORE_ONLY=0 disabled the plugin and =1 did nothing.
- */
-export function isPluginDisabledByEnv(env: Env = process.env): boolean {
-    return isOffToken(env.SPIDERSAN_ECOSYSTEM) || isOnToken(env.SPIDERSAN_CORE_ONLY);
 }
 
 function expandHome(p: string, home: string): string {

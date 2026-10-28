@@ -21,8 +21,6 @@ const mocks = vi.hoisted(() => {
         getRepoName: vi.fn(),
         getRemoteHead: vi.fn(),
         computeDriftResult: vi.fn(),
-        injectCoordComment: vi.fn(() => false),
-        removeCoordComment: vi.fn(),
         // The transport behind the real `deliver`. Defaults to dead, which is
         // exactly the sp-8iqm condition under test.
         notifier: vi.fn(),
@@ -63,11 +61,6 @@ vi.mock('../src/lib/git.js', () => ({
 
 vi.mock('../src/lib/remote-drift.js', () => ({
     computeDriftResult: mocks.computeDriftResult,
-}));
-
-vi.mock('../src/lib/coord-comment.js', () => ({
-    injectCoordComment: mocks.injectCoordComment,
-    removeCoordComment: mocks.removeCoordComment,
 }));
 
 // The REAL `deliver` runs; only the transport underneath it is swapped. Mocking

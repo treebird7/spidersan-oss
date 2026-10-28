@@ -489,12 +489,11 @@ async function handlePush(event: GitEvent, localPaths: string[], log: (m: string
     const who = event.sender_login ?? 'unknown';
     const branch = event.branch ?? event.ref ?? 'unknown';
 
-    log(`⚠  git push: ${event.repo} ${branch} by ${who} (${shortSha}) — run \`spidersan pulse\` to check conflicts`);
+    log(`⚠  git push: ${event.repo} ${branch} by ${who} (${shortSha}) — run \`spidersan conflicts\` to check conflicts`);
 
     // sp-8iqm: the main-updated fleet announce was removed, not re-pointed. It
     // fired into a dead `envoak hive signal` for a month and nobody missed it;
-    // the push is already logged to the activity log below, and `spidersan
-    // pulse` reads that. Alerts are for conflicts, not for every push to main.
+    // the push is already logged to the activity log below. Alerts are for conflicts, not for every push to main.
 
     const entry = {
         type: 'git_push',
@@ -504,7 +503,7 @@ async function handlePush(event: GitEvent, localPaths: string[], log: (m: string
         after_sha: shortSha,
         received_at: event.received_at,
         ts: new Date().toISOString(),
-        action_hint: 'spidersan pulse',
+        action_hint: 'spidersan conflicts',
     };
     appendLog(ACTIVITY_LOG, { ...entry, source: 'git-watch' });
     appendLog(PENDING_LOG, entry);

@@ -12,7 +12,7 @@ import { createInterface } from 'readline/promises';
 import { stdin as input, stdout as output } from 'process';
 import { resolveSupabaseEnv } from '../lib/supabase-credentials.js';
 import { CONFIG_FILES, loadConfigWithSources } from '../lib/config.js';
-import { isPluginDisabledByEnv, resolveEcosystemRepos } from '../lib/ecosystem-env.js';
+import { resolveEcosystemRepos } from '../lib/ecosystem-env.js';
 
 const DEFAULT_CONFIG_FILENAME = CONFIG_FILES[0];
 
@@ -163,7 +163,6 @@ async function runWizard(): Promise<void> {
         }
 
         const agentName = await ask('Default agent name (optional): ');
-        const ecosystemEnabled = await askYesNo('Enable ecosystem commands?', true);
         const storageType = await askChoice('Storage type', ['local', 'supabase'], 'local');
         let environment: string = 'production';
 
@@ -171,31 +170,11 @@ async function runWizard(): Promise<void> {
             environment = await askChoice('Supabase environment', ['production', 'staging', 'local'], 'production');
         }
 
-        const autoWatchEnabled = await askYesNo('Enable auto-watch shortcuts?', false);
-        let autoWatchPaths: string[] = [];
-        if (autoWatchEnabled) {
-            const rawPaths = await ask('Auto-watch paths (comma-separated): ');
-            autoWatchPaths = rawPaths
-                .split(',')
-                .map((p) => p.trim())
-                .filter(Boolean);
-            if (autoWatchPaths.length === 0) {
-                console.log('ℹ️  No paths provided; auto-watch will remain disabled.');
-            }
-        }
-
         const config: Record<string, unknown> = {
             agent: { name: agentName || undefined },
-            ecosystem: { enabled: ecosystemEnabled },
             storage: {
                 type: storageType,
                 environment,
-            },
-            autoWatch: {
-                enabled: autoWatchEnabled && autoWatchPaths.length > 0,
-                paths: autoWatchPaths,
-                quiet: false,
-                legacy: false,
             },
         };
 
@@ -230,7 +209,6 @@ export const _testable = {
 
 async function printConfig(options: { json?: boolean } = {}): Promise<void> {
     const result = await loadConfigWithSources();
-    const envDisable = isPluginDisabledByEnv();
     const ecosystemRepos = resolveEcosystemRepos(result.config);
     // Shared resolution: reporting only the bare SUPABASE_* names made
     // `spidersan config` claim "not set" under `envoak vault inject` (which only
@@ -243,8 +221,6 @@ async function printConfig(options: { json?: boolean } = {}): Promise<void> {
             config: result.config,
             sources: result.sources,
             ecosystem: {
-                enabled: result.config.ecosystem.enabled && !envDisable,
-                disabledByEnv: envDisable,
                 repos: ecosystemRepos.repos,
                 reposSource: ecosystemRepos.source,
             },
@@ -269,10 +245,6 @@ async function printConfig(options: { json?: boolean } = {}): Promise<void> {
         result.errors.forEach((err) => console.log(`   - ${err.path}: ${err.message}`));
     }
 
-    console.log(`  Ecosystem: ${result.config.ecosystem.enabled && !envDisable ? 'enabled' : 'disabled'}`);
-    if (envDisable) {
-        console.log('   - disabled by environment override');
-    }
     console.log(`  Ecosystem repos (conflicts --ecosystem): ${ecosystemRepos.repos.length} (${ecosystemRepos.source})`);
 
     const agentName = result.config.agent.name?.trim();

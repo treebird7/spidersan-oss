@@ -20,7 +20,6 @@ vi.mock('child_process', async () => {
 });
 
 import {
-    isPluginDisabledByEnv,
     resolveEcosystemRepos,
     ECOSYSTEM_UNCONFIGURED_HINT,
 } from '../src/lib/ecosystem-env.js';
@@ -52,29 +51,6 @@ afterEach(() => {
     vi.restoreAllMocks();
     rmSync(home, { recursive: true, force: true });
     rmSync(cwd, { recursive: true, force: true });
-});
-
-describe('isPluginDisabledByEnv', () => {
-    it('SPIDERSAN_CORE_ONLY=1/true disables the plugin', () => {
-        expect(isPluginDisabledByEnv({ SPIDERSAN_CORE_ONLY: '1' })).toBe(true);
-        expect(isPluginDisabledByEnv({ SPIDERSAN_CORE_ONLY: 'true' })).toBe(true);
-        expect(isPluginDisabledByEnv({ SPIDERSAN_CORE_ONLY: ' YES ' })).toBe(true);
-    });
-
-    it('SPIDERSAN_CORE_ONLY=0/false/unset leaves the plugin allowed (was inverted)', () => {
-        expect(isPluginDisabledByEnv({ SPIDERSAN_CORE_ONLY: '0' })).toBe(false);
-        expect(isPluginDisabledByEnv({ SPIDERSAN_CORE_ONLY: 'false' })).toBe(false);
-        expect(isPluginDisabledByEnv({})).toBe(false);
-    });
-
-    it('SPIDERSAN_ECOSYSTEM=0/false still disables the plugin', () => {
-        expect(isPluginDisabledByEnv({ SPIDERSAN_ECOSYSTEM: '0' })).toBe(true);
-        expect(isPluginDisabledByEnv({ SPIDERSAN_ECOSYSTEM: 'false' })).toBe(true);
-    });
-
-    it('a SPIDERSAN_ECOSYSTEM path list does not disable the plugin', () => {
-        expect(isPluginDisabledByEnv({ SPIDERSAN_ECOSYSTEM: '/tmp/repo-a:/tmp/repo-b' })).toBe(false);
-    });
 });
 
 describe('resolveEcosystemRepos', () => {
