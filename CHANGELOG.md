@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is `rm` (per `&&`, `||`, `;` and `|` segment, after `sudo` or `VAR=`), parsed with
   `shlex`, so a quoted `"$HOME"` or `'/'` counts and `echo 'rm -rf ~'` doesn't. `git rm`
   is not `rm`. 22 new cases, all red before the fix.
+- **The soft "rm detected" warning** uses the same parse, so a path containing `-rm-` or a
+  `git rm` no longer triggers it. One `python3` call per Bash command fewer.
+
+### Added
+
+- **The `/spidersan` skill ships with the plugin** (`plugin/skills/spidersan`, #333):
+  conflict tiers, real merge checks (`bin/pr-conflicts <N>`), and branch tidying. The same
+  skill is published as `skill-spidersan` in treebird7/treebird-oss-skills.
 
 ## [0.20.0] - 2026-10-28
 

@@ -218,6 +218,8 @@ for c in 'cd ~ && rm -rf /tmp/scratch/x' 'rm -rf /tmp/x' 'rm -rf ~/scratch/x' 'c
     out=$(pl "$c" | bash "$PRE"); notdeny "allowed: $c" "$out"
 done
 ok "  ...an allowed rm still gets the soft warning" "$(pl 'cd ~ && rm -rf /tmp/scratch/x' | bash "$PRE")" "rm detected"
+no "no soft warning when 'rm' is only part of a path" "$(pl 'cd ~/code/app-rm-guard && git status' | bash "$PRE")" "rm detected"
+no "no soft warning for git rm" "$(pl 'git rm --cached x' | bash "$PRE")" "rm detected"
 
 echo "═══ regression: existing behavior intact ═══"
 out=$(pl "git merge origin/x" | bash "$PRE"); ok "git merge still runs conflicts advisory" "$out" "Spidersan pre-merge/rebase"
