@@ -27,8 +27,8 @@ spidersan list                                       # See all branches
 When you wake up in a Spidersan-enabled repo:
 
 ```bash
-# 1. Quick health check (ecosystem)
-spidersan pulse --quiet
+# 1. Quick health check
+spidersan doctor
 
 # 2. Check for conflicts
 spidersan conflicts

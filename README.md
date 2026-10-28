@@ -53,13 +53,6 @@ spidersan ready-check
 npm install -g spidersan
 ```
 
-### Guided Setup (Optional)
-
-```bash
-spidersan welcome
-spidersan config wizard
-```
-
 ### Basic Usage
 
 ```bash
@@ -95,17 +88,13 @@ spidersan merge-order
 | `spidersan depends` | Set/show branch dependencies (deps merge first; synced cross-machine) |
 | `spidersan stale` | Find stale branches |
 | `spidersan cleanup` | Remove stale branches from registry |
-| `spidersan rescue` | Rescue mode — scan for and salvage rogue/unregistered work |
 | `spidersan abandon` | Abandon a branch (mark inactive) |
 | `spidersan merged` | Mark a branch merged |
 | `spidersan sync` | Sync registry with actual git branches |
 | `spidersan watch` | Daemon mode: watch files and auto-register |
 | `spidersan doctor` | Diagnose local state and registry health |
-| `spidersan config` | View/edit configuration + guided wizard |
-| `spidersan auto` | Auto-watch start/stop/status (config-based) |
-| `spidersan welcome` | Onboarding and quick start |
+| `spidersan config` | View/edit configuration + setup wizard |
 | `spidersan log` | Show branch operation history (local activity log) |
-| `spidersan daily` | Show branch-relevant entries from daily collab logs |
 | `spidersan rebase-helper` | Detect and guide through local git rebase states |
 | `spidersan git-watch` | Subscribe to GitHub webhook events — cross-machine push/PR/create/delete with AI conflict routing |
 
@@ -125,151 +114,19 @@ A project-level file's list replaces the global one rather than extending it. Wi
 
 Plugin switches (separate from the repo list): `SPIDERSAN_CORE_ONLY=1` or `SPIDERSAN_ECOSYSTEM=0` disables the optional `spidersan-ecosystem` plugin. Neither value is read as a repo path.
 
-### 🧠 AI Commands (Gemma 4 / LM Studio)
-
-Ask spidersan questions about your repo state — powered by a local LLM with an embedded gitops playbook.
-
-| Command | Description |
-|---------|-------------|
-| `spidersan context` | Build full repo context (registry, conflicts, colony, git) |
-| `spidersan ask "<question>"` | Ask a question — get actionable gitops advice with commands |
-| `spidersan advise` | Get proactive recommendations based on current repo state |
-| `spidersan explain <branch>` | Explain what a branch does, its risk, and next steps |
-| `spidersan ai-ping` | Test LLM connectivity and latency |
-
-```bash
-# Get AI-powered advice
-spidersan ask "I have 3 branches touching auth.ts — what should I do?"
-
-# Proactive recommendations
-spidersan advise
-
-# Understand a mystery branch
-spidersan explain feat/strange-refactor
-
-# Flags
-spidersan context --json --verbose --repo ~/Dev/other-repo
-spidersan ask "merge strategy?" --provider copilot
-```
-
-**Features:**
-- 🏠 **Local-first**: Defaults to Gemma 4 26B on LM Studio (no API key needed)
-- 🔒 **Privacy**: Code context never leaves your machine unless you opt into remote providers
-- 📋 **18-scenario playbook**: PHC-optimized command reference covering all spidersan workflows
-- 🔧 **MCP integration**: All AI commands available as MCP tools (27 total)
-- 🧠 **Training data**: Use `/spidersan-gold` skill to mine gold pairs for fine-tuning — see [spidersan-ai](https://github.com/treebird7/spidersan-ai)
-
-### 🤖 Remote Bot (Cross-Machine Git Operations)
-
-Trigger git operations on a remote machine from any agent — no SSH needed.
-
-```bash
-# Start the bot daemon (listens for /commands via smalltoak)
-envoak vault inject --key GIT_BOT_ENABLED -- spidersan bot
-
-# One-shot: process pending commands and exit (good for cron)
-spidersan bot --once
-
-# Manage watched repos
-spidersan bot add myrepo --path ~/Dev/myrepo --branch main --push src/
-spidersan bot repos
-spidersan bot remove myrepo
-```
-
-**How it works:** An agent on M2 wants to push `spidersan-ai` from M5. They send `/push spidersan-ai` via smalltoak. The bot running on M5 picks it up, executes `git push`, and replies with the result. Tier-based permissions gate which agents can trigger which operations.
-
-| Command | Description |
-|---------|-------------|
-| `spidersan bot` | Start remote git ops daemon (polls smalltoak) |
-| `spidersan bot --once` | Process pending commands once and exit |
-| `spidersan bot add` | Register a repo for bot management |
-| `spidersan bot repos` | List managed repos |
-| `spidersan bot remove` | Unregister a repo |
-
 ### 🌐 Multi-Repo & Cloud Commands
 
 | Command | Description |
 |---------|-------------|
-| `spidersan sync-advisor` | Scan all repos and recommend push/pull/cleanup actions |
-| `spidersan registry-sync --push` | Push local branch registry to colony Supabase (share with fleet) |
+| `spidersan registry-sync --push` | Push local branch registry to the shared Supabase (share with other machines) |
 | `spidersan registry-sync --pull` | Pull other machines' registries — see what the full fleet is working on |
 | `spidersan registry-sync --status` | Show sync status across all machines |
 | `spidersan cross-conflicts` | Detect file conflicts across machines via Supabase |
 | `spidersan github-sync` | Fetch branch/PR/CI status from GitHub for configured repos |
-| `spidersan merge-plan` | Ordered merge plan for open PRs (fuses PR + CI + real git conflicts) |
 | `spidersan pr-check <number>` | Check a PR's merge readiness (stacked base, red/behind state) |
 | `spidersan verify-trunk` | Detect registry trunk-poison (main/master must claim no files) |
-| `spidersan pulse` | Sync from Colony then show active conflicts (quick health-check) |
-| `spidersan pulse --remote-drift` | Fetch origin + detect remote drift zone; cross-ref against registry and unstaged files |
 
 > **Note:** `registry-sync`, `cross-conflicts`, and `git-watch` require a **`service_role`** key in `SUPABASE_KEY` — anon writes are denied by RLS. See `.env.example` for the required credential format.
-
-### 📡 Remote Drift Detection
-
-`spidersan pulse --remote-drift` closes the gap between registry-level conflict detection and single-agent divergence:
-
-```bash
-# Check if origin has advanced past local HEAD
-spidersan pulse --remote-drift
-
-# Machine-readable output
-spidersan pulse --remote-drift --json
-
-# Exit 1 if any drift risk — use as a pre-push gate
-spidersan pulse --remote-drift --strict
-
-# As a pre-push hook:
-# .git/hooks/pre-push
-spidersan pulse --remote-drift --strict || { echo "Fetch + resolve drift first"; exit 1; }
-```
-
-**What it detects:**
-- 📥 Remote commits that local doesn't have (the *drift zone*)
-- 🟠/🔴 Registered files in the drift zone → rebase conflict risk, classified by tier
-- ⚠️ Unstaged tracked files in the drift zone → `git rebase --continue` blocker risk (even after resolving conflict markers — fix: `git checkout HEAD -- <file>`)
-
-**Graceful degradation:** offline, detached HEAD, mid-rebase, no remote branch — all print a warning and continue without exit 1.
-
-
-
-Dispatch sub-spidersans to run ground jobs across multiple repos in parallel:
-
-```bash
-# Spawn sub-spidersans for a task (generates fire-complete-dissolve scripts)
-spidersan queen spawn --task "morning sync" --type sync --repos "repo1,repo2"
-
-# Dry-run: preview scripts without emitting colony signals
-spidersan queen spawn --task "conflict scan" --type conflicts --dry-run
-
-# Monitor active sub-spidersans via the colony gradient
-spidersan queen status --queen-signal-id <id>
-
-# Manually dissolve a stuck sub-spidersan
-spidersan queen dissolve <signal-id>
-```
-
-Job types: `sync` | `conflicts` | `cleanup` | `custom`
-
-### 🔄 Task Torrenting (Branch-per-Task)
-
-Create and manage parallel task branches with conflict-aware merge ordering:
-
-```bash
-spidersan torrent create DASH-001 --agent myagent
-spidersan torrent status
-spidersan torrent tree
-spidersan torrent complete DASH-001
-spidersan torrent merge-order
-spidersan torrent decompose DASH --into "DASH-A,DASH-B,DASH-C"
-```
-
-### 📊 TUI Dashboard
-
-Real-time 4-panel terminal UI — ecosystem overview, conflict map, activity feed, merge queue:
-
-```bash
-spidersan dashboard
-```
 
 ### Watch Mode (Daemon)
 
@@ -279,11 +136,8 @@ Real-time file monitoring with auto-registration:
 # Start watching (auto-registers file changes)
 spidersan watch --agent myagent
 
-# With Hub integration for real-time conflict warnings
-spidersan watch --agent myagent --hub
-
 # Quiet mode (only show conflicts)
-spidersan watch --agent myagent --hub --quiet
+spidersan watch --agent myagent --quiet
 
 # Watch only specific paths
 spidersan watch --paths "src,lib" --root .
@@ -292,22 +146,11 @@ spidersan watch --paths "src,lib" --root .
 **Features:**
 - 📁 Auto-registers files when you edit them
 - ⚠️ Real-time conflict detection
-- 🔌 Hub integration for team visibility
 - 🕐 Debounced (1s) to prevent spam
-
-### ⚡ Auto Watch (Background)
-
-Run a background watcher using paths from your config:
-
-```bash
-spidersan auto start
-spidersan auto status
-spidersan auto stop
-```
 
 ### 🔔 git-watch — GitHub Webhook Notifications
 
-Cross-machine push/delete notifications via a GitHub org webhook → Supabase edge function → `spidersan_git_events` table. Each machine runs a polling daemon that reacts to events: auto-abandons deleted branches in the registry, warns to `spidersan pulse` on pushes.
+Cross-machine push/delete notifications via a GitHub org webhook → Supabase edge function → `spidersan_git_events` table. Each machine runs a polling daemon that reacts to events: auto-abandons deleted branches in the registry, warns to run `spidersan conflicts` on pushes.
 
 **Infrastructure (one-time setup):**
 
@@ -368,7 +211,7 @@ tail -f /tmp/spidersan-git-watch.log
 
 | Event | Action |
 |-------|--------|
-| `push` | Logs to `activity.jsonl`, warns to run `spidersan pulse`. Detects new gold pairs in `sql-tree/pairs/` and `ts-tree/pairs/` — emits `🌱 tree_pairs_ready` cue to `~/.spidersan/git-events-pending.jsonl` |
+| `push` | Logs to `activity.jsonl`, warns to run `spidersan conflicts`. Detects new gold pairs in `sql-tree/pairs/` and `ts-tree/pairs/` — emits `🌱 tree_pairs_ready` cue to `~/.spidersan/git-events-pending.jsonl` |
 | `delete` | Marks branch `abandoned` in the local registry, archives to `~/.spidersan/archive.jsonl` |
 | `pull_request` / `create` | Logged only |
 
@@ -387,28 +230,11 @@ branch. A closed PR or a deleted branch retires it.
 The earlier OIDC Actions workflow (`auto-register.yml` → `register-branch` edge
 function → `branch_registry`) was removed: nothing read `branch_registry`.
 
-### 🦺 Rescue Mode
-
-Got a repo with 10+ abandoned branches? Let Spidersan clean up the mess:
-
-```bash
-# Scan for rogue files/branches
-spidersan rescue --scan
-
-# Salvage a file into ./salvage/
-spidersan rescue --salvage path/to/file.ts
-
-# Abandon a rogue file
-spidersan rescue --abandon path/to/file.ts
-```
-
-**Perfect for:** Post-hackathon cleanup, onboarding to chaotic repos, AI agent disasters.
-
 ---
 
 ## 🪝 Claude Code Hook Recipes
 
-Wire Spidersan into Claude Code's hook system so conflict checks, AI advice, and registry syncs happen **automatically** — no agent needs to remember to run them.
+Wire Spidersan into Claude Code's hook system so conflict checks and registry syncs happen **automatically** — no agent needs to remember to run them.
 
 ### How it works
 
@@ -458,7 +284,6 @@ Add these hooks to `~/.claude/settings.json`:
 |------|---------|--------|
 | `rm` guard | Any `rm` command | **Hard block** — requires explicit permission |
 | Pre-push conflict check | `git push` | Runs `spidersan conflicts --tier 2 --strict` — **hard blocks** if TIER 2+ found |
-| Pre-push AI advice | `git push` (after conflict check passes) | Runs `spidersan advise`, injects recommendations into model context |
 | Pre-merge conflict check | `git merge` / `git rebase` | Runs `spidersan conflicts --tier 3 --strict` — **hard blocks** on critical files |
 | Post-push registry sync | `git push` (success) | Runs `spidersan registry-sync --push` async — keeps fleet registry fresh |
 
