@@ -9,9 +9,9 @@ Spidersan keeps a registry of which branch is changing which files, so agents wo
 parallel can see overlap before it becomes a merge conflict. It also computes **real**
 conflicts with `git merge-tree`, which no registry can.
 
-Install the CLI with `npm i -g spidersan` (or prefix commands with `npx`). The spidersan
-Claude Code plugin, which ships this skill, also wires the hooks that run these checks
-automatically.
+Install the CLI with `npm i -g spidersan` (or prefix commands with `npx`). This skill also
+ships inside the spidersan Claude Code plugin (`treebird7/spidersan-oss`), which adds hooks
+that run these checks automatically.
 
 ## Two kinds of answer — know which one you have
 
