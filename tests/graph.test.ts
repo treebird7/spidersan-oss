@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { addDependencyEdges, buildConflictGraph, calculateBlockingCounts, topologicalSort } from '../src/lib/graph.js';
+import {
+    addDependencyEdges,
+    buildConflictGraph,
+    buildDeclaredGraph,
+    calculateBlockingCounts,
+    calculateCriticalPath,
+    orientForMeasurement,
+    topologicalSort,
+} from '../src/lib/graph.js';
 
 describe('buildConflictGraph', () => {
     it('returns empty adjacency lists for branches with no file overlap', () => {
@@ -172,5 +180,84 @@ describe('calculateBlockingCounts', () => {
         expect(counts.get('alpha')).toBe(2);
         expect(counts.get('beta')).toBe(1);
         expect(counts.get('gamma')).toBe(0);
+    });
+});
+
+/** Every edge u→v has u before v. */
+function isTopological(order: string[], graph: Map<string, string[]>): boolean {
+    const position = new Map(order.map((node, i) => [node, i] as const));
+    return [...graph].every(([node, out]) => out.every((next) => position.get(node)! < position.get(next)!));
+}
+
+describe('calculateCriticalPath', () => {
+    // fan: one node unblocking 8 leaves. chain-1 heads chain-1 → … → chain-5.
+    const leaves = Array.from({ length: 8 }, (_, i) => `leaf-${i}`);
+    const chain = ['chain-1', 'chain-2', 'chain-3', 'chain-4', 'chain-5'];
+    const nodes = ['fan', ...leaves, ...chain];
+    const graph = new Map<string, string[]>(nodes.map((n) => [n, []]));
+    graph.set('fan', leaves);
+    chain.slice(0, -1).forEach((n, i) => graph.set(n, [chain[i + 1]]));
+
+    it('puts the chain head first where blocking count puts the fan-out first', () => {
+        const blocking = calculateBlockingCounts(nodes, graph);
+        const critical = calculateCriticalPath(nodes, graph);
+
+        expect(blocking.get('fan')).toBe(8);
+        expect(blocking.get('chain-1')).toBe(4);
+        expect(critical.get('fan')).toBe(1);
+        expect(critical.get('chain-1')).toBe(4);
+
+        const byBlocking = topologicalSort(nodes, graph, blocking);
+        const byCritical = topologicalSort(nodes, graph, critical, blocking);
+
+        expect(byBlocking[0]).toBe('fan');
+        expect(byCritical[0]).toBe('chain-1');
+        expect(isTopological(byBlocking, graph)).toBe(true);
+        expect(isTopological(byCritical, graph)).toBe(true);
+    });
+
+    it('throws on a cycle instead of truncating the path', () => {
+        const cyclic = new Map([['a', ['b']], ['b', ['a']]]);
+        expect(() => calculateCriticalPath(['a', 'b'], cyclic)).toThrow(/cycle/);
+    });
+});
+
+describe('orientForMeasurement', () => {
+    it('keeps a declared edge the plain sort would point backward', () => {
+        // conflicts a↔b↔z, declared: a depends on z. The plain sort gives a, b, z.
+        const branches = [
+            { name: 'a', files: ['x.ts'], dependsOn: ['z'] },
+            { name: 'b', files: ['x.ts', 'y.ts'] },
+            { name: 'z', files: ['y.ts', 'x.ts'] },
+        ];
+        const nodes = branches.map((b) => b.name);
+        const result = orientForMeasurement(nodes, buildDeclaredGraph(branches), buildConflictGraph(branches));
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.graph.get('z')).toContain('a');
+        expect(result.graph.get('a')).not.toContain('z');
+        expect(isTopological(result.order, result.graph)).toBe(true);
+        // a↔b and b↔z had no declared order; a↔z did.
+        expect(result.droppedConflictEdges).toBe(2);
+    });
+
+    it('reports a declared 2-cycle with both edges', () => {
+        const branches = [
+            { name: 'a', files: [], dependsOn: ['b'] },
+            { name: 'b', files: [], dependsOn: ['a'] },
+        ];
+        const result = orientForMeasurement(['a', 'b'], buildDeclaredGraph(branches), new Map());
+
+        expect(result).toEqual({
+            ok: false,
+            cycles: [[{ dependent: 'a', dependency: 'b' }, { dependent: 'b', dependency: 'a' }]],
+        });
+    });
+
+    it('ignores deps on unregistered or merged branches', () => {
+        const branches = [{ name: 'a', files: [], dependsOn: ['gone'] }];
+        const result = orientForMeasurement(['a'], buildDeclaredGraph(branches), new Map());
+        expect(result.ok).toBe(true);
     });
 });
