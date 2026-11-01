@@ -24,7 +24,7 @@ missing, and the others don't need it.
 | `same-file-warn.sh` | before and after Bash, after Write/Edit | Warns when another Claude session wrote the same file in this checkout in the last 30 minutes. **Blocks** a `git commit` that would include files another session wrote and hasn't committed. Override with `SAME_FILE_OK=1` in the command. |
 | `spidersan-pre.sh` | before a Bash command | **Blocks** an `rm` aimed at your home directory or `/`, and flags any other `rm`. Advises on: a force-push to a trunk branch, `gh pr merge` on a stacked or red PR, a second agent mid-commit in the same checkout, committing on a branch whose prefix isn't yours, and pushing a branch whose PR is already merged or closed. Runs `spidersan conflicts` on push, merge and rebase. |
 | `spidersan-post.sh` | after a Bash command | After a push, syncs the registry. After a merge, resets a trunk branch that wrongly claims files in the local registry. |
-| `spidersan-overlap-warn.sh` | after Write/Edit | Warns when the file you just edited is also registered on another branch. |
+| `spidersan-overlap-warn.sh` | after Write/Edit | Warns when the file you just edited is also registered on another branch. It sees other worktrees and machines only after their branch is pushed. There is no edit-time registration, so push early. |
 | `spidersan-worktree-guard.sh` | session start | Warns when the worktree already holds uncommitted work that isn't yours. |
 
 `same-file-warn.sh` keeps its state in `<git-dir>/claude-writes`, which is per worktree,

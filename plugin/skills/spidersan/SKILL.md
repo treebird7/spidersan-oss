@@ -102,6 +102,12 @@ spidersan register --files "src/foo.ts,src/bar.ts"
 Confirm your own branch first (`git rev-parse --abbrev-ref HEAD`). In a shared checkout,
 another session may have left it on a different branch.
 
+**Push early** (`git push -u origin HEAD`, or a draft PR). `register` writes only this
+checkout's `.spidersan/registry.json`. Other worktrees and machines see your branch once
+it reaches the shared registry, after a push: the plugin's post-push sync, or the GitHub
+webhook. Until then their `conflicts` and the overlap warning can't see you, which is
+blind spot 3 above.
+
 ### Before opening or merging a PR
 
 ```bash
