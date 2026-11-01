@@ -15,15 +15,14 @@ import { registryRepoNames } from '../lib/git.js';
 import { Command } from 'commander';
 import { getStorage } from '../storage/index.js';
 import { LocalStorage } from '../storage/local.js';
-import { SupabaseStorage } from '../storage/supabase.js';
 import { classifyTier, TIER_LABELS } from '../lib/conflict-tier.js';
-import { resolveSupabaseCredentials } from '../lib/supabase-credentials.js';
 import type {
     CrossMachineConflict,
     GlobalConflictReport,
     MachineRegistryView,
     SpiderRegistry,
 } from '../types/cloud.js';
+import { resolveRegistrySync } from '../storage/registry-sync.js';
 
 // ─── Core: Detect Cross-Machine Conflicts ───
 
@@ -225,15 +224,14 @@ export const crossConflictsCommand = new Command('cross-conflicts')
 
         // Cross-machine mode via Supabase
         try {
-            const creds = await resolveSupabaseCredentials();
+            const supabase = await resolveRegistrySync();
 
-            if (!creds) {
+            if (!supabase) {
                 console.log('⚠️  Supabase not configured. Use --local for local-only conflicts.');
                 console.log('   Set SPIDERSAN_SUPABASE_URL and SPIDERSAN_SUPABASE_KEY, or run: spidersan cross-conflicts --local');
                 return;
             }
 
-            const supabase = new SupabaseStorage(creds);
             const localStorage = new LocalStorage();
 
             // Load machine identity

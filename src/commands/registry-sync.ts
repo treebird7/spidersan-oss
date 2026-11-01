@@ -13,9 +13,9 @@ import { homedir } from 'os';
 import { execFileSync } from 'child_process';
 import { LocalStorage } from '../storage/local.js';
 import { SupabaseStorage } from '../storage/supabase.js';
-import { resolveSupabaseCredentials } from '../lib/supabase-credentials.js';
 import { loadMachineIdentity } from '../lib/machine.js';
 import { getRepoName, registryRepoNames } from '../lib/git.js';
+import { resolveRegistrySync } from '../storage/registry-sync.js';
 
 /**
  * Get the repo root path.
@@ -35,9 +35,7 @@ async function getSupabaseStorage(): Promise<SupabaseStorage | null> {
     // COLONY_SUPABASE_* used to sit in this chain as a last-resort fallback. It
     // is gone deliberately: colony is a different Supabase project, so that
     // fallback could push spider_registries into the wrong database (tb-ly0b).
-    const creds = await resolveSupabaseCredentials();
-    if (!creds) return null;
-    return new SupabaseStorage(creds);
+    return resolveRegistrySync();
 }
 
 export const registrySyncCommand = new Command('registry-sync')

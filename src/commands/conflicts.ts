@@ -13,10 +13,8 @@ import { compilePatterns } from '../lib/regex-utils.js';
 import { execFileSync, spawnSync } from 'child_process';
 import { basename } from 'path';
 import { getStorage } from '../storage/index.js';
-import { SupabaseStorage } from '../storage/supabase.js';
 import type { Branch } from '../storage/adapter.js';
 import type { MachineRegistryView } from '../types/cloud.js';
-import { resolveSupabaseCredentials } from '../lib/supabase-credentials.js';
 import { loadMachineIdentity } from '../lib/machine.js';
 import { getRepoName, registryRepoNames, resolveBranchRef } from '../lib/git.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
@@ -33,6 +31,7 @@ import { createNotifier, deliver, type Notifier } from '../lib/notify.js';
 import { analyzeRealConflicts, type RealConflictReport } from '../lib/git-merge-analyzer.js';
 import { getTrunkBranch } from '../lib/trunk.js';
 import { activeBranches } from '../lib/reconcile.js';
+import { resolveRegistrySync } from '../storage/registry-sync.js';
 
 type ConflictTierInfo = ReturnType<typeof classifyWithLabel>;
 
@@ -83,11 +82,10 @@ export type CrossMachineStatus = 'checked' | 'no-credentials' | 'degraded';
 
 async function fetchCrossMachineBranches(ownBranches: Iterable<string> = []): Promise<{ branches: Branch[]; degraded: boolean; status: CrossMachineStatus }> {
     try {
-        const creds = await resolveSupabaseCredentials();
-        if (!creds) return { branches: [], degraded: false, status: 'no-credentials' };
+        const supabase = await resolveRegistrySync();
+        if (!supabase) return { branches: [], degraded: false, status: 'no-credentials' };
 
         const machine = await loadMachineIdentity();
-        const supabase = new SupabaseStorage(creds);
         // Excluding our own machine_id matters: without it this machine's own
         // pushed rows come back and conflict against themselves.
         // ownBranches: a branch pushed from here can reach the registry as a pushed-branch

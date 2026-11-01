@@ -7,6 +7,7 @@
 
 import type { StorageAdapter, Branch } from './adapter.js';
 import { JsonBranchRegistryStore } from './json-branch-registry-store.js';
+import type { SupabaseRegistrySyncClient } from './supabase-registry-sync-client.js';
 import {
     SupabaseRegistrySyncClientImpl,
     type SupabaseRegistrySyncClientConfig,
@@ -21,11 +22,12 @@ import type {
 
 export class SupabaseStorage implements StorageAdapter {
     private store: JsonBranchRegistryStore;
-    private syncClient: SupabaseRegistrySyncClientImpl;
+    private syncClient: SupabaseRegistrySyncClient;
 
-    constructor(config: SupabaseRegistrySyncClientConfig, basePath: string = process.cwd()) {
+    /** Credentials for the built-in client, or a client from storage.syncModule. */
+    constructor(config: SupabaseRegistrySyncClientConfig | SupabaseRegistrySyncClient, basePath: string = process.cwd()) {
         this.store = new JsonBranchRegistryStore(basePath);
-        this.syncClient = new SupabaseRegistrySyncClientImpl(config);
+        this.syncClient = 'pull' in config ? config : new SupabaseRegistrySyncClientImpl(config);
     }
 
     async init(): Promise<void> {
