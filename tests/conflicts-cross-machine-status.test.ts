@@ -12,7 +12,11 @@ import { execFileSync } from 'child_process';
 const pullRegistries = vi.fn();
 
 vi.mock('../src/storage/index', () => ({ getStorage: vi.fn() }));
-vi.mock('../src/lib/config', () => ({ loadConfig: vi.fn(async () => ({})) }));
+vi.mock('../src/lib/config', () => ({
+    loadConfig: vi.fn(async () => ({})),
+    // storage/registry-sync reads ~/.spidersanrc for storage.syncModule: none here
+    loadConfigWithSources: vi.fn(async () => ({ config: { storage: {} }, sources: [], errors: [] })),
+}));
 vi.mock('../src/lib/supabase-credentials', () => ({ resolveSupabaseCredentials: vi.fn() }));
 vi.mock('../src/lib/machine', () => ({ loadMachineIdentity: vi.fn(async () => ({ id: 'm-self', name: 'm2', hostname: 'h' })) }));
 vi.mock('../src/storage/supabase', () => ({

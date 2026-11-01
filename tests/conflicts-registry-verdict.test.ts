@@ -17,7 +17,11 @@ import { getStorage } from '../src/storage/index';
 import { execFileSync } from 'child_process';
 
 vi.mock('../src/storage/index', () => ({ getStorage: vi.fn() }));
-vi.mock('../src/lib/config', () => ({ loadConfig: vi.fn(async () => ({})) }));
+vi.mock('../src/lib/config', () => ({
+    loadConfig: vi.fn(async () => ({})),
+    // storage/registry-sync reads ~/.spidersanrc for storage.syncModule: none here
+    loadConfigWithSources: vi.fn(async () => ({ config: { storage: {} }, sources: [], errors: [] })),
+}));
 // Keep the cross-machine lookup off the network: no credentials => local-only,
 // which is exactly the "fail-open, not degraded" case this path renders.
 vi.mock('../src/lib/supabase-credentials', () => ({
