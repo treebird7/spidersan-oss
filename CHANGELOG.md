@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-11-01
+
+### Added
+
+- **`storage.syncModule`: bring your own cross-machine registry.** An ES module exporting
+  `createRegistrySyncClient()` (the `SupabaseRegistrySyncClient` interface) replaces the
+  built-in Supabase client for `registry-sync`, `conflicts` and `cross-conflicts`. Name it
+  with `SPIDERSAN_SYNC_MODULE` or `storage.syncModule` in your own `~/.spidersanrc`, as an
+  absolute or `~/` path. A repo-local `.spidersanrc` is never read for this, so a cloned
+  repo cannot make spidersan run its code. Without a module, behaviour is unchanged.
+
 ## [0.20.2] - 2026-10-28
 
 Same code as 0.20.1. **0.20.1 on npm is broken and deprecated.** It was published by hand
