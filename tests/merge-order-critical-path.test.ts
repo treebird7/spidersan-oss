@@ -49,6 +49,18 @@ describe('merge-order --critical-path', () => {
         expect(text(errorSpy)).toContain('feature-b depends on feature-a');
     });
 
+    it('with --json, a cycle exits 1 with parseable JSON on stdout', async () => {
+        registry([
+            { name: 'feature-a', dependsOn: ['feature-b'] },
+            { name: 'feature-b', dependsOn: ['feature-a'] },
+        ]);
+
+        await expect(run(['--critical-path', '--json'])).rejects.toThrow('exit 1');
+        const result = JSON.parse(text(logSpy));
+        expect(result).toMatchObject({ ok: false, error: 'dependency_cycle' });
+        expect(result.cycles.flat()).toContainEqual({ dependent: 'feature-a', dependency: 'feature-b' });
+    });
+
     it('plain merge-order still succeeds on the same registry', async () => {
         registry([
             { name: 'feature-a', dependsOn: ['feature-b'] },

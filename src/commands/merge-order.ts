@@ -148,6 +148,10 @@ function printCriticalPathOrder(
     );
 
     if (!orientation.ok) {
+        if (json) {
+            console.log(JSON.stringify({ ok: false, error: 'dependency_cycle', cycles: orientation.cycles }, null, 2));
+            process.exit(1);
+        }
         console.error('❌ Declared dependencies form a cycle, so there is no critical path to measure.');
         for (const cycle of orientation.cycles) {
             console.error('');
