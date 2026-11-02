@@ -70,7 +70,7 @@ spidersan merge-order
 - Local storage
 
 ### Optional Cloud Sync
-- Supabase sync across machines (opt-in)
+- Cross-machine sync through a pluggable sync module (opt-in)
 - Team coordination (shared registry)
 - Agent-to-agent messaging (via Myceliumail)
 

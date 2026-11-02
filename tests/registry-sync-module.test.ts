@@ -12,7 +12,7 @@ const saved = {
 let home: string;
 let repo: string;
 
-function fakeModule(dir: string, body = "export const createRegistrySyncClient = async () => ({ pull: async () => [{ machine_id: 'fake', branches: [] }], push: async () => ({}), getStatus: async () => [], detectCrossMachineConflicts: async () => [] });"): string {
+function fakeModule(dir: string, body = "export const createRegistrySyncClient = async () => ({ pull: async () => [{ machine_id: 'fake' }], push: async () => ({}), getStatus: async () => [], detectCrossMachineConflicts: async () => [] });"): string {
     const p = join(dir, 'client.mjs');
     writeFileSync(p, body);
     return p;
@@ -37,7 +37,7 @@ describe('storage.syncModule', () => {
     it('a module named in ~/.spidersanrc becomes the sync client', async () => {
         writeFileSync(join(home, '.spidersanrc'), JSON.stringify({ storage: { syncModule: fakeModule(home) } }));
         const s = await resolveRegistrySync();
-        expect(await s!.pullRegistries('x')).toEqual([{ machine_id: 'fake', branches: [] }]);
+        expect(await s!.pullRegistries('x')).toEqual([{ machine_id: 'fake' }]);
     });
 
     it('SPIDERSAN_SYNC_MODULE works too, with ~ expanded', async () => {

@@ -24,9 +24,10 @@ export function dropShadowedPushRows(views: MachineRegistryView[], ownBranches: 
     const covered = new Set<string>(ownBranches);
     for (const v of views) {
         if (v.machine_id === PUSH_MACHINE_ID) continue;
-        for (const b of v.branches) if (b.status === 'active') covered.add(b.name);
+        // `?? []`: views come from a third-party sync module now; tolerate a missing list.
+        for (const b of v.branches ?? []) if (b.status === 'active') covered.add(b.name);
     }
     return views
-        .map(v => v.machine_id !== PUSH_MACHINE_ID ? v : { ...v, branches: v.branches.filter(b => !covered.has(b.name)) })
+        .map(v => v.machine_id !== PUSH_MACHINE_ID ? v : { ...v, branches: (v.branches ?? []).filter(b => !covered.has(b.name)) })
         .filter(v => v.machine_id !== PUSH_MACHINE_ID || v.branches.length > 0);
 }

@@ -38,7 +38,6 @@ spidersan watch
 ```
 
 **The `pulse` command checks:**
-- ✅ Supabase connection
 - ✅ Branch registry health
 - ✅ Your agent identity
 - ✅ Any stale branches needing cleanup
