@@ -105,7 +105,7 @@ After your PR merges: `spidersan merged --pr <num>`.
 ```
 
 The `--agent codex` id keeps Codex's registrations distinguishable in
-`spidersan list` and in the shared Supabase registry.
+`spidersan list` and, with a sync module configured, in the cross-machine registry.
 
 ## 4. git-native hooks — the bypass-proof floor
 
@@ -134,14 +134,14 @@ treat it as a bonus, not coverage): a `PreToolUse` hook on `shell` matching
 output as context. If you build one, follow `/hooks-create` for the Codex JSON
 protocol; don't reuse the Claude scripts.
 
-## 5. Supabase announce (optional, flock machines)
+## 5. Cross-machine announce (optional)
 
-`spidersan registry-sync` pushes registrations to the shared `spider_registries`
-table so other machines see them. It needs treebird-runtime env in the shell
-Codex runs from:
+`spidersan registry-sync --push` shares registrations with other machines through
+the sync module named by `storage.syncModule` in `~/.spidersanrc` (or
+`SPIDERSAN_SYNC_MODULE`). Check one is configured for the user Codex runs as:
 
 ```bash
-echo "${SUPABASE_URL:?unset}" && echo ok   # source via vault/agent .env if unset
+spidersan registry-sync --status   # exits 1 with setup instructions if no module is configured
 ```
 
 Without it, everything above still works — coordination is just local to the

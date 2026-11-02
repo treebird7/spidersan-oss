@@ -82,11 +82,11 @@ and CI gate on. `--tier <n>` only filters what is shown.
 | `spidersan log [--since 7d] [--branch <b>] [--agent <id>]` | Branch operation history |
 | `spidersan doctor [--remote]` | Diagnose setup; `--remote` = ahead/behind per repo |
 
-**Across machines** (optional; needs `SPIDERSAN_SUPABASE_URL` / `SPIDERSAN_SUPABASE_KEY`)
+**Across machines** (optional; needs `storage.syncModule` in `~/.spidersanrc` or `SPIDERSAN_SYNC_MODULE`; without one `registry-sync` / `cross-conflicts` exit 1)
 
 | Command | Purpose |
 |---|---|
-| `spidersan registry-sync --push` / `--pull` | Share the registry through Supabase |
+| `spidersan registry-sync --push` / `--pull` | Share the registry through your sync module |
 | `spidersan cross-conflicts [--local]` | Overlap with other machines' branches |
 | `spidersan github-sync [--ci]` | Live branch, PR and CI status from GitHub |
 

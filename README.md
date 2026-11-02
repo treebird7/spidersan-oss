@@ -96,7 +96,7 @@ spidersan merge-order
 | `spidersan config` | View/edit configuration + setup wizard |
 | `spidersan log` | Show branch operation history (local activity log) |
 | `spidersan rebase-helper` | Detect and guide through local git rebase states |
-| `spidersan git-watch` | Subscribe to GitHub webhook events — cross-machine push/PR/create/delete with AI conflict routing |
+| `spidersan git-watch` | **Retired** — refuses and exits 1; use pushed-branch sync via `storage.syncModule` (below) |
 
 #### Ecosystem scan repo list
 
@@ -118,15 +118,29 @@ Plugin switches (separate from the repo list): `SPIDERSAN_CORE_ONLY=1` or `SPIDE
 
 | Command | Description |
 |---------|-------------|
-| `spidersan registry-sync --push` | Push local branch registry to the shared Supabase (share with other machines) |
+| `spidersan registry-sync --push` | Push local branch registry through your sync module (share with other machines) |
 | `spidersan registry-sync --pull` | Pull other machines' registries — see what the full fleet is working on |
 | `spidersan registry-sync --status` | Show sync status across all machines |
-| `spidersan cross-conflicts` | Detect file conflicts across machines via Supabase |
+| `spidersan cross-conflicts` | Detect file conflicts across machines via your sync module (`--local` for this machine only) |
 | `spidersan github-sync` | Fetch branch/PR/CI status from GitHub for configured repos |
 | `spidersan pr-check <number>` | Check a PR's merge readiness (stacked base, red/behind state) |
 | `spidersan verify-trunk` | Detect registry trunk-poison (main/master must claim no files) |
 
-> **Note:** `registry-sync`, `cross-conflicts`, and `git-watch` require a **`service_role`** key in `SUPABASE_KEY` — anon writes are denied by RLS. See `.env.example` for the required credential format.
+> **Cross-machine sync needs a sync module.** `registry-sync`, `cross-conflicts` and the
+> cross-machine half of `conflicts` talk to whatever registry your `storage.syncModule`
+> provides — an ES module exporting `createRegistrySyncClient()` (the
+> `SupabaseRegistrySyncClient` interface in `src/storage/supabase-registry-sync-client.ts`).
+> Name it in your own `~/.spidersanrc` (a repo-local config is never read for this):
+>
+> ```json
+> { "storage": { "syncModule": "~/path/to/registry-client.mjs" } }
+> ```
+>
+> or with `SPIDERSAN_SYNC_MODULE=/abs/path/to/registry-client.mjs`. There is no built-in
+> hosted client any more: `SPIDERSAN_SUPABASE_*` / `SUPABASE_*` no longer enable sync.
+> Without a module, `registry-sync` and `cross-conflicts` exit 1 with this hint, and
+> `conflicts` checks local branches only and says so. Everything else is local and needs
+> no configuration.
 
 ### Watch Mode (Daemon)
 
@@ -148,87 +162,29 @@ spidersan watch --paths "src,lib" --root .
 - ⚠️ Real-time conflict detection
 - 🕐 Debounced (1s) to prevent spam
 
-### 🔔 git-watch — GitHub Webhook Notifications
+### 🔕 git-watch (retired)
 
-Cross-machine push/delete notifications via a GitHub org webhook → Supabase edge function → `spidersan_git_events` table. Each machine runs a polling daemon that reacts to events: auto-abandons deleted branches in the registry, warns to run `spidersan conflicts` on pushes.
-
-**Infrastructure (one-time setup):**
-
-1. **Deploy edge function** to your Supabase runtime project:
-   ```bash
-   supabase functions deploy spidersan-webhook --no-verify-jwt --project-ref <runtime-ref>
-   ```
-
-2. **Set edge function secret** (`SPIDERSAN_WEBHOOK_SECRET`) via the Supabase dashboard or CLI.
-
-3. **Apply the migration** (`supabase/migrations/20260421000000_spidersan_git_events.sql`) to your runtime project.
-
-4. **Create a GitHub org webhook:**
-   - URL: `https://<runtime-ref>.supabase.co/functions/v1/spidersan-webhook`
-   - Content type: `application/json`
-   - Secret: your `SPIDERSAN_WEBHOOK_SECRET` value
-   - Events: **Pushes**, **Pull requests**, **Branch or tag creation**, **Branch or tag deletion**
-
-**Running the daemon on each machine:**
-
-```bash
-# One-shot catch-up (useful for cron / CI)
-SUPABASE_URL=https://<runtime-ref>.supabase.co \
-SUPABASE_KEY=<service-role-key> \
-spidersan git-watch --once
-
-# Persistent daemon (poll every 30s)
-SUPABASE_URL=https://<runtime-ref>.supabase.co \
-SUPABASE_KEY=<service-role-key> \
-spidersan git-watch --interval 30000
-```
-
-**macOS LaunchAgent (keep-alive daemon):**
-
-```xml
-<!-- ~/Library/LaunchAgents/com.treebird.spidersan-git-watch.plist -->
-<key>ProgramArguments</key>
-<array>
-  <string>/usr/local/bin/node</string>
-  <string>/path/to/spidersan-oss/dist/bin/spidersan.js</string>
-  <string>git-watch</string>
-  <string>--interval</string>
-  <string>30000</string>
-</array>
-<key>EnvironmentVariables</key>
-<dict>
-  <key>SUPABASE_URL</key><string>https://<runtime-ref>.supabase.co</string>
-  <key>SUPABASE_KEY</key><string><anon-key></string>
-</dict>
-```
-
-```bash
-launchctl load ~/Library/LaunchAgents/com.treebird.spidersan-git-watch.plist
-tail -f /tmp/spidersan-git-watch.log
-```
-
-**What each event does:**
-
-| Event | Action |
-|-------|--------|
-| `push` | Logs to `activity.jsonl`, warns to run `spidersan conflicts`. Detects new gold pairs in `sql-tree/pairs/` and `ts-tree/pairs/` — emits `🌱 tree_pairs_ready` cue to `~/.spidersan/git-events-pending.jsonl` |
-| `delete` | Marks branch `abandoned` in the local registry, archives to `~/.spidersan/archive.jsonl` |
-| `pull_request` / `create` | Logged only |
+`git-watch` subscribed to a hosted git-event feed that no longer exists, and the sync-module
+interface has no git-event API, so the command was retired. It is still registered so old
+cron jobs and launch agents fail loudly: every invocation prints what to use instead and
+exits 1. For cross-machine awareness of pushed branches use the pushed-branch sync below
+through `storage.syncModule`; for local file watching use `spidersan watch`.
 
 ### 🤖 Pushed branches register themselves
 
 Every push to a watched repo reaches the `spidersan-webhook` edge function through
 the GitHub webhook, so a branch pushed by any tool — Codex, Copilot, a cloud agent,
-the web editor, a person — is registered in `spider_registries` and shows up in
-`conflicts` on every machine, even though no local hook ran. No GitHub Actions
-workflow, and no write credential outside Supabase.
+the web editor, a person — is registered server-side in the cross-machine registry and
+shows up in `conflicts` on every machine whose `storage.syncModule` reads that registry,
+even though no local hook ran. No GitHub Actions workflow, and no write credential on
+any client.
 
 Rows sit under the virtual machine `github`, files are computed against the repo's
 default branch, and a row is ignored wherever a real machine already has the same
 branch. A closed PR or a deleted branch retires it.
 
 The earlier OIDC Actions workflow (`auto-register.yml` → `register-branch` edge
-function → `branch_registry`) was removed: nothing read `branch_registry`.
+function) was removed: nothing read what it wrote.
 
 ---
 

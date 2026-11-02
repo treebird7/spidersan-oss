@@ -31,14 +31,15 @@ Branches must be **registered** to be visible. Unregistered branches are dark �
 ---
 
 ### Registry
-The `.spidersan/registry.json` file that maps branch names to `Branch` records. Two storage adapters exist: **local** (JSON file, single-machine) and **Supabase** (cross-machine sync). The factory in `src/storage/factory.ts` selects based on env vars.
+The `.spidersan/registry.json` file that maps branch names to `Branch` records. The registry is always the local JSON file; `src/storage/factory.ts` always returns it. Cross-machine sync is a separate client loaded from `storage.syncModule` (`src/storage/registry-sync.ts`); there is no built-in hosted client.
 
 ```
 src/storage/
   adapter.ts          ← StorageAdapter interface + Branch / BranchRegistry types
-  factory.ts          ← picks local vs Supabase
+  factory.ts          ← always local
+  registry-sync.ts    ← loads the storage.syncModule client
   local.ts            ← reads/writes .spidersan/registry.json
-  supabase.ts         ← Supabase cloud store
+  supabase.ts         ← local store + sync-module client
   branch-registry-store.ts  ← thin wrapper used by most commands
 ```
 
@@ -152,9 +153,10 @@ src/
 │   └── config.ts             .spidersanrc loader (deepMerge, __proto__ guard)
 └── storage/
     ├── adapter.ts            StorageAdapter interface + Branch type
-    ├── factory.ts            Auto-select local vs Supabase
+    ├── factory.ts            Always local
+    ├── registry-sync.ts      Loads the storage.syncModule client
     ├── local.ts              JSON file backend
-    └── supabase.ts           Cloud backend
+    └── supabase.ts           Local store + sync-module client
 ```
 
 ---

@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed (breaking)
+
+- **The built-in hosted sync client is gone; set `storage.syncModule`.** The hosted
+  registry tables it read and wrote directly are being dropped. Cross-machine sync now
+  goes only through a module named by `storage.syncModule` in your own `~/.spidersanrc`
+  (or `SPIDERSAN_SYNC_MODULE`) that exports `createRegistrySyncClient()`.
+  `SPIDERSAN_SUPABASE_*` / `SUPABASE_*` and `storage.supabaseUrl` / `supabaseKey` no
+  longer enable sync (the env names still feed the optional activity-log upload; the
+  config keys are accepted and ignored, so old configs still load). Without a module:
+  - `registry-sync` (`--push`, `--pull`, `--status`) prints how to configure one and
+    exits 1, and says so explicitly when legacy Supabase credentials are still set.
+  - `cross-conflicts` does the same and **now exits 1** (it exited 0, which read as
+    "no conflicts"). `cross-conflicts --local` is unchanged.
+  - `conflicts` keeps its exit codes and stays local-only; its not-checked line now
+    names `storage.syncModule`. `--json` still reports `crossMachine: "no-credentials"`
+    (the value is unchanged because hooks parse it; it now means "no sync module").
+  - Local-only commands (`init`, `register`, `list`, `conflicts`, …) need no sync module
+    and no Supabase configuration.
+- **`git-watch` is retired.** It read a hosted git-event table over Realtime and REST,
+  and the sync-module interface has no git-event API. The command stays registered and,
+  for any arguments (including `--once`), prints what to use instead (pushed-branch sync
+  via `storage.syncModule`) and exits 1. Its subscriber module and tests are removed;
+  nothing writes `~/.spidersan/git-events-pending.jsonl` any more.
+- **Library exports:** `SupabaseRegistrySyncClientImpl` and
+  `SupabaseRegistrySyncClientConfig` are removed, `SupabaseStorage` now takes a
+  `SupabaseRegistrySyncClient` only, `getStorage()` always returns the local JSON store,
+  and `resolveSupabaseCredentials()` is removed (`resolveSupabaseEnv()` remains).
+  `resolveRegistrySync()` returns `null` without a module.
+- `github-sync` no longer pretends to store results remotely (the store step was a
+  no-op stub).
+- The `config` wizard no longer offers Supabase storage or writes `SUPABASE_URL`/`KEY`
+  to `.env`; it points at `storage.syncModule`.
+
+### Changed
+
+- `SupabaseStorage.pullRegistries` de-duplicates pushed-branch rows itself, before
+  excluding the caller's machine, so the "a pushed branch never conflicts with itself"
+  guarantee holds whatever module is configured.
+- The plugin's overlap-warn hook now tells you to set `storage.syncModule` when the
+  cross-machine check was skipped.
+
 ## [0.21.0] - 2026-11-01
 
 ### Added

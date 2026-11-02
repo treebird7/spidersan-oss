@@ -33,7 +33,7 @@ TIER 3) exit 0 by default; only errors exit 1. Read the report, or add `--exit-c
 | Registry health | `verify-trunk [--fix] [--exit-code]` (trunk must claim no files) · `doctor [--remote]` |
 | Recovery | `rescue --scan\|--symbols <branch>\|--salvage <file>` · `rebase-helper` |
 | Work split | `torrent create\|decompose\|status\|complete\|tree\|merge-order` (sequential) · `queen` (parallel) |
-| Watching | `watch` · `auto` · `git-watch` · `dashboard` |
+| Watching | `watch` · `auto` · `dashboard` (`git-watch` is retired: refuses, exit 1) |
 | AI | `ask` `advise` `explain` `context` `ai-ping` `ai-setup` |
 
 The full list is `spidersan --help` (source of truth: `src/bin/command-registry.ts`).
@@ -60,7 +60,8 @@ only. Override them in `.spidersanrc` / `.spidersanrc.json` / `.spidersan.config
 
 | Variable | Effect |
 |---|---|
-| `SPIDERSAN_SUPABASE_URL` / `SPIDERSAN_SUPABASE_KEY` | Cloud registry credentials; take precedence over `SUPABASE_URL` / `SUPABASE_KEY`, then `storage.*` in config |
+| `SPIDERSAN_SYNC_MODULE` | Absolute path to the cross-machine sync module (exports `createRegistrySyncClient()`); overrides `storage.syncModule` in `~/.spidersanrc`. Unset and unconfigured: no cross-machine sync — `registry-sync` / `cross-conflicts` exit 1, `conflicts` is local-only |
+| `SPIDERSAN_SUPABASE_URL` / `SPIDERSAN_SUPABASE_KEY` | Activity-log upload only (precedence over `SUPABASE_URL` / `SUPABASE_KEY`). They no longer drive the registry: the built-in hosted sync client was removed |
 | `SPIDERSAN_AGENT` | Default agent id for `register`, `watch`, `auto`, `torrent` when `-a` is not given |
 | `SPIDERSAN_ECOSYSTEM` | Colon-separated repo paths for `conflicts --ecosystem`; `0`/`false`/`no`/`off` disables the ecosystem plugin |
 | `SPIDERSAN_CORE_ONLY` | `1`/`true`/`yes`/`on` disables the ecosystem plugin (it was inverted before #313) |
@@ -69,12 +70,12 @@ only. Override them in `.spidersanrc` / `.spidersanrc.json` / `.spidersan.config
 ## Pushed branches register themselves (webhook)
 
 Every push to a watched repo reaches the `spidersan-webhook` edge function
-(treebird repo, on treebird-runtime) through the repo's GitHub webhook — no Actions
+through the repo's GitHub webhook — no Actions
 minutes, no workflow file, and no write credential outside Supabase: GitHub's HMAC
 proves the event and the service key stays in the function. For a non-trunk branch
-it upserts one row in `spider_registries` under the virtual machine `github`, with
+it upserts one row in the cross-machine registry under the virtual machine `github`, with
 the files the branch changes against the default branch. `conflicts` on every
-machine then sees the branch whoever pushed it — Codex, Copilot, a cloud agent, the
+machine whose `storage.syncModule` reads that registry then sees the branch whoever pushed it — Codex, Copilot, a cloud agent, the
 web editor, a person — even though no Claude Code hook ran. A closed PR or a deleted
 branch marks the row `abandoned`; `[bot]` senders, tags and fork PRs are skipped.
 
@@ -84,14 +85,18 @@ branch marks the row `abandoned`; `[bot]` senders, tags and fork PRs are skipped
   `spidersan`, or `toak` cloned as `Toak`, still match.
 - A pushed-branch row is dropped on read whenever a real machine (or the caller's
   own local registry / current branch) has the same branch, so nothing shows twice
-  or conflicts with itself.
+  or conflicts with itself. `SupabaseStorage.pullRegistries` applies this over
+  whatever the sync module returns.
 - Repos without the webhook register nothing this way. The function needs a
   read-only GitHub token per owner in its secrets (see its `SOURCE.md`).
 
-The old Actions workflow (`auto-register.yml` → `branch_registry` via the
-`register-branch` edge function) was removed on 2026-10-12 because nothing read
-`branch_registry`; the workflow left every repo and the function was deleted on
-2026-10-12. The `branch_registry` table remains, unread, until mycsan drops it.
+The old Actions workflow (`auto-register.yml` → `register-branch` edge function) was
+removed on 2026-10-12 because nothing read what it wrote.
+
+The built-in hosted sync client (direct REST reads/writes of the hosted registry
+tables) was removed and `git-watch` (Realtime on a hosted git-event table) retired on
+2026-11-02 ahead of those tables being dropped. All cross-machine reads and writes go
+through `storage.syncModule`; never add a direct table read.
 
 ## Knowledge graph (graphify)
 

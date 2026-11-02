@@ -199,9 +199,9 @@ Message types: `info`, `question`, `alert`, `handoff`, `file_share`
 # Minimal (local storage)
 # Just works - no setup needed
 
-# Full (Supabase - enables messaging)
-export SUPABASE_URL=https://xxx.supabase.co
-export SUPABASE_KEY=your_key
+# Cross-machine sync (optional): a module exporting createRegistrySyncClient(),
+# named in ~/.spidersanrc as {"storage":{"syncModule":"~/path/to/client.mjs"}} or:
+export SPIDERSAN_SYNC_MODULE=/abs/path/to/registry-client.mjs
 export SPIDERSAN_AGENT=claude-code
 
 # Encrypted messaging (Myceliumail)

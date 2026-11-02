@@ -100,7 +100,7 @@ Developer A (Machine 1): Registers branch
 Developer B (Machine 2): Cannot see it
 ```
 
-**Solution:** Use Supabase storage for team/cross-machine sync.
+**Solution:** Configure a sync module (`storage.syncModule` in `~/.spidersanrc`, or `SPIDERSAN_SYNC_MODULE`) for team/cross-machine sync.
 
 ---
 
@@ -177,14 +177,13 @@ Any agent can:
 | Dependencies | Not available |
 | Team use | Not practical |
 
-### Supabase Storage (Optional)
+### Cross-Machine Sync (Optional)
 
 | Limitation | Detail |
 |------------|--------|
-| Requires account | Need Supabase project |
-| Network dependency | Requires internet connection |
-| Cost | Supabase usage fees apply |
-| Setup | More complex initial configuration |
+| Bring your own backend | Needs a sync module (`storage.syncModule`); there is no built-in hosted backend |
+| Network dependency | Usually requires a connection to wherever the module stores the registry |
+| Setup | You write or install the module and name it in `~/.spidersanrc` |
 
 **Note:** Messaging is provided via Myceliumail (`mycmail`), not by the storage layer.
 
@@ -245,7 +244,7 @@ Spidersan does not implement messaging itself. When you use wake or messaging co
 | Large registries | 200+ branches may slow list/conflicts |
 | Many files per branch | 100+ files increases conflict check time |
 | Frequent polling | No built-in rate limiting |
-| Network latency | Supabase calls depend on connection |
+| Network latency | Sync-module calls depend on connection |
 
 ---
 
@@ -267,7 +266,7 @@ Spidersan does not implement messaging itself. When you use wake or messaging co
 |------------|------------|
 | No enforcement | Add CI check with `spidersan ready-check` |
 | No semantic conflicts | Use comprehensive test suites |
-| No real-time sync (local) | Use Supabase storage |
+| No real-time sync (local) | Configure a sync module |
 | No auto-cleanup | Schedule `spidersan cleanup` in cron |
 | No IDE integration | Use terminal/integrated terminal |
 | No cross-repo | Run Spidersan per-repo, coordinate externally |

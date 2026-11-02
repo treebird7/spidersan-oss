@@ -89,7 +89,7 @@ Decision: If branch has 0 unique commits → abandon. If \`.git/rebase-merge\` e
 ### SCENARIO 12: Remote Sync & GitHub Integration
 Situation: Local registry out of sync with remote. Need to see GitHub PR/CI state.
 Commands: github-sync → pr-check <n> → registry-sync --pull → registry-sync --push
-Decision: Use \`github-sync\` for remote branch/PR overview. \`pr-check\` for one PR's merge readiness. \`registry-sync\` to align local ↔ Supabase registry.
+Decision: Use \`github-sync\` for remote branch/PR overview. \`pr-check\` for one PR's merge readiness. \`registry-sync\` to align local ↔ cross-machine registry (needs storage.syncModule).
 
 ### SCENARIO 13: Configuration
 Situation: Changing LLM or stale settings.

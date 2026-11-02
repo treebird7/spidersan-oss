@@ -26,9 +26,9 @@ npx vitest run -t "should register a branch"
 The core abstraction is `StorageAdapter` (`src/storage/adapter.ts`) — an interface with methods like `list()`, `register()`, `get()`, `findByFiles()`. Two implementations exist:
 
 - **`LocalStorage`** (`src/storage/local.ts`) — default, stores branch registry in `.spidersan/registry.json`
-- **`SupabaseStorage`** (`src/storage/supabase.ts`) — optional cloud sync
+- **`SupabaseStorage`** (`src/storage/supabase.ts`) — local store plus a cross-machine sync client from `storage.syncModule`
 
-`src/storage/factory.ts` auto-selects the backend: if `SUPABASE_URL` + `SUPABASE_KEY` env vars (or config equivalents) are set, it uses Supabase; otherwise local JSON.
+`src/storage/factory.ts` always returns `LocalStorage`. Cross-machine sync is resolved separately by `resolveRegistrySync()` (`src/storage/registry-sync.ts`) from `storage.syncModule` in `~/.spidersanrc` or `SPIDERSAN_SYNC_MODULE`; there is no built-in hosted client.
 
 ### CLI Structure
 

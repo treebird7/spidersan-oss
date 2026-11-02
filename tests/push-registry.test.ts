@@ -39,15 +39,15 @@ describe('SupabaseStorage.pullRegistries() over a syncModule client', () => {
     }
 
     it("a pushed-branch row for the caller's own registered branch returns zero times", async () => {
-        const storage = new SupabaseStorage(fakeClient([view('m5-uuid', ['feat']), view(PUSH_MACHINE_ID, ['feat'])]));
-        const views = await storage.pullRegistries(['spidersan', 'spidersan-oss'], 'm5-uuid');
+        const storage = new SupabaseStorage(fakeClient([view('self-uuid', ['feat']), view(PUSH_MACHINE_ID, ['feat'])]));
+        const views = await storage.pullRegistries(['spidersan', 'spidersan-oss'], 'self-uuid');
         expect(views.flatMap(v => v.branches)).toEqual([]);
     });
 
     it('keeps other machines and unshadowed pushed branches', async () => {
-        const storage = new SupabaseStorage(fakeClient([view('m5-uuid', ['feat']), view('m2', ['other']), view(PUSH_MACHINE_ID, ['feat', 'codex/x'])]));
-        const views = await storage.pullRegistries('spidersan', 'm5-uuid');
-        expect(views.map(v => [v.machine_id, v.branches.map(b => b.name)])).toEqual([['m2', ['other']], [PUSH_MACHINE_ID, ['codex/x']]]);
+        const storage = new SupabaseStorage(fakeClient([view('self-uuid', ['feat']), view('peer', ['other']), view(PUSH_MACHINE_ID, ['feat', 'codex/x'])]));
+        const views = await storage.pullRegistries('spidersan', 'self-uuid');
+        expect(views.map(v => [v.machine_id, v.branches.map(b => b.name)])).toEqual([['peer', ['other']], [PUSH_MACHINE_ID, ['codex/x']]]);
     });
 
     it('passes every repo name through to the module: the clone directory and the GitHub repo name', async () => {

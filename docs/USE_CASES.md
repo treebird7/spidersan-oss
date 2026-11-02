@@ -356,7 +356,7 @@ jobs:
 
 **Spidersan Solution:**
 
-Each machine pushes its registry to the colony Supabase project:
+Each machine pushes its registry through its configured sync module:
 ```bash
 # On each machine / in each agent session
 spidersan registry-sync --push
@@ -372,14 +372,13 @@ spidersan conflicts
 spidersan cross-conflicts
 ```
 
-**Setup:** Add `COLONY_SUPABASE_URL` and `COLONY_SUPABASE_KEY` to your environment (or vault). The `registry-sync --push` step can be added to your agent's session startup or wired into CI:
+**Setup:** On each machine, name a sync module (exporting `createRegistrySyncClient()`) in your own `~/.spidersanrc`, or export `SPIDERSAN_SYNC_MODULE`:
 
-```yaml
-# .github/workflows/auto-register.yml
-env:
-  COLONY_SUPABASE_URL: ${{ secrets.COLONY_SUPABASE_URL }}
-  COLONY_SUPABASE_KEY: ${{ secrets.COLONY_SUPABASE_KEY }}
+```json
+{ "storage": { "syncModule": "~/path/to/registry-client.mjs" } }
 ```
+
+The `registry-sync --push` step can then be added to your agent's session startup. Without a module, `registry-sync` and `cross-conflicts` exit 1 with these instructions.
 
 **Why it matters:** Without this, `spidersan conflicts` only sees branches registered on the *current machine*. With registry-sync, a fleet of 4 agents across 2 machines all share one registry — conflicts surface before they become merge disasters, regardless of where each agent is running.
 
@@ -922,7 +921,7 @@ With Spidersan ready-check:
 ---
 
 ### 4.2 The Enterprise Story
-> "With 50 developers using various AI tools across 12 repositories, coordination was chaos. Spidersan's centralized registry with Supabase gives us visibility we never had."
+> "With 50 developers using various AI tools across 12 repositories, coordination was chaos. Spidersan's shared cross-machine registry gives us visibility we never had."
 
 **Target:** Enterprise development teams
 
@@ -955,7 +954,7 @@ With Spidersan ready-check:
 - Merge order recommendations (heuristic)
 - WIP/TODO detection
 - Stale branch management
-- Optional Supabase sync (cross-machine coordination)
+- Optional cross-machine sync via a pluggable sync module
 
 **Message:** *"Everything you need to coordinate AI agents."*
 
