@@ -6,13 +6,10 @@
  */
 
 import { Command } from 'commander';
-import { resolveSupabaseCredentials } from '../lib/supabase-credentials.js';
 import { loadMachineIdentity } from '../lib/machine.js';
-import { SupabaseStorage } from '../storage/supabase.js';
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { homedir } from 'os';
 import { execFileSync } from 'child_process';
 import {
     isGhAvailable,
@@ -96,8 +93,8 @@ export async function scanBranch(
     if (!commit) return null;
 
     const pr = prs.find(p => p.headBranch === branch.name);
-    // CI status is fetched when requested but not yet persisted (Supabase table
-    // pending). Kept for behaviour parity with the previous serial scan.
+    // CI status is fetched when requested but not persisted. Kept for behaviour
+    // parity with the previous serial scan.
     if (options.includeCi) void (await getCIStatus(config, branch.name));
 
     const row: GitHubBranchRow = {
@@ -159,16 +156,6 @@ export async function scanRepository(
     return slots.filter((r): r is GitHubBranchRow => r !== null);
 }
 
-async function storeResults(_results: GitHubBranchRow[], _supabase: SupabaseStorage): Promise<number> {
-    try {
-        console.warn(`  ⚠️  Supabase storage does not support GitHub branch sync yet`);
-        return 0;
-    } catch (error) {
-        console.warn(`  ⚠️  Could not write to Supabase: ${error instanceof Error ? error.message : String(error)}`);
-        return 0;
-    }
-}
-
 export const githubSyncCommand = new Command('github-sync')
     .description('Fetch branch/PR/CI status from GitHub for configured repos')
     .option('--repo <owner/repo>', 'Sync specific repo (auto-detects from git remote if not provided)')
@@ -185,8 +172,6 @@ export const githubSyncCommand = new Command('github-sync')
         }
 
         const machine = await loadMachineIdentity();
-        const creds = await resolveSupabaseCredentials();
-        const supabase = creds ? new SupabaseStorage(creds) : null;
 
         let reposToScan: GitHubRepoConfig[];
 
@@ -212,7 +197,6 @@ export const githubSyncCommand = new Command('github-sync')
         console.log(`🕷️ GitHub sync: scanning ${reposToScan.length} repo(s)\n`);
 
         const allResults: GitHubBranchRow[] = [];
-        let storedCount = 0;
 
         for (const repo of reposToScan) {
             try {
@@ -225,9 +209,6 @@ export const githubSyncCommand = new Command('github-sync')
                 });
                 console.log(`  ✅ Found ${results.length} branches`);
                 allResults.push(...results);
-                if (supabase && results.length > 0) {
-                    storedCount += await storeResults(results, supabase);
-                }
             } catch (error) {
                 console.error(`  ❌ ${error instanceof Error ? error.message : String(error)}`);
             }
@@ -237,10 +218,5 @@ export const githubSyncCommand = new Command('github-sync')
             console.log(JSON.stringify(allResults, null, 2));
         } else {
             console.log(`\n  📊 Total branches: ${allResults.length}`);
-            if (supabase && storedCount > 0) {
-                console.log(`  💾 Stored in Supabase: ${storedCount}`);
-            } else if (!supabase) {
-                console.log(`  ℹ️  Supabase not configured or table missing (results shown above only)`);
-            }
         }
     });

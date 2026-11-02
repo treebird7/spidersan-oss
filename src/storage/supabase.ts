@@ -1,17 +1,15 @@
 /**
- * Supabase Storage Adapter
+ * Registry storage with cross-machine sync.
  *
- * Thin compatibility wrapper over a local JsonBranchRegistryStore plus
- * SupabaseRegistrySyncClientImpl for cross-machine sync.
+ * Thin compatibility wrapper over a local JsonBranchRegistryStore plus a
+ * SupabaseRegistrySyncClient supplied by a configured storage.syncModule (the
+ * interface keeps its historical name; any backend can implement it).
  */
 
 import type { StorageAdapter, Branch } from './adapter.js';
 import { JsonBranchRegistryStore } from './json-branch-registry-store.js';
 import type { SupabaseRegistrySyncClient } from './supabase-registry-sync-client.js';
-import {
-    SupabaseRegistrySyncClientImpl,
-    type SupabaseRegistrySyncClientConfig,
-} from './supabase-registry-sync-client-impl.js';
+import { dropShadowedPushRows } from '../lib/push-registry.js';
 import type {
     CrossMachineConflict,
     MachineIdentity,
@@ -24,10 +22,10 @@ export class SupabaseStorage implements StorageAdapter {
     private store: JsonBranchRegistryStore;
     private syncClient: SupabaseRegistrySyncClient;
 
-    /** Credentials for the built-in client, or a client from storage.syncModule. */
-    constructor(config: SupabaseRegistrySyncClientConfig | SupabaseRegistrySyncClient, basePath: string = process.cwd()) {
+    /** `syncClient` comes from storage.syncModule; there is no built-in client. */
+    constructor(syncClient: SupabaseRegistrySyncClient, basePath: string = process.cwd()) {
         this.store = new JsonBranchRegistryStore(basePath);
-        this.syncClient = 'pull' in config ? config : new SupabaseRegistrySyncClientImpl(config);
+        this.syncClient = syncClient;
     }
 
     async init(): Promise<void> {
@@ -76,7 +74,13 @@ export class SupabaseStorage implements StorageAdapter {
     }
 
     async pullRegistries(repoName: string | string[], excludeMachine?: string, ownBranches?: Iterable<string>): Promise<MachineRegistryView[]> {
-        return this.syncClient.pull(repoName, excludeMachine, ownBranches);
+        // De-duplicate BEFORE excluding the caller's machine, whatever the module does:
+        // the caller's own rows are what shadow a pushed-branch row for a branch it
+        // registered itself. dropShadowedPushRows only filters, so a module that
+        // already de-duplicates gets the same answer.
+        const own = ownBranches ? [...ownBranches] : [];
+        const views = await this.syncClient.pull(repoName, undefined, own);
+        return dropShadowedPushRows(views, own).filter((v) => v.machine_id !== excludeMachine);
     }
 
     async getRegistryStatus(repoName?: string): Promise<RegistryStatus[]> {

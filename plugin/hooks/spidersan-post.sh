@@ -8,7 +8,7 @@ set -uo pipefail
 INPUT=$(cat)
 cmd=$(echo "$INPUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('tool_input',{}).get('command',''))" 2>/dev/null)
 
-# existing: sync registry to Supabase after a push
+# existing: sync registry after a push (needs storage.syncModule; without one it exits 1, output discarded)
 if echo "$cmd" | grep -qE '\bgit[[:space:]]+push\b'; then
     spidersan registry-sync --push >/dev/null 2>&1 &
 fi

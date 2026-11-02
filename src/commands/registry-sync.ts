@@ -1,21 +1,17 @@
 /**
  * spidersan registry-sync
  * 
- * Sync local registry to/from Supabase for cross-machine awareness.
- * Part of F1: Supabase Registry Sync (spidersan-github-dashboard).
+ * Sync the local registry to/from other machines through the configured
+ * storage.syncModule. Without one there is nothing to sync with: exit 1 and say
+ * how to configure it.
  */
 
 import { Command } from 'commander';
-import { readFile } from 'fs/promises';
-import { existsSync } from 'fs';
-import { join, basename } from 'path';
-import { homedir } from 'os';
 import { execFileSync } from 'child_process';
 import { LocalStorage } from '../storage/local.js';
-import { SupabaseStorage } from '../storage/supabase.js';
 import { loadMachineIdentity } from '../lib/machine.js';
 import { getRepoName, registryRepoNames } from '../lib/git.js';
-import { resolveRegistrySync } from '../storage/registry-sync.js';
+import { resolveRegistrySync, syncModuleRequiredMessage } from '../storage/registry-sync.js';
 
 /**
  * Get the repo root path.
@@ -28,28 +24,20 @@ function getRepoPath(): string {
     }
 }
 
-/**
- * Get a SupabaseStorage instance, or null if not configured.
- */
-async function getSupabaseStorage(): Promise<SupabaseStorage | null> {
-    // COLONY_SUPABASE_* used to sit in this chain as a last-resort fallback. It
-    // is gone deliberately: colony is a different Supabase project, so that
-    // fallback could push spider_registries into the wrong database (tb-ly0b).
-    return resolveRegistrySync();
-}
-
 export const registrySyncCommand = new Command('registry-sync')
-    .description('Sync local registry to/from Supabase (cross-machine awareness)')
-    .option('--push', 'Push local registry to Supabase')
-    .option('--pull', 'Pull other machines\' registries from Supabase')
+    .description('Sync local registry to/from other machines (needs storage.syncModule)')
+    .option('--push', 'Push local registry through the sync module')
+    .option('--pull', 'Pull other machines\' registries through the sync module')
     .option('--status', 'Show sync status across all machines')
     .option('--repo <name>', 'Limit to specific repo (default: current)')
     .action(async (options) => {
-        const supabase = await getSupabaseStorage();
+        const supabase = await resolveRegistrySync();
         if (!supabase) {
-            console.error('❌ Supabase not configured. Set SUPABASE_URL and SUPABASE_KEY.');
-            console.error('   Registry sync requires cloud storage for cross-machine awareness.');
+            const [first, ...rest] = syncModuleRequiredMessage();
+            console.error(`❌ ${first}`);
+            for (const line of rest) console.error(line);
             process.exit(1);
+            return;
         }
 
         const machine = await loadMachineIdentity();

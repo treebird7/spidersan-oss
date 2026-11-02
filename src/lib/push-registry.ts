@@ -1,5 +1,5 @@
 /**
- * Pushed-branch rows in spider_registries — the reader side.
+ * Pushed-branch rows in the cross-machine registry — the reader side.
  *
  * The `spidersan-webhook` edge function (treebird repo) registers every branch pushed
  * to a watched repo, whoever pushed it (Codex, Copilot, a cloud agent, the web editor,

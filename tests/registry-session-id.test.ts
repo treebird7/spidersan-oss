@@ -10,7 +10,7 @@ import { execFileSync } from 'child_process';
 
 vi.mock('../src/storage/index', () => ({ getStorage: vi.fn() }));
 vi.mock('../src/lib/config', () => ({ loadConfig: vi.fn(async () => ({})) }));
-vi.mock('../src/lib/supabase-credentials', () => ({ resolveSupabaseCredentials: vi.fn(async () => null) }));
+vi.mock('../src/storage/registry-sync', () => ({ resolveRegistrySync: vi.fn(async () => null) }));
 // reconcile-on-read probes git; irrelevant to field flow-through, so treat every active branch as live
 vi.mock('../src/lib/reconcile', () => ({ activeBranches: (bs: { status: string }[]) => bs.filter((b) => b.status === 'active') }));
 vi.mock('child_process', () => ({ execFileSync: vi.fn(), spawnSync: vi.fn() }));

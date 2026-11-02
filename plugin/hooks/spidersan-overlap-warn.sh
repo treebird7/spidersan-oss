@@ -4,10 +4,11 @@
 # per checkout — a guard that repeats itself gets ignored.
 # Wired by the spidersan plugin (hooks/spidersan-hooks.json).
 #
-# Cross-machine: other machines' branches come from Supabase, so they only show up when this
-# session has SPIDERSAN_SUPABASE_URL/KEY. Without them `conflicts` is fail-open and local-only;
-# the hook then says so once per status per checkout (crossMachine field).
-# ponytail: file-level only (registry + cross-machine when creds are present, same as `conflicts`). No --semantic here:
+# Cross-machine: other machines' branches come through the sync module, so they only show up
+# when storage.syncModule is set in ~/.spidersanrc (or SPIDERSAN_SYNC_MODULE). Without one
+# `conflicts` is fail-open and local-only; the hook then says so once per status per checkout
+# (crossMachine field; "no-credentials" means no sync module configured).
+# ponytail: file-level only (registry + cross-machine when a sync module is set, same as `conflicts`). No --semantic here:
 # that is 1+N gh calls and belongs on the push path.
 set -uo pipefail
 
@@ -58,7 +59,7 @@ case "$cm" in no-credentials|degraded)
     key="*	cross-machine:$cm"
     if ! grep -qxF -- "$key" "$state" 2>/dev/null; then
         printf '%s\n' "$key" >> "$state"
-        msg="${msg}ℹ️  Cross-machine overlap NOT checked here (${cm}) — local branches only. Give the session SPIDERSAN_SUPABASE_URL/KEY to see other machines.
+        msg="${msg}ℹ️  Cross-machine overlap NOT checked here (${cm}) — local branches only. Set storage.syncModule in ~/.spidersanrc (or SPIDERSAN_SYNC_MODULE) to see other machines.
 "
     fi ;;
 esac
