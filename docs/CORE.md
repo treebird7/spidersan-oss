@@ -33,7 +33,7 @@ Simple. Focused. Offline-first. 15 commands.
 
 ### Conflict Detection
 - **`spidersan conflicts`** — Show file conflicts between branches (tiered by risk)
-- **`spidersan depends`** — Declare that your branch depends on another (optional Supabase sync)
+- **`spidersan depends`** — Declare that your branch depends on another
 - **`spidersan merge-order`** — Get a merge sequence based on dependencies (heuristic, not guaranteed)
 
 ### Readiness Checks
@@ -74,17 +74,11 @@ Spidersan classifies conflicts by risk:
 
 Use it to answer: "In what order should we merge?" not "Will this work?"
 
-### Optional Supabase Sync
+### Optional Cross-Machine Sync
 
-By default, Spidersan stores state locally (SQLite in `.spidersan/`).
-
-`spidersan depends` can optionally sync to Supabase for team visibility:
-```bash
-spidersan depends feature/auth --cloud  # Store in Supabase
-spidersan depends feature/auth          # View (local or synced)
-```
-
-Not required. Useful for coordinated teams.
+By default, Spidersan stores state locally in `.spidersan/`. Declared dependencies
+travel with the registry when you share it via `spidersan registry-sync --push`,
+which needs a sync module (`storage.syncModule` in `~/.spidersanrc`, or `SPIDERSAN_SYNC_MODULE`). Not required. Useful for coordinated teams.
 
 ---
 
@@ -100,14 +94,14 @@ Not required. Useful for coordinated teams.
 
 **No setup needed.** Works offline. Perfect for solo development or local teams.
 
-### Cloud (Optional)
-```bash
-export SUPABASE_URL=your-url
-export SUPABASE_SERVICE_KEY=your-key
-spidersan depends feature/auth --cloud
+### Cross-machine (Optional)
+```json
+// ~/.spidersanrc
+{ "storage": { "syncModule": "~/path/to/registry-client.mjs" } }
 ```
 
-**Supabase required.** Enables cross-team visibility. Optional.
+The module exports `createRegistrySyncClient()` and decides where the shared
+registry lives. There is no built-in hosted backend. Enables cross-team visibility. Optional.
 
 ---
 
@@ -238,14 +232,14 @@ A: No. It helps you *see* and *coordinate around* conflicts. Git itself handles 
 **Q: What if I'm working alone?**  
 A: Still useful! Tracks your branches, helps you notice stale work, keeps history clean.
 
-**Q: Do I need Supabase?**  
-A: No. Local SQLite works great. Supabase is optional for team sync.
+**Q: Do I need a database or hosted service?**  
+A: No. The local registry works on its own. Cross-machine sync is optional and goes through a sync module you configure.
 
 **Q: Can I use this with GitHub, GitLab, Bitbucket?**  
 A: Yes. Spidersan tracks branches locally; works with any Git host.
 
 **Q: What about private branches?**  
-A: All data stays local by default. Supabase sync is opt-in.
+A: All data stays local by default. Cross-machine sync is opt-in.
 
 ---
 

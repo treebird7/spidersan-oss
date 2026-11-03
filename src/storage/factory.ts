@@ -1,18 +1,13 @@
 /**
- * Storage factory - selects the right storage backend
+ * Storage factory.
+ *
+ * The branch registry is always the local JSON store. Cross-machine sync is a
+ * separate concern, resolved by resolveRegistrySync() from storage.syncModule.
  */
 
 import { LocalStorage } from './local.js';
-import { SupabaseStorage } from './supabase.js';
 import type { StorageAdapter } from './adapter.js';
-import { resolveSupabaseCredentials } from '../lib/supabase-credentials.js';
 
 export async function getStorage(): Promise<StorageAdapter> {
-    const supabaseConfig = await resolveSupabaseCredentials();
-
-    if (supabaseConfig) {
-        return new SupabaseStorage(supabaseConfig);
-    }
-
     return new LocalStorage();
 }

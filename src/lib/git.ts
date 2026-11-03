@@ -90,7 +90,7 @@ export function getCurrentBranch(): string {
 }
 
 /**
- * Repo name as used for the `repo_name` column in spider_registries.
+ * Repo name as used for the `repo_name` field of cross-machine registry rows.
  *
  * Must stay identical across push and read paths: `registry-sync --push` stamps
  * rows with this value and `conflicts`/`cross-conflicts` filter on it, so any

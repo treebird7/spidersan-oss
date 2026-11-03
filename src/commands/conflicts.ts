@@ -48,14 +48,14 @@ function notifier(): Notifier {
  * pre-merge hook calls `conflicts`. Without this, a teammate on another machine
  * editing the same file was NEVER flagged — the hook advisory silently only ever
  * saw local branches, giving false "you're good to merge" confidence. The data
- * was already in Supabase (`registry-sync --push` writes it, `cross-conflicts`
+ * was already in the cross-machine registry (`registry-sync --push` writes it, `cross-conflicts`
  * reads it); `conflicts` just never asked (tb-ly0b).
  *
  * Fail-open by design: unconfigured / offline / auth failure returns [] so the
  * check degrades to local-only rather than blocking a push. Callers that need to
  * distinguish "no conflicts" from "couldn't check" should use `cross-conflicts`.
  *
- * ponytail: one Supabase round-trip, only on the branch-overlap path (--real and
+ * ponytail: one sync-module round-trip, only on the branch-overlap path (--real and
  * --ecosystem return before this). Sub-second in practice and the hook is fail-open.
  */
 export function crossMachineBranches(views: MachineRegistryView[]): Branch[] {
@@ -77,7 +77,10 @@ export function crossMachineBranches(views: MachineRegistryView[]): Branch[] {
     return branches;
 }
 
-/** checked = Supabase answered; no-credentials = never asked (local-only by config); degraded = asked and failed. */
+/**
+ * checked = the sync module answered; no-credentials = never asked (no storage.syncModule
+ * configured — the value keeps its old name because hooks parse it); degraded = asked and failed.
+ */
 export type CrossMachineStatus = 'checked' | 'no-credentials' | 'degraded';
 
 async function fetchCrossMachineBranches(ownBranches: Iterable<string> = []): Promise<{ branches: Branch[]; degraded: boolean; status: CrossMachineStatus }> {
@@ -772,8 +775,8 @@ export const conflictsCommand = new Command('conflicts')
             if (cross.degraded) {
                 console.error('   ⚠️  Cross-machine check unavailable — LOCAL branches only.');
             } else if (cross.status === 'no-credentials') {
-                // Same lie, quieter: no creds in this shell reads exactly like a clean cloud check.
-                console.log('   ℹ️  Cloud registry not checked (no Supabase credentials) — LOCAL branches only.');
+                // Same lie, quieter: no sync module reads exactly like a clean cross-machine check.
+                console.log('   ℹ️  Cross-machine registry not checked (no storage.syncModule configured) — LOCAL branches only.');
             }
             finish(0);
             return;

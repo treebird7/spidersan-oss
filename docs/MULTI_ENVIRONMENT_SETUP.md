@@ -4,6 +4,11 @@ tags: [agent/spidersan]
 
 # Multi-Environment Setup Guide
 
+> **Obsolete for registry sync (2026-11-02).** The built-in hosted sync client this guide
+> configures was removed. `SUPABASE_*` variables and `storage.supabaseUrl`/`supabaseKey`
+> no longer enable cross-machine sync; set `storage.syncModule` in `~/.spidersanrc` (or
+> `SPIDERSAN_SYNC_MODULE`) instead. Kept for history.
+
 ## Overview
 
 Spidersan now supports multiple Supabase environments:

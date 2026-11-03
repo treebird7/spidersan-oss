@@ -76,14 +76,14 @@ Uses `is_stale` flag from `colony_state` view (computed server-side by Supabase)
 Cross-machine conflict detection:
 
 ```bash
-spidersan cross-conflicts              # compare against all machines in Supabase
-spidersan cross-conflicts --local      # local-only (no Supabase)
+spidersan cross-conflicts              # compare against all machines (needs storage.syncModule; exits 1 without)
+spidersan cross-conflicts --local      # local-only (no sync module)
 spidersan cross-conflicts --tier 2     # only show TIER 2+ conflicts
 spidersan cross-conflicts --strict     # exit 1 if TIER 2+ found
 spidersan cross-conflicts --json       # machine-readable output
 ```
 
-Pulls all other machines' branch registries from Supabase, compares file overlap with the local registry, and applies tier escalation:
+Pulls all other machines' branch registries through the configured `storage.syncModule`, compares file overlap with the local registry, and applies tier escalation:
 
 | Tier | Label | Action |
 |------|-------|--------|

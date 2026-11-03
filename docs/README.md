@@ -96,7 +96,7 @@ spidersan cleanup --days 7
 
 - ✅ Branch tracking across sessions
 - ✅ Merge order recommendations (heuristic)
-- ✅ Supabase sync (optional)
+- ✅ Cross-machine sync via `storage.syncModule` (optional)
 - ✅ Git integration
 - ✅ Session persistence
 - ✅ Optional ecosystem plugin for advanced features
@@ -153,7 +153,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Roadmap
 
 - [x] Core CLI
-- [x] Supabase sync
+- [x] Cross-machine sync (pluggable `storage.syncModule`)
 - [ ] Conflict detection refinements
 - [ ] Ecosystem plugin rollout
 

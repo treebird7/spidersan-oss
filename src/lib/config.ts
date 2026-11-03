@@ -37,8 +37,12 @@ export interface SpidersanConfig {
         ecosystemRepos: string[];
     };
     storage: {
+        /** 'supabase' is still accepted so old configs load, but ignored: the registry is always local. */
         type: 'local' | 'supabase';
         environment?: 'production' | 'staging' | 'local';
+        /** Cross-machine sync module; read from ~/.spidersanrc only (see storage/registry-sync.ts). */
+        syncModule?: string;
+        /** Ignored since the built-in hosted sync client was removed; kept so old configs type-check. */
         supabaseUrl?: string;
         supabaseKey?: string;
         supabaseUrlStaging?: string;

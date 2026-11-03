@@ -49,6 +49,9 @@ Go to: **GitHub repo → Settings → Secrets and variables → Actions → New 
 
 ## Creating a Spidersan Supabase Project
 
+> These secrets only serve the migrations workflow. They do **not** enable cross-machine
+> registry sync, which now needs `storage.syncModule` (see README).
+
 For full standalone independence from Recovery-Tree:
 
 1. Go to [supabase.com](https://supabase.com)

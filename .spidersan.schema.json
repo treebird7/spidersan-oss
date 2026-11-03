@@ -104,15 +104,21 @@
                         "supabase"
                     ],
                     "default": "local",
-                    "description": "Storage backend to use"
+                    "description": "Deprecated: the registry is always local; \"supabase\" is accepted and ignored. Cross-machine sync uses storage.syncModule."
+                },
+                "syncModule": {
+                    "type": "string",
+                    "description": "Cross-machine sync: absolute path (or ~/...) to an ES module exporting createRegistrySyncClient(). Read from ~/.spidersanrc only; a repo-local config cannot set it. SPIDERSAN_SYNC_MODULE overrides it."
                 },
                 "supabaseUrl": {
                     "type": "string",
-                    "description": "Supabase project URL (or set SUPABASE_URL env var)"
+                    "deprecated": true,
+                    "description": "Deprecated and ignored: the built-in hosted sync client was removed. Use storage.syncModule."
                 },
                 "supabaseKey": {
                     "type": "string",
-                    "description": "Supabase anon/service key (or set SUPABASE_KEY env var)"
+                    "deprecated": true,
+                    "description": "Deprecated and ignored: the built-in hosted sync client was removed. Use storage.syncModule."
                 }
             }
         }

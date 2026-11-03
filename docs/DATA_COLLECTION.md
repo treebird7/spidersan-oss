@@ -18,7 +18,7 @@ The CLI does read from **your own git remote** (`origin`), the same way `git fet
 
 ### Optional Cloud Sync
 
-When using a cloud backend (Supabase):
+When using a cross-machine sync module (`storage.syncModule`), it decides where this is stored:
 
 | Data | Purpose | Retention |
 |------|---------|-----------|
@@ -36,7 +36,7 @@ When using a cloud backend (Supabase):
 ## Your Control
 
 - **All cloud features are opt-in** - Core works entirely offline
-- **Optional Supabase sync** - Use `depends --cloud` to enable cross-machine coordination
+- **Optional cross-machine sync** - Configure `storage.syncModule` to share the registry across machines
 - **No tracking by default** - Core CLI has zero telemetry
 - **Request data deletion anytime** - Contact us if you used cloud features
 

@@ -6,5 +6,4 @@ export * from './json-branch-registry-store.js';
 export * from './memory-branch-registry-store.js';
 export * from './supabase.js';
 export * from './supabase-registry-sync-client.js';
-export * from './supabase-registry-sync-client-impl.js';
 export * from './factory.js';

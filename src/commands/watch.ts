@@ -16,8 +16,8 @@ import type { DriftResult, DriftSkipped } from '../lib/remote-drift.js';
 
 const DEBOUNCE_MS = 1000;  // Debounce file changes
 
-// Lazy so the transport is resolved at first use, not at import — same shape as
-// git-events-subscriber.ts, which keeps it mockable under vi.resetModules().
+// Lazy so the transport is resolved at first use, not at import, which keeps it
+// mockable under vi.resetModules().
 let _notifier: Notifier | null = null;
 function notifier(): Notifier {
     return (_notifier ??= createNotifier());

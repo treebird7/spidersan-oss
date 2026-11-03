@@ -1,11 +1,11 @@
 /**
  * spidersan cross-conflicts
  * 
- * Detect file conflicts ACROSS machines by comparing registries in Supabase.
+ * Detect file conflicts ACROSS machines by comparing registries from the configured storage.syncModule.
  * Extends the local `conflicts` command to work globally.
  * 
  * Flow:
- * 1. Push local registry to Supabase (ensure freshness)
+ * 1. Push local registry through the sync module (ensure freshness)
  * 2. Pull all other machines' registries
  * 3. Compare file lists, apply tier escalation
  * 4. Produce a GlobalConflictReport
@@ -22,7 +22,7 @@ import type {
     MachineRegistryView,
     SpiderRegistry,
 } from '../types/cloud.js';
-import { resolveRegistrySync } from '../storage/registry-sync.js';
+import { resolveRegistrySync, syncModuleRequiredMessage } from '../storage/registry-sync.js';
 
 // ─── Core: Detect Cross-Machine Conflicts ───
 
@@ -99,7 +99,7 @@ export function detectCrossMachineConflicts(
     return conflicts;
 }
 
-// ─── Local-Only Mode (no Supabase) ───
+// ─── Local-Only Mode (no sync module) ───
 
 async function detectLocalConflicts(): Promise<GlobalConflictReport> {
     const storage = await getStorage();
@@ -192,12 +192,12 @@ function formatJson(report: GlobalConflictReport, minTier: number): string {
 // ─── CLI Command ───
 
 export const crossConflictsCommand = new Command('cross-conflicts')
-    .description('Detect file conflicts across machines (via Supabase)')
+    .description('Detect file conflicts across machines (needs storage.syncModule)')
     .option('--repo <name>', 'Repository name (default: current repo)')
     .option('--tier <level>', 'Minimum tier to display (1, 2, or 3)', '1')
     .option('--strict', 'Exit with code 1 if TIER 2+ conflicts found')
     .option('--json', 'Output as JSON')
-    .option('--local', 'Local-only mode (skip Supabase, use local registry)')
+    .option('--local', 'Local-only mode (skip the sync module, use local registry)')
     .action(async (opts) => {
         const minTier = parseInt(opts.tier, 10) || 1;
 
@@ -222,13 +222,18 @@ export const crossConflictsCommand = new Command('cross-conflicts')
             return;
         }
 
-        // Cross-machine mode via Supabase
+        // Cross-machine mode via the configured sync module
         try {
             const supabase = await resolveRegistrySync();
 
             if (!supabase) {
-                console.log('⚠️  Supabase not configured. Use --local for local-only conflicts.');
-                console.log('   Set SPIDERSAN_SUPABASE_URL and SPIDERSAN_SUPABASE_KEY, or run: spidersan cross-conflicts --local');
+                // Exit 1: this mode's whole purpose is the cross-machine check, and
+                // exiting 0 here read as "no conflicts" to scripts.
+                const [first, ...rest] = syncModuleRequiredMessage();
+                console.error(`❌ ${first}`);
+                for (const line of rest) console.error(line);
+                console.error('   For this machine only: spidersan cross-conflicts --local');
+                process.exit(1);
                 return;
             }
 

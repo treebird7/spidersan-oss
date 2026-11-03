@@ -61,9 +61,9 @@ vi.mock('../src/lib/activity', () => ({
     logActivity: vi.fn(),
 }));
 
-// Cross-machine pull is fail-open; no credentials => no remote branches, not degraded.
-vi.mock('../src/lib/supabase-credentials', () => ({
-    resolveSupabaseCredentials: vi.fn(async () => null),
+// Cross-machine pull is fail-open; no sync module => no remote branches, not degraded.
+vi.mock('../src/storage/registry-sync', () => ({
+    resolveRegistrySync: vi.fn(async () => null),
 }));
 
 let logSpy: ReturnType<typeof vi.spyOn>;

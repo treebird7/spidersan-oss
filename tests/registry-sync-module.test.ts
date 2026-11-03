@@ -1,10 +1,14 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { resolveRegistrySync, syncModulePath } from '../src/storage/registry-sync.js';
+import { resolveRegistrySync, syncModulePath, syncModuleRequiredMessage } from '../src/storage/registry-sync.js';
 
-const saved = { HOME: process.env.HOME, MOD: process.env.SPIDERSAN_SYNC_MODULE, cwd: process.cwd() };
+const LEGACY = ['SPIDERSAN_SUPABASE_URL', 'SPIDERSAN_SUPABASE_KEY', 'SUPABASE_URL', 'SUPABASE_KEY'] as const;
+const saved = {
+    HOME: process.env.HOME, MOD: process.env.SPIDERSAN_SYNC_MODULE, cwd: process.cwd(),
+    legacy: Object.fromEntries(LEGACY.map((k) => [k, process.env[k]])),
+};
 let home: string;
 let repo: string;
 
@@ -19,11 +23,14 @@ beforeEach(() => {
     repo = mkdtempSync(join(tmpdir(), 'spsn-repo-'));
     process.env.HOME = home;
     delete process.env.SPIDERSAN_SYNC_MODULE;
+    for (const k of LEGACY) delete process.env[k];
 });
 afterEach(() => {
     process.env.HOME = saved.HOME;
     if (saved.MOD === undefined) delete process.env.SPIDERSAN_SYNC_MODULE; else process.env.SPIDERSAN_SYNC_MODULE = saved.MOD;
     process.chdir(saved.cwd);
+    for (const k of LEGACY) { if (saved.legacy[k] === undefined) delete process.env[k]; else process.env[k] = saved.legacy[k]; }
+    vi.restoreAllMocks();
 });
 
 describe('storage.syncModule', () => {
@@ -50,5 +57,30 @@ describe('storage.syncModule', () => {
         await expect(syncModulePath()).rejects.toThrow(/absolute/);
         process.env.SPIDERSAN_SYNC_MODULE = fakeModule(home, 'export const nope = 1;');
         await expect(resolveRegistrySync()).rejects.toThrow(/createRegistrySyncClient/);
+    });
+});
+
+describe('no storage.syncModule (the built-in hosted client is gone)', () => {
+    it('resolves to null even with legacy Supabase credentials set, and never touches the network', async () => {
+        process.env.SPIDERSAN_SUPABASE_URL = 'https://example.invalid';
+        process.env.SPIDERSAN_SUPABASE_KEY = 'k';
+        writeFileSync(join(home, '.spidersanrc'), JSON.stringify({ storage: { supabaseUrl: 'https://example.invalid', supabaseKey: 'k' } }));
+        const fetchSpy = vi.spyOn(globalThis, 'fetch');
+        expect(await resolveRegistrySync()).toBeNull();
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('the message says how to configure a module', () => {
+        const msg = syncModuleRequiredMessage().join('\n');
+        expect(msg).toContain('storage.syncModule');
+        expect(msg).toContain('~/.spidersanrc');
+        expect(msg).toContain('SPIDERSAN_SYNC_MODULE');
+        expect(msg).toContain('createRegistrySyncClient()');
+        expect(msg).not.toContain('no longer enable sync');
+    });
+
+    it('tells an upgrader that their legacy credentials no longer enable sync', () => {
+        process.env.SUPABASE_URL = 'https://example.invalid';
+        expect(syncModuleRequiredMessage().join('\n')).toContain('no longer enable sync');
     });
 });

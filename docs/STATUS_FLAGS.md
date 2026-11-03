@@ -48,8 +48,8 @@ Note: `mcp-health` and `pulse` are ecosystem-only commands.
 | `auto` | ✅ | ✅ | Auto-watch shortcuts (start/stop) |
 | `welcome` | ✅ | ✅ | Onboarding ritual for new agents |
 | `config` | ✅ | ✅ | View and edit Spidersan config |
-| `registry-sync` | ✅ | ✅ | Sync registry to/from Supabase (cross-machine) |
-| `cross-conflicts` | ✅ | ✅ | Detect conflicts across machines via Supabase |
+| `registry-sync` | ✅ | ✅ | Sync registry to/from other machines (needs `storage.syncModule`) |
+| `cross-conflicts` | ✅ | ✅ | Detect conflicts across machines (needs `storage.syncModule`) |
 | `mcp-health` | ✅ | ✅ | MCP server status |
 | `pulse` | ✅ | ✅ | Colony sync + conflict health check |
 | `doctor` | ✅ | ✅ | Diagnose common Spidersan issues |

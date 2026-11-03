@@ -58,12 +58,12 @@ describe.skipIf(!hasJq)('spidersan-overlap-warn.sh', () => {
         expect(msg).toContain("— session 1a2b3c4d-0000-4000-8000-000000000001. Coordinate");
     });
 
-    it('says once per checkout that cross-machine was not checked (no creds), and stays silent when it was', () => {
+    it('says once per checkout that cross-machine was not checked (no sync module), and stays silent when it was', () => {
         const withCm = (crossMachine: string) => `cat <<'J'\n${JSON.stringify({ conflicts: [], crossMachine })}\nJ`;
         stub(withCm('no-credentials'));
         const msg: string = JSON.parse(run('a.ts').stdout).hookSpecificOutput.additionalContext;
         expect(msg).toContain('NOT checked');
-        expect(msg).toContain('SPIDERSAN_SUPABASE_URL/KEY');
+        expect(msg).toContain('storage.syncModule');
         expect(run('a.ts').stdout).toBe('');          // once per checkout
         stub(withCm('checked'));
         expect(run('a.ts').stdout).toBe('');          // checked + no overlap => silent

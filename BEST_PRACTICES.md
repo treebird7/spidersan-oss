@@ -47,11 +47,11 @@ When a repo accumulates stale/conflicting branches across multiple agents:
 - Use `torrent merge-order` before any merges — it sorts conflict-free tasks first
 - Torrent lives in `spidersan-ecosystem` plugin, not core
 
-## Local vs Supabase Storage (Feb-26)
+## Local vs Cross-Machine Registry
 - Registry is branch-local (`.spidersan/registry.json` in git tree) — stay on main for global visibility
-- Override Supabase with `SUPABASE_URL= SUPABASE_KEY=` to force local storage
-- Prefer local storage for testing and single-machine workflows
-- Supabase only needed for cross-machine multi-agent coordination
+- The registry is always local; cross-machine sync needs a `storage.syncModule` (unset `SPIDERSAN_SYNC_MODULE` to force local-only)
+- Prefer local-only for testing and single-machine workflows
+- A sync module is only needed for cross-machine multi-agent coordination
 
 ## Salvaging Code from Abandoned Branches (Feb-26)
 - Before abandoning a branch, check for unique features not on main

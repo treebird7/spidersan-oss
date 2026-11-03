@@ -22,10 +22,10 @@ vi.mock('../src/lib/config', () => ({
     // storage/registry-sync reads ~/.spidersanrc for storage.syncModule: none here
     loadConfigWithSources: vi.fn(async () => ({ config: { storage: {} }, sources: [], errors: [] })),
 }));
-// Keep the cross-machine lookup off the network: no credentials => local-only,
+// Keep the cross-machine lookup off the network: no sync module => local-only,
 // which is exactly the "fail-open, not degraded" case this path renders.
-vi.mock('../src/lib/supabase-credentials', () => ({
-    resolveSupabaseCredentials: vi.fn(async () => null),
+vi.mock('../src/storage/registry-sync', () => ({
+    resolveRegistrySync: vi.fn(async () => null),
 }));
 vi.mock('child_process', () => ({ execFileSync: vi.fn(), spawnSync: vi.fn() }));
 
@@ -72,10 +72,10 @@ describe('conflicts (registry overlap) — zero-conflict output', () => {
         expect(out).toContain('NOT a merge simulation');
     });
 
-    it('says the cloud registry was skipped when there are no credentials', async () => {
+    it('says the cross-machine registry was skipped when no sync module is configured', async () => {
         await run([]);
 
-        expect(logged()).toContain('Cloud registry not checked (no Supabase credentials)');
+        expect(logged()).toContain('Cross-machine registry not checked (no storage.syncModule configured)');
     });
 
     it('never claims merge-readiness — registry overlap is not a merge', async () => {

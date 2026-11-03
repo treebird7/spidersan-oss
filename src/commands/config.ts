@@ -104,27 +104,6 @@ function getNestedValue(obj: unknown, path: string): unknown {
     return current;
 }
 
-function upsertEnvVar(content: string, key: string, value: string): string {
-    const line = `${key}=${value}`;
-    const regex = new RegExp(`^${key}=.*$`, 'm');
-    if (regex.test(content)) {
-        return content.replace(regex, line);
-    }
-    const trimmed = content.replace(/\s*$/, '');
-    const suffix = trimmed.length > 0 ? '\n' : '';
-    return `${trimmed}${suffix}${line}\n`;
-}
-
-async function writeSupabaseEnv(envPath: string, url: string, key: string): Promise<void> {
-    let content = '';
-    if (existsSync(envPath)) {
-        content = readFileSync(envPath, 'utf-8');
-    }
-    content = upsertEnvVar(content, 'SUPABASE_URL', url);
-    content = upsertEnvVar(content, 'SUPABASE_KEY', key);
-    writeFileSync(envPath, content, 'utf-8');
-}
-
 async function runWizard(): Promise<void> {
     const rl = createInterface({ input, output });
 
@@ -163,36 +142,18 @@ async function runWizard(): Promise<void> {
         }
 
         const agentName = await ask('Default agent name (optional): ');
-        const storageType = await askChoice('Storage type', ['local', 'supabase'], 'local');
-        let environment: string = 'production';
 
-        if (storageType === 'supabase') {
-            environment = await askChoice('Supabase environment', ['production', 'staging', 'local'], 'production');
-        }
-
+        // The registry is always local. Cross-machine sync is a module named in the
+        // USER's ~/.spidersanrc (never a repo-local file), so the wizard only points at it.
         const config: Record<string, unknown> = {
             agent: { name: agentName || undefined },
-            storage: {
-                type: storageType,
-                environment,
-            },
+            storage: { type: 'local' },
         };
 
         writeConfigFile(configPath, config, true);
         console.log(`✅ Config saved to ${configPath}`);
-
-        if (storageType === 'supabase') {
-            const envPath = join(process.cwd(), '.env');
-            const writeEnv = await askYesNo(`Write SUPABASE_URL/KEY to ${envPath}?`, true);
-            if (writeEnv) {
-                const url = await ask('SUPABASE_URL: ');
-                const key = await ask('SUPABASE_KEY: ');
-                await writeSupabaseEnv(envPath, url, key);
-                console.log(`✅ Updated ${envPath}`);
-            } else {
-                console.log('ℹ️  Skipped writing .env (set SUPABASE_URL/SUPABASE_KEY manually).');
-            }
-        }
+        console.log('ℹ️  Cross-machine sync: set storage.syncModule in ~/.spidersanrc (or SPIDERSAN_SYNC_MODULE)');
+        console.log('   to a module exporting createRegistrySyncClient().');
     } finally {
         rl.close();
     }

@@ -5,7 +5,8 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { dropShadowedPushRows, PUSH_MACHINE_ID } from '../src/lib/push-registry';
 import { registryRepoNames } from '../src/lib/git';
-import { SupabaseRegistrySyncClientImpl } from '../src/storage/supabase-registry-sync-client-impl';
+import { SupabaseStorage } from '../src/storage/supabase';
+import type { SupabaseRegistrySyncClient } from '../src/storage/supabase-registry-sync-client';
 import type { MachineRegistryView } from '../src/types/cloud';
 
 function view(machine_id: string, branches: string[]): MachineRegistryView {
@@ -26,26 +27,33 @@ describe('dropShadowedPushRows', () => {
     });
 });
 
-describe('pull()', () => {
-    const row = (machine_id: string, repo_name: string, branch_name: string) => ({
-        machine_id, machine_name: machine_id === PUSH_MACHINE_ID ? 'github' : 'm5', hostname: 'h', repo_name,
-        repo_path: '/x', branch_name, status: 'active', files: ['a.ts'], synced_at: '2', created_at: '1',
-    });
+describe('SupabaseStorage.pullRegistries() over a syncModule client', () => {
+    // A module client that does NO de-duplication of its own and honours excludeMachine.
+    function fakeClient(views: MachineRegistryView[], seen: { names?: string | string[] } = {}): SupabaseRegistrySyncClient {
+        return {
+            pull: async (names, exclude) => { seen.names = names; return views.filter(v => v.machine_id !== exclude); },
+            push: async () => ({ pushed: 0, updated: 0, abandoned: 0, abandonedBranches: [], errors: [] }),
+            getStatus: async () => [],
+            detectCrossMachineConflicts: async () => [],
+        };
+    }
 
     it("a pushed-branch row for the caller's own registered branch returns zero times", async () => {
-        const rows = [row('m5-uuid', 'spidersan', 'feat'), row(PUSH_MACHINE_ID, 'spidersan-oss', 'feat')];
-        const fetchFn = (async () => new Response(JSON.stringify(rows))) as unknown as typeof fetch;
-        const client = new SupabaseRegistrySyncClientImpl({ url: 'https://x', key: 'k', fetchFn });
-        const views = await client.pull(['spidersan', 'spidersan-oss'], 'm5-uuid');
+        const storage = new SupabaseStorage(fakeClient([view('self-uuid', ['feat']), view(PUSH_MACHINE_ID, ['feat'])]));
+        const views = await storage.pullRegistries(['spidersan', 'spidersan-oss'], 'self-uuid');
         expect(views.flatMap(v => v.branches)).toEqual([]);
     });
 
-    it('queries every name: the clone directory and the GitHub repo name', async () => {
-        let url = '';
-        const fetchFn = (async (u: string) => { url = u; return new Response('[]'); }) as unknown as typeof fetch;
-        const client = new SupabaseRegistrySyncClientImpl({ url: 'https://x', key: 'k', fetchFn });
-        await client.pull(['spidersan', 'spidersan-oss']);
-        expect(decodeURIComponent(url)).toContain('repo_name=in.("spidersan","spidersan-oss")');
+    it('keeps other machines and unshadowed pushed branches', async () => {
+        const storage = new SupabaseStorage(fakeClient([view('self-uuid', ['feat']), view('peer', ['other']), view(PUSH_MACHINE_ID, ['feat', 'codex/x'])]));
+        const views = await storage.pullRegistries('spidersan', 'self-uuid');
+        expect(views.map(v => [v.machine_id, v.branches.map(b => b.name)])).toEqual([['peer', ['other']], [PUSH_MACHINE_ID, ['codex/x']]]);
+    });
+
+    it('passes every repo name through to the module: the clone directory and the GitHub repo name', async () => {
+        const seen: { names?: string | string[] } = {};
+        await new SupabaseStorage(fakeClient([], seen)).pullRegistries(['spidersan', 'spidersan-oss']);
+        expect(seen.names).toEqual(['spidersan', 'spidersan-oss']);
     });
 });
 
@@ -72,19 +80,5 @@ describe('registryRepoNames', () => {
     it('one name when they already match', () => {
         process.chdir(repoAt('treebird', 'https://github.com/Treebird-Ecosystem/treebird.git'));
         expect(registryRepoNames()).toEqual(['treebird']);
-    });
-});
-
-describe('registry-sync push abandon is repo-scoped', () => {
-    it('the abandon PATCH filters on repo_name', async () => {
-        const calls: string[] = [];
-        const fetchFn = (async (url: string) => {
-            calls.push(url);
-            if (url.includes('select=branch_name')) return new Response(JSON.stringify([{ branch_name: 'old' }]));
-            return new Response('[]');
-        }) as unknown as typeof fetch;
-        const client = new SupabaseRegistrySyncClientImpl({ url: 'https://x', key: 'k', fetchFn });
-        await client.push({ id: 'm5', name: 'm5', hostname: 'h' }, 'treebird', '/x', []);
-        expect(calls.find(u => u.includes('branch_name=in.'))!).toContain('repo_name=eq.treebird');
     });
 });

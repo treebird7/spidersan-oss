@@ -1,7 +1,7 @@
 /**
- * notify — the delivery seam for git-watch alerts.
+ * notify — the delivery seam for conflict alerts (`conflicts --notify`, `watch`).
  *
- * Every alert in git-events-subscriber.ts used to inline its own transport:
+ * Every alert in the (since retired) git-watch daemon used to inline its own transport:
  * `execFile('envoak', ['hive','signal',...], cb)` with the callback discarding
  * the result. When `envoak hive signal` was removed (Envoak#148, ADR-0002) all
  * five sites died at once, and because no site inspected its own result the
