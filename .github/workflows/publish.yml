@@ -26,10 +26,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      # Node 24 ships npm 11. Trusted publishing (OIDC) needs npm >= 11.5.1; on Node 20's
+      # npm 10 the provenance was signed but the PUT went out unauthenticated and got E404.
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
       
@@ -38,29 +40,55 @@ jobs:
       
       - name: Build
         run: npm run build
-      
+
+      - name: Test
+        run: |
+          npm test -- --run
+          node --test tests/conflict-tier.test.ts
+
       - name: Verify build
         run: |
           node dist/bin/spidersan.js --version
           node dist/bin/spidersan.js --help
       
+      # Inputs go through env, never interpolated into the script, and are validated.
+      # A failed `npm version` now stops the job instead of publishing package.json as-is.
       - name: Set version (manual dispatch)
         if: github.event_name == 'workflow_dispatch'
-        continue-on-error: true
-        run: npm version ${{ inputs.version }} --no-git-tag-version
-      
+        env:
+          VERSION: ${{ inputs.version }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "::error::bad version: $VERSION"; exit 1; }
+          [[ "${TAG:-latest}" =~ ^[a-z][a-z0-9-]*$ ]] || { echo "::error::bad tag: $TAG"; exit 1; }
+          current=$(node -p "require('./package.json').version")
+          [ "$VERSION" = "$current" ] || npm version "$VERSION" --no-git-tag-version
+
+      - name: npm version check
+        run: |
+          npm --version
+          node -e 'const [a,b,c]=process.argv[1].split(".").map(Number); process.exit(a>11||(a==11&&(b>5||(b==5&&c>=1)))?0:1)' "$(npm --version)" \
+            || { echo "::error::trusted publishing needs npm >= 11.5.1"; exit 1; }
+
       - name: Publish to npm (Trusted Publisher)
-        run: npm publish --provenance --access public --tag ${{ inputs.tag || 'latest' }}
+        env:
+          TAG: ${{ inputs.tag || 'latest' }}
+        run: npm publish --provenance --access public --tag "$TAG"
       
       - name: Summary
+        env:
+          TAG: ${{ inputs.tag || 'latest' }}
         run: |
-          echo "## 📦 Published to npm" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Package:** spidersan" >> $GITHUB_STEP_SUMMARY
-          echo "- **Version:** $(node -p \"require('./package.json').version\")" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tag:** ${{ inputs.tag || 'latest' }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Install with:" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "npm install -g spidersan" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          v=$(node -p "require('./package.json').version")
+          {
+            echo "## 📦 Published to npm"
+            echo ""
+            echo "- **Package:** spidersan"
+            echo "- **Version:** $v"
+            echo "- **Tag:** ${TAG}"
+            echo ""
+            echo "Install with:"
+            echo '```bash'
+            echo "npm install -g spidersan"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
