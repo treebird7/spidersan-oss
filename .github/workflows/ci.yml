@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [20, 22]
+        node-version: [22, 24]
 
     steps:
       - uses: actions/checkout@v4
@@ -47,6 +47,10 @@ jobs:
       - name: Run Tests
         run: npm test -- --run
 
+      # Written for node:test, so vitest.config.ts excludes it; it imports dist/, built above.
+      - name: Conflict-tier classifier tests (node:test)
+        run: node --test tests/conflict-tier.test.ts
+
   test-cli:
     runs-on: ubuntu-latest
     needs: build
@@ -57,7 +61,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
       
       - name: Install dependencies
@@ -76,6 +80,34 @@ jobs:
         run: |
           node dist/bin/spidersan.js init
           ls -la .spidersan/
+
+  # mcp-server/ is its own package (own lockfile), outside the root vitest include and the
+  # root npm audit. Its tests spawn the built server and borrow the root's vitest.
+  mcp-server:
+    name: mcp-server build · test · audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mcp-server/package-lock.json
+      # --ignore-scripts: no dependency install hook runs; the builds those hooks
+      # would have done (root `prepare`) run explicitly instead. Several tests
+      # drive the root CLI's dist/.
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npm ci --ignore-scripts
+        working-directory: mcp-server
+      - run: npm run build
+        working-directory: mcp-server
+      - run: npm run test:run
+        working-directory: mcp-server
+      - run: npm audit --audit-level=high
+        working-directory: mcp-server
 
   plugin-hooks:
     name: Plugin hook suites

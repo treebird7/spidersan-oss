@@ -100,6 +100,16 @@ describe.sequential('MCP tools integration', () => {
         }
     });
 
+    // The advertised tool contract, pinned. A dependency bump that changes it (zod 3 -> 4
+    // dropped additionalProperties:false from every input schema) must show up as a diff
+    // here and be accepted on purpose with `vitest -u`, not slip through.
+    it('tools/list contract matches the snapshot', async () => {
+        const { tools } = await client.listTools();
+        const byName = [...tools].sort((a, b) => a.name.localeCompare(b.name));
+        expect(byName.map(t => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })))
+            .toMatchSnapshot();
+    });
+
     it('welcome returns structured data', async () => {
         const { result, text } = await callTool('welcome', { demo: false });
         expect(Array.isArray(result.content)).toBe(true);

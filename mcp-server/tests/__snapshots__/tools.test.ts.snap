@@ -1,0 +1,616 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`MCP tools integration > tools/list contract matches the snapshot 1`] = `
+[
+  {
+    "description": "Get detailed status of all active branches including owners, staleness, conflict tier, and last activity.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "includeStale": {
+          "description": "Include stale branches (>7 days inactive)",
+          "type": "boolean",
+        },
+        "repo": {
+          "description": "Repository path (default: current directory)",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "branch_status",
+  },
+  {
+    "description": "Check for file conflicts between active branches",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {},
+      "type": "object",
+    },
+    "name": "check_conflicts",
+  },
+  {
+    "description": "Create a GitHub pull request with optional auto-generated title and description.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "branch": {
+          "description": "Source branch for PR (default: current branch)",
+          "type": "string",
+        },
+        "description": {
+          "description": "PR description (auto-generated from commits if omitted)",
+          "type": "string",
+        },
+        "draft": {
+          "description": "Create as draft PR",
+          "type": "boolean",
+        },
+        "reviewers": {
+          "description": "GitHub usernames to request review from",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "target": {
+          "description": "Target branch (default: main)",
+          "type": "string",
+        },
+        "title": {
+          "description": "PR title (auto-generated from branch name if omitted)",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "create_pr",
+  },
+  {
+    "description": "Get detailed info about a specific branch",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "branch": {
+          "description": "Branch name (default: current branch)",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "get_branch_info",
+  },
+  {
+    "description": "Get recommended merge order based on dependencies",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {},
+      "type": "object",
+    },
+    "name": "get_merge_order",
+  },
+  {
+    "description": "Stage, commit (with optional auto-generated message), and push changes.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "autoMessage": {
+          "description": "Generate commit message from diff using Raptor Mini",
+          "type": "boolean",
+        },
+        "branch": {
+          "description": "Branch to push (default: current branch)",
+          "type": "string",
+        },
+        "files": {
+          "description": "Files to stage (default: all changed files)",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "message": {
+          "description": "Commit message (auto-generated from diff if omitted)",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "git_commit_and_push",
+  },
+  {
+    "description": "Merge a branch into target with safety checks. Blocks TIER 3 conflicts.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "dryRun": {
+          "description": "Preview merge without executing",
+          "type": "boolean",
+        },
+        "source": {
+          "description": "Source branch to merge",
+          "type": "string",
+        },
+        "strategy": {
+          "description": "Merge strategy (default: merge)",
+          "enum": [
+            "merge",
+            "squash",
+            "rebase",
+          ],
+          "type": "string",
+        },
+        "target": {
+          "description": "Target branch (default: main)",
+          "type": "string",
+        },
+      },
+      "required": [
+        "source",
+      ],
+      "type": "object",
+    },
+    "name": "git_merge",
+  },
+  {
+    "description": "Scan for potential conflicts before starting work. Analyzes task files and registered branches.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "agent": {
+          "description": "Agent planning the work",
+          "type": "string",
+        },
+        "files": {
+          "description": "Files you intend to modify",
+          "items": {
+            "type": "string",
+          },
+          "minItems": 1,
+          "type": "array",
+        },
+        "taskId": {
+          "description": "Optional task ID for context",
+          "type": "string",
+        },
+      },
+      "required": [
+        "files",
+        "agent",
+      ],
+      "type": "object",
+    },
+    "name": "intent_scan",
+  },
+  {
+    "description": "List all registered branches in the current project",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "status": {
+          "description": "Filter by status (default: active). Note: "merged" is an alias for "completed".",
+          "enum": [
+            "all",
+            "active",
+            "completed",
+            "merged",
+            "abandoned",
+          ],
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "list_branches",
+  },
+  {
+    "description": "List all available Spidersan MCP tools with version info",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {},
+      "type": "object",
+    },
+    "name": "list_tools",
+  },
+  {
+    "description": "Lock files to prevent concurrent edits. Returns lock token.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "agent": {
+          "description": "Agent requesting lock",
+          "type": "string",
+        },
+        "files": {
+          "description": "File paths to lock (relative or absolute)",
+          "items": {
+            "type": "string",
+          },
+          "minItems": 1,
+          "type": "array",
+        },
+        "reason": {
+          "description": "Why files are being locked",
+          "type": "string",
+        },
+        "ttl": {
+          "description": "Lock timeout in minutes (default: 30)",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "files",
+        "agent",
+      ],
+      "type": "object",
+    },
+    "name": "lock_files",
+  },
+  {
+    "description": "Mark a branch as abandoned",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "branch": {
+          "description": "Branch name (default: current branch)",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "mark_abandoned",
+  },
+  {
+    "description": "Mark a branch as merged (removes from active list)",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "branch": {
+          "description": "Branch name (default: current branch)",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "mark_merged",
+  },
+  {
+    "description": "Validate if a branch is safe to merge. Returns pass/fail with blocking reasons.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "branch": {
+          "description": "Branch name to check",
+          "type": "string",
+        },
+        "target": {
+          "description": "Target branch (default: main)",
+          "type": "string",
+        },
+      },
+      "required": [
+        "branch",
+      ],
+      "type": "object",
+    },
+    "name": "ready_check",
+  },
+  {
+    "description": "Register a branch with files you are modifying",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "agent": {
+          "description": "Your agent identifier",
+          "type": "string",
+        },
+        "branch": {
+          "description": "Branch name to register",
+          "type": "string",
+        },
+        "description": {
+          "description": "Brief description of the changes",
+          "type": "string",
+        },
+        "files": {
+          "description": "List of files being modified",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "repo": {
+          "description": "Repository name (for context)",
+          "type": "string",
+        },
+      },
+      "required": [
+        "branch",
+        "files",
+      ],
+      "type": "object",
+    },
+    "name": "register_branch",
+  },
+  {
+    "description": "Release a conflict claim early so another agent can resolve it.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "agent": {
+          "description": "Agent releasing the resolution claim",
+          "type": "string",
+        },
+        "branch": {
+          "description": "Branch with conflicts to resolve",
+          "type": "string",
+        },
+        "target": {
+          "description": "Target branch (default: main)",
+          "type": "string",
+        },
+      },
+      "required": [
+        "branch",
+        "agent",
+      ],
+      "type": "object",
+    },
+    "name": "release_resolution",
+  },
+  {
+    "description": "Claim a conflict for resolution. Returns conflict context and reserves the conflict to prevent simultaneous resolution attempts.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "agent": {
+          "description": "Agent claiming the resolution",
+          "type": "string",
+        },
+        "branch": {
+          "description": "Branch with conflicts to resolve",
+          "type": "string",
+        },
+        "target": {
+          "description": "Target branch (default: main)",
+          "type": "string",
+        },
+        "tier": {
+          "description": "Conflict tier to resolve (1, 2, or 3)",
+          "maximum": 3,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "branch",
+        "agent",
+      ],
+      "type": "object",
+    },
+    "name": "request_resolution",
+  },
+  {
+    "description": "Get proactive AI recommendations for the current repo. Analyzes registry, conflicts, stale branches, colony status, and dirty files to suggest next actions with specific spidersan commands.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "provider": {
+          "description": "LLM provider (default: lmstudio)",
+          "enum": [
+            "lmstudio",
+            "ollama",
+            "copilot",
+          ],
+          "type": "string",
+        },
+        "repo": {
+          "description": "Repository path (default: current directory)",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "spidersan_advise",
+  },
+  {
+    "description": "Ask the Spidersan AI a question about the current repo state. Uses LLM reasoning with full context (registry, conflicts, colony, git status) and knowledge of all spidersan commands.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "provider": {
+          "description": "LLM provider (default: lmstudio)",
+          "enum": [
+            "lmstudio",
+            "ollama",
+            "copilot",
+          ],
+          "type": "string",
+        },
+        "question": {
+          "description": "Your question about the repo, branches, conflicts, or workflow",
+          "type": "string",
+        },
+        "repo": {
+          "description": "Repository path (default: current directory)",
+          "type": "string",
+        },
+      },
+      "required": [
+        "question",
+      ],
+      "type": "object",
+    },
+    "name": "spidersan_ask",
+  },
+  {
+    "description": "Gather full context about the current repo: registry state, branch conflicts, git status, colony health. Returns structured JSON for analysis.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "repo": {
+          "description": "Repository path (default: current directory)",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "spidersan_context",
+  },
+  {
+    "description": "Get a detailed AI explanation of a specific branch: its purpose, conflict risk, merge readiness, and recommended actions.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "branch": {
+          "description": "Branch name to explain",
+          "type": "string",
+        },
+        "provider": {
+          "description": "LLM provider (default: lmstudio)",
+          "enum": [
+            "lmstudio",
+            "ollama",
+            "copilot",
+          ],
+          "type": "string",
+        },
+        "repo": {
+          "description": "Repository path (default: current directory)",
+          "type": "string",
+        },
+      },
+      "required": [
+        "branch",
+      ],
+      "type": "object",
+    },
+    "name": "spidersan_explain",
+  },
+  {
+    "description": "Health check the LLM connection. Returns provider, model, and latency.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "provider": {
+          "description": "LLM provider to test (default: lmstudio)",
+          "enum": [
+            "lmstudio",
+            "ollama",
+            "copilot",
+          ],
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "spidersan_ping",
+  },
+  {
+    "description": "Start watching files and auto-registering changes (daemon mode)",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "agent": {
+          "description": "Agent identifier for registrations",
+          "type": "string",
+        },
+        "dir": {
+          "description": "Directory to watch (default: current repo)",
+          "type": "string",
+        },
+        "hub": {
+          "description": "Connect to Hub for real-time conflict warnings",
+          "type": "boolean",
+        },
+        "quiet": {
+          "description": "Only show conflicts, not file changes",
+          "type": "boolean",
+        },
+      },
+      "type": "object",
+    },
+    "name": "start_watch",
+  },
+  {
+    "description": "Stop the background file watcher",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {},
+      "type": "object",
+    },
+    "name": "stop_watch",
+  },
+  {
+    "description": "Release file locks. Requires agent match or lock token.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "adminToken": {
+          "description": "Admin token for force unlock",
+          "type": "string",
+        },
+        "agent": {
+          "description": "Agent releasing lock",
+          "type": "string",
+        },
+        "files": {
+          "description": "File paths to unlock (omit to unlock all by agent)",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "force": {
+          "default": false,
+          "description": "Force unlock — requires SPIDERSAN_ADMIN_TOKEN env var",
+          "type": "boolean",
+        },
+        "token": {
+          "description": "Lock token (alternative to agent)",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "unlock_files",
+  },
+  {
+    "description": "Welcome ritual for new agents - shows setup guide and optional conflict demo",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "demo": {
+          "description": "Run interactive demo showing conflict detection",
+          "type": "boolean",
+        },
+      },
+      "type": "object",
+    },
+    "name": "welcome",
+  },
+  {
+    "description": "Query who owns, locks, or is working on specific files.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "files": {
+          "description": "File paths to query",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "pattern": {
+          "description": "Glob pattern to match files (alternative to files array)",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "who_owns",
+  },
+]
+`;
