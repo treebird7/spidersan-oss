@@ -95,8 +95,12 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             mcp-server/package-lock.json
-      - run: npm ci
-      - run: npm ci
+      # --ignore-scripts: no dependency install hook runs; the builds those hooks
+      # would have done (root `prepare`) run explicitly instead. Several tests
+      # drive the root CLI's dist/.
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npm ci --ignore-scripts
         working-directory: mcp-server
       - run: npm run build
         working-directory: mcp-server
