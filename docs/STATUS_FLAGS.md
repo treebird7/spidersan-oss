@@ -51,7 +51,7 @@ Note: `mcp-health` and `pulse` are ecosystem-only commands.
 | `registry-sync` | ✅ | ✅ | Sync registry to/from other machines (needs `storage.syncModule`) |
 | `cross-conflicts` | ✅ | ✅ | Detect conflicts across machines (needs `storage.syncModule`) |
 | `mcp-health` | ✅ | ✅ | MCP server status |
-| `pulse` | ✅ | ✅ | Colony sync + conflict health check |
+| `pulse` | ✅ | ✅ | Conflict health check |
 | `doctor` | ✅ | ✅ | Diagnose common Spidersan issues |
 
 ### MCP Server
