@@ -9,7 +9,7 @@ import { execFileSync } from 'child_process';
 import { validateBranchName, validatePRNumber } from './security.js';
 
 /**
- * Env-gated debug breadcrumb (mirrors the DEBUG_COLONY convention). Off by
+ * Env-gated debug breadcrumb. Off by
  * default so normal runs stay quiet; set DEBUG_GITHUB=1 to surface the reason a
  * gh call failed instead of having it swallowed into a benign-looking default.
  */

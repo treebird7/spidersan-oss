@@ -30,7 +30,6 @@ export type {
   ReasoningRequest,
   ReasoningResult,
   SpiderContext,
-  WorkSignal,
 } from './types.js';
 
 export { DEFAULT_LLM_CONFIGS } from './types.js';

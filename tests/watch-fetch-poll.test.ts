@@ -16,7 +16,6 @@ const mocks = vi.hoisted(() => {
         chokidarWatch: vi.fn(),
         getStorage: vi.fn(),
         loadConfig: vi.fn(),
-        syncFromColony: vi.fn(),
         getCurrentBranch: vi.fn(),
         getRepoName: vi.fn(),
         getRemoteHead: vi.fn(),
@@ -47,10 +46,6 @@ vi.mock('../src/storage/index.js', () => ({
 
 vi.mock('../src/lib/config.js', () => ({
     loadConfig: mocks.loadConfig,
-}));
-
-vi.mock('../src/lib/colony-subscriber.js', () => ({
-    syncFromColony: mocks.syncFromColony,
 }));
 
 vi.mock('../src/lib/git.js', () => ({

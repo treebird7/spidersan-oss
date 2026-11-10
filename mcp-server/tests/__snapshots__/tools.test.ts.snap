@@ -393,7 +393,7 @@ exports[`MCP tools integration > tools/list contract matches the snapshot 1`] = 
     "name": "request_resolution",
   },
   {
-    "description": "Get proactive AI recommendations for the current repo. Analyzes registry, conflicts, stale branches, colony status, and dirty files to suggest next actions with specific spidersan commands.",
+    "description": "Get proactive AI recommendations for the current repo. Analyzes registry, conflicts, stale branches, and dirty files to suggest next actions with specific spidersan commands.",
     "inputSchema": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
@@ -416,7 +416,7 @@ exports[`MCP tools integration > tools/list contract matches the snapshot 1`] = 
     "name": "spidersan_advise",
   },
   {
-    "description": "Ask the Spidersan AI a question about the current repo state. Uses LLM reasoning with full context (registry, conflicts, colony, git status) and knowledge of all spidersan commands.",
+    "description": "Ask the Spidersan AI a question about the current repo state. Uses LLM reasoning with full context (registry, conflicts, git status) and knowledge of all spidersan commands.",
     "inputSchema": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
@@ -446,7 +446,7 @@ exports[`MCP tools integration > tools/list contract matches the snapshot 1`] = 
     "name": "spidersan_ask",
   },
   {
-    "description": "Gather full context about the current repo: registry state, branch conflicts, git status, colony health. Returns structured JSON for analysis.",
+    "description": "Gather full context about the current repo: registry state, branch conflicts, git status. Returns structured JSON for analysis.",
     "inputSchema": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {

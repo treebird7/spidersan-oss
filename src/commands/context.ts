@@ -54,19 +54,6 @@ function formatContext(ctx: SpiderContext, verbose: boolean): string {
   }
   lines.push('');
 
-  // Colony
-  lines.push(chalk.bold('🍄 Colony'));
-  if (ctx.colony.online) {
-    lines.push(`   Online · ${ctx.colony.activeAgents.length} agents: ${ctx.colony.activeAgents.join(', ') || 'none'}`);
-    if (verbose && ctx.colony.inProgress.length > 0) {
-      for (const w of ctx.colony.inProgress) {
-        lines.push(`   ${w.agent}: ${w.task} (${w.status})`);
-      }
-    }
-  } else {
-    lines.push(chalk.dim('   Offline'));
-  }
-
   // Activity
   if (verbose && ctx.activityLog && ctx.activityLog.length > 0) {
     lines.push('');
@@ -80,7 +67,7 @@ function formatContext(ctx: SpiderContext, verbose: boolean): string {
 }
 
 export const contextCommand = new Command('context')
-  .description('Show aggregated repository context (registry, conflicts, git, colony)')
+  .description('Show aggregated repository context (registry, conflicts, git)')
   .option('--json', 'Output as structured JSON')
   .option('--verbose', 'Include all sections (activity log, branch details)')
   .option('--repo <path>', 'Target a specific repository path')

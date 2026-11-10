@@ -104,11 +104,6 @@ The interface all storage backends implement. Key methods: `getBranches()`, `reg
 
 ---
 
-### Colony
-The Supabase-backed signal bus (MycToak project `<vault-project-ref>`) used for cross-machine awareness. Spidersan polls Colony via `src/lib/colony-subscriber.ts` on `spidersan pulse`. Colony signals are *advisory* — Spidersan falls back gracefully if Colony is unavailable.
-
----
-
 ### Hub
 The real-time chat channel used for agent notifications. Client in `src/lib/hub.ts`. The one public method agents should call:
 
@@ -148,7 +143,6 @@ src/
 │   ├── git.ts                getAheadBehind, getRemoteHead, getCurrentBranch
 │   ├── graph.ts              DAG for merge order / dependency tracking
 │   ├── hub.ts                Hub REST client (postToChat)
-│   ├── colony-subscriber.ts  Colony signal polling
 │   ├── security.ts           Input validation: validateFilePath, validateBranchName
 │   └── config.ts             .spidersanrc loader (deepMerge, __proto__ guard)
 └── storage/
