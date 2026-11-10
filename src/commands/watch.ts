@@ -431,7 +431,6 @@ interface ConflictsJson {
  */
 async function runObserverTick(
     repos: string[],
-    dryRun: boolean,
     broadcastedConflicts: Set<string>,
 ): Promise<TickResult> {
     let totalTier3 = 0;
@@ -488,7 +487,7 @@ async function runObserverTick(
     }
 
     // ── STEP 3: SURFACE ───────────────────────────────────────────────────────
-    // Broadcast TIER 3 alerts (deduplicated). Clear resolved conflicts.
+    // Log TIER 3 alerts (deduplicated). Clear resolved conflicts.
     const currentKeys = new Set(
         tier3Alerts.map((a) => `${a.repo}:${a.files.join(',')}`),
     );
@@ -501,20 +500,8 @@ async function runObserverTick(
             const filesStr = alert.files.length > 0 ? alert.files.join(', ') : 'multiple files';
             const message = `spidersan TIER 3: conflict in ${repoName} — ${filesStr}. Halt writes on affected files.`;
 
-            if (dryRun) {
-                console.log(`[DRY-RUN] Would broadcast TIER 3 alert: ${message}`);
-            } else {
-                // `envoak colony broadcast` was removed (Envoak ADR-0002); alerts go
-                // through the same delivery seam as `watch` fetch-poll.
-                await deliver(notifier(), {
-                    repo: repoName,
-                    branch: '(treetop)',
-                    tier: 3,
-                    message,
-                    dedupe: `treetop:${key}`,
-                    files: alert.files,
-                }, (m) => console.log(`[TIER 3] ${m}`));
-            }
+            // Terminal only: `envoak colony broadcast` was removed (Envoak ADR-0002).
+            console.log(`[TIER 3] ${message}`);
         }
     }
 
@@ -558,7 +545,7 @@ const watchTreetopCommand = new Command('treetop')
     .description('Mode 1: treetop observer — periodic multi-repo conflict scan')
     .option('--interval <seconds>', 'Base tick interval in seconds (default: 120)', '120')
     .option('--repos <paths>', 'Comma-separated repo paths (overrides ecosystem defaults)')
-    .option('--dry-run', 'Run one tick and exit — no sleep, no alerts sent')
+    .option('--dry-run', 'Run one tick and exit — no sleep')
     .action(async (options: { interval: string; repos?: string; dryRun?: boolean }) => {
         const repos = resolveRepos(options.repos);
         const baseMs = parseInt(options.interval, 10) * 1000;
@@ -577,7 +564,7 @@ ${dryRun ? 'Running one tick then exiting.' : 'Press Ctrl+C to stop.'}
         const broadcastedConflicts = new Set<string>();
 
         if (dryRun) {
-            await runObserverTick(repos, true, broadcastedConflicts);
+            await runObserverTick(repos, broadcastedConflicts);
             console.log('[DRY-RUN] Tick complete. Exiting.');
             return;
         }
@@ -588,7 +575,7 @@ ${dryRun ? 'Running one tick then exiting.' : 'Press Ctrl+C to stop.'}
         process.on('SIGTERM', () => { running = false; process.exit(0); });
 
         while (running) {
-            const result = await runObserverTick(repos, false, broadcastedConflicts);
+            const result = await runObserverTick(repos, broadcastedConflicts);
             const nextMs = adaptiveInterval(result, baseMs);
             console.log(`[SLEEP] Next tick in ${nextMs / 1000}s`);
             await new Promise<void>((resolve) => setTimeout(resolve, nextMs));

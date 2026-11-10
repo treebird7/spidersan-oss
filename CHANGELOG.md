@@ -15,8 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `colony_signal` event type and `COLONY_SUPABASE_URL` / `COLONY_SUPABASE_KEY` /
   `COLONY_SESSION_JWT`. `spidersan context` no longer prints a Colony section.
 - **`watch treetop` no longer shells out to `envoak colony gc|broadcast|signal`**
-  (verbs removed by Envoak ADR-0002). TIER 3 alerts now go through the same
-  delivery seam as `watch` (`SPIDERSAN_ROOM_TOKEN`; unset reports `NOT NOTIFIED`).
+  (verbs removed by Envoak ADR-0002). TIER 3 alerts are printed to the terminal only.
 
 ## [0.22.0] - 2026-11-04
 
