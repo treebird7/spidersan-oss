@@ -11,7 +11,7 @@ Every command takes `--help`; the long-form guide is
 ```bash
 spidersan conflicts                                   # registry overlap for this branch
 spidersan register -f "a.ts,b.ts" -a <agent> -d "what this branch does"
-spidersan ready-check                                 # WIP markers + build check
+spidersan ready-check                                 # overlaps (blocking) + WIP markers (advisory)
 spidersan conflicts --pr <N> --real --vs-prs          # authoritative check, right before merge
 spidersan merged --pr <N>                             # after the merge lands
 ```

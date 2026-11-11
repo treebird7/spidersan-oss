@@ -26,7 +26,7 @@ import { ECOSYSTEM_UNCONFIGURED_HINT, resolveEcosystemRepos } from '../lib/ecosy
 import { logActivity } from '../lib/activity.js';
 import { isGhAvailable, getPRDetails, getPRLabels, listOpenPRs, getPRChangedFiles } from '../lib/github.js';
 import { analyzeCarries, type CarriesReport } from '../lib/carries.js';
-import { classifyWithLabel } from '../lib/conflict-tier.js';
+import { classifyWithLabel, TIER_LABELS } from '../lib/conflict-tier.js';
 import { createNotifier, deliver, type Notifier } from '../lib/notify.js';
 import { analyzeRealConflicts, type RealConflictReport } from '../lib/git-merge-analyzer.js';
 import { getTrunkBranch } from '../lib/trunk.js';
@@ -640,7 +640,7 @@ export const conflictsCommand = new Command('conflicts')
             }
             if (overlappingFiles.length > 0) {
                 // Get highest tier for this conflict
-                let maxTier: ConflictTierInfo = { tier: 1, label: 'WARN', icon: '🟡', action: '' };
+                let maxTier: ConflictTierInfo = { tier: 1, ...TIER_LABELS[1] };
                 for (const file of overlappingFiles) {
                     const fileTier = classifyWithLabel(file, {
                         extraTier3: compiledHigh,
