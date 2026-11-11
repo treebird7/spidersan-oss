@@ -15,7 +15,6 @@ export interface SpiderContext {
   registry: { active: number; stale: number; branches: unknown[] };
   conflicts: { tier1: number; tier2: number; tier3: number; details: unknown[] };
   gitStatus: { ahead: number; behind: number; dirty: string[] };
-  colony: { online: boolean; activeAgents: string[]; inProgress: unknown[] };
   activityLog?: unknown[];
   dailyCollab?: unknown[];
 }

@@ -1,7 +1,7 @@
 /**
  * Spidersan AI Core — Event Handler
  *
- * Processes git/colony events → deterministic conflict check → optional LLM escalation.
+ * Processes git events → deterministic conflict check → optional LLM escalation.
  * Pure functions — no CLI or server concerns.
  */
 
@@ -65,7 +65,7 @@ function checkDeterministicConflicts(
 // ─── Main Event Handler ────────────────────────────────────
 
 /**
- * Handle an event (push, PR, colony signal, branch register).
+ * Handle an event (push, PR, branch register).
  * First runs deterministic conflict check (fast, no LLM).
  * Only escalates to LLM for TIER 2+ or complex scenarios.
  *

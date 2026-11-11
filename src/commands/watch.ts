@@ -5,7 +5,6 @@ import * as chokidar from 'chokidar';
 import * as path from 'path';
 import { homedir } from 'os';
 import { loadConfig } from '../lib/config.js';
-import { syncFromColony } from '../lib/colony-subscriber.js';
 import { getCurrentBranch, getRemoteHead, getRepoName } from '../lib/git.js';
 import { classifyTier } from '../lib/conflict-tier.js';
 import { createNotifier, deliver, type Notifier } from '../lib/notify.js';
@@ -427,12 +426,11 @@ interface ConflictsJson {
 }
 
 /**
- * Run one full observer tick: SYNC → SCAN → TEND → SURFACE.
+ * Run one full observer tick: SCAN → TEND → SURFACE.
  * Returns tier counts and idle status for adaptive sleep calculation.
  */
 async function runObserverTick(
     repos: string[],
-    dryRun: boolean,
     broadcastedConflicts: Set<string>,
 ): Promise<TickResult> {
     let totalTier3 = 0;
@@ -440,18 +438,7 @@ async function runObserverTick(
     let totalBranches = 0;
     const tier3Alerts: Array<{ repo: string; files: string[] }> = [];
 
-    // ── STEP 1: SYNC ──────────────────────────────────────────────────────────
-    // Pull colony gradient into local registry per repo.
-    for (const repo of repos) {
-        try {
-            process.chdir(repo);
-            await syncFromColony();
-        } catch {
-            // Repo not initialized or colony unreachable — continue
-        }
-    }
-
-    // ── STEP 2: SCAN ─────────────────────────────────────────────────────────
+    // ── STEP 1: SCAN ─────────────────────────────────────────────────────────
     // Detect conflicts in each repo. spawnSync captures output even on exit 1.
     for (const repo of repos) {
         try {
@@ -485,14 +472,7 @@ async function runObserverTick(
         }
     }
 
-    // ── STEP 3: TEND ─────────────────────────────────────────────────────────
-    // Colony GC (non-critical — always continue on failure).
-    try {
-        spawnSync('envoak', ['colony', 'gc'], { encoding: 'utf-8', timeout: 10000 });
-    } catch {
-        /* ignore */
-    }
-
+    // ── STEP 2: TEND ─────────────────────────────────────────────────────────
     // Stale check per repo (informational — no --auto-cleanup yet).
     for (const repo of repos) {
         try {
@@ -506,8 +486,8 @@ async function runObserverTick(
         }
     }
 
-    // ── STEP 4: SURFACE ───────────────────────────────────────────────────────
-    // Broadcast TIER 3 alerts (deduplicated). Clear resolved conflicts.
+    // ── STEP 3: SURFACE ───────────────────────────────────────────────────────
+    // Log TIER 3 alerts (deduplicated). Clear resolved conflicts.
     const currentKeys = new Set(
         tier3Alerts.map((a) => `${a.repo}:${a.files.join(',')}`),
     );
@@ -520,20 +500,8 @@ async function runObserverTick(
             const filesStr = alert.files.length > 0 ? alert.files.join(', ') : 'multiple files';
             const message = `spidersan TIER 3: conflict in ${repoName} — ${filesStr}. Halt writes on affected files.`;
 
-            if (dryRun) {
-                console.log(`[DRY-RUN] Would broadcast TIER 3 alert: ${message}`);
-            } else {
-                const r = spawnSync(
-                    'envoak',
-                    ['colony', 'broadcast', '--type', 'alert', '--message', message],
-                    { encoding: 'utf-8', timeout: 10000 },
-                );
-                if (r.status === 0) {
-                    console.log(`[TIER 3] Broadcast: ${message}`);
-                } else {
-                    console.error(`[TIER 3] Broadcast failed: ${r.stderr ?? r.stdout}`);
-                }
-            }
+            // Terminal only: `envoak colony broadcast` was removed (Envoak ADR-0002).
+            console.log(`[TIER 3] ${message}`);
         }
     }
 
@@ -546,19 +514,11 @@ async function runObserverTick(
 
     const allIdle = totalTier3 === 0 && totalTier2 === 0 && totalBranches === 0;
 
-    // Emit treetop heartbeat (skipped in dry-run)
+    // Log the tick summary
     const summary =
         `Watching ${repos.length} repos, ${totalBranches} active branches. ` +
-        `T3:${totalTier3} T2:${totalTier2}. GC run. Stale checked.`;
+        `T3:${totalTier3} T2:${totalTier2}. Stale checked.`;
     console.log(`[TICK] ${new Date().toISOString()} — ${summary}`);
-
-    if (!dryRun) {
-        spawnSync(
-            'envoak',
-            ['colony', 'signal', '--status', 'idle', '--task', 'treetop watch', '--summary', summary],
-            { encoding: 'utf-8', timeout: 10000 },
-        );
-    }
 
     return { tier3: totalTier3, tier2: totalTier2, repoCount: repos.length, branchCount: totalBranches, allIdle };
 }
@@ -577,15 +537,15 @@ function resolveRepos(reposOption?: string): string[] {
 function adaptiveInterval(result: TickResult, baseMs: number): number {
     if (result.tier3 > 0) return 15_000;   // Stay alert
     if (result.tier2 > 0) return 30_000;   // Watch closely
-    if (result.allIdle) return 300_000;    // Colony quiet — back off
+    if (result.allIdle) return 300_000;    // Fleet quiet — back off
     return baseMs;
 }
 
 const watchTreetopCommand = new Command('treetop')
-    .description('Mode 1: treetop observer — periodic multi-repo conflict scan + colony gradient sync')
+    .description('Mode 1: treetop observer — periodic multi-repo conflict scan')
     .option('--interval <seconds>', 'Base tick interval in seconds (default: 120)', '120')
     .option('--repos <paths>', 'Comma-separated repo paths (overrides ecosystem defaults)')
-    .option('--dry-run', 'Run one tick and exit — no sleep, no colony writes')
+    .option('--dry-run', 'Run one tick and exit — no sleep')
     .action(async (options: { interval: string; repos?: string; dryRun?: boolean }) => {
         const repos = resolveRepos(options.repos);
         const baseMs = parseInt(options.interval, 10) * 1000;
@@ -604,7 +564,7 @@ ${dryRun ? 'Running one tick then exiting.' : 'Press Ctrl+C to stop.'}
         const broadcastedConflicts = new Set<string>();
 
         if (dryRun) {
-            await runObserverTick(repos, true, broadcastedConflicts);
+            await runObserverTick(repos, broadcastedConflicts);
             console.log('[DRY-RUN] Tick complete. Exiting.');
             return;
         }
@@ -615,7 +575,7 @@ ${dryRun ? 'Running one tick then exiting.' : 'Press Ctrl+C to stop.'}
         process.on('SIGTERM', () => { running = false; process.exit(0); });
 
         while (running) {
-            const result = await runObserverTick(repos, false, broadcastedConflicts);
+            const result = await runObserverTick(repos, broadcastedConflicts);
             const nextMs = adaptiveInterval(result, baseMs);
             console.log(`[SLEEP] Next tick in ${nextMs / 1000}s`);
             await new Promise<void>((resolve) => setTimeout(resolve, nextMs));

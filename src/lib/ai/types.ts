@@ -25,13 +25,6 @@ export interface ConflictSummary {
   otherAgent: string | null;
 }
 
-export interface WorkSignal {
-  agent: string;
-  task: string;
-  status: string;
-  lastHeartbeat: string;
-}
-
 export interface ActivityEntry {
   event: string;
   branch: string | null;
@@ -65,11 +58,6 @@ export interface SpiderContext {
     ahead: number;
     behind: number;
     dirty: string[];
-  };
-  colony: {
-    online: boolean;
-    activeAgents: string[];
-    inProgress: WorkSignal[];
   };
   activityLog?: ActivityEntry[];
   dailyCollab?: DailyEntry[];
@@ -128,7 +116,7 @@ export interface ReasoningResult {
 
 // ─── Event Types ────────────────────────────────────────────
 
-export type EventType = 'push' | 'pull_request' | 'colony_signal' | 'branch_register';
+export type EventType = 'push' | 'pull_request' | 'branch_register';
 
 export interface EventPayload {
   type: EventType;
@@ -151,7 +139,6 @@ export interface Advice {
 
 export interface AIConfig {
   llm: LLMConfig;
-  enableColony: boolean;
   enableMemoak: boolean;
   enableDailyBridge: boolean;
   playbookPath?: string;

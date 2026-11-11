@@ -45,7 +45,7 @@ export const COMMANDS: CommandEntry[] = [
     { name: 'verify-trunk', description: 'Detect registry trunk-poison (main/master must claim no files)', load: async p => p.addCommand((await import('../commands/verify-trunk.js')).verifyTrunkCommand) },
     { name: 'rebase-helper', description: 'Detect and help resolve local git rebase states (non-interactive guidance)', load: async p => p.addCommand((await import('../commands/rebase-helper.js')).rebaseHelperCommand) },
     { name: 'log', description: 'Show branch operation history', load: async p => { (await import('../commands/log.js')).logCommand(p); } },
-    { name: 'context', description: 'Show aggregated repository context (registry, conflicts, git, colony)', load: async p => p.addCommand((await import('../commands/context.js')).contextCommand) },
+    { name: 'context', description: 'Show aggregated repository context (registry, conflicts, git)', load: async p => p.addCommand((await import('../commands/context.js')).contextCommand) },
 ];
 
 /** name → loader, for O(1) hot-path dispatch. */

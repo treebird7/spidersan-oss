@@ -15,7 +15,6 @@ import type {
   BranchSummary,
   ConflictSummary,
   SpiderContext,
-  WorkSignal,
   ActivityEntry,
 } from './types.js';
 
@@ -148,62 +147,6 @@ async function getRegistryContext(currentBranch: string): Promise<ContextSource<
   }
 }
 
-// ─── Colony (read-only snapshot) ────────────────────────────
-
-async function getColonySnapshot(): Promise<ContextSource<{
-  online: boolean;
-  activeAgents: string[];
-  inProgress: WorkSignal[];
-}>> {
-  const colonyUrl = process.env['COLONY_SUPABASE_URL'];
-  const colonyKey = process.env['COLONY_SUPABASE_KEY'];
-
-  if (!colonyUrl || !colonyKey) {
-    return { available: false, data: { online: false, activeAgents: [], inProgress: [] }, error: 'Colony not configured' };
-  }
-
-  try {
-    const resp = await fetch(
-      `${colonyUrl}/rest/v1/colony_state?status=eq.in-progress&select=agent_label,task,status,last_heartbeat`,
-      {
-        headers: {
-          'apikey': colonyKey,
-          'Authorization': `Bearer ${colonyKey}`,
-        },
-        signal: AbortSignal.timeout(5000),
-      },
-    );
-
-    if (!resp.ok) throw new Error(`Colony API ${resp.status}`);
-    const rows = await resp.json() as Array<{
-      agent_label: string;
-      task: string;
-      status: string;
-      last_heartbeat: string;
-    }>;
-
-    return {
-      available: true,
-      data: {
-        online: true,
-        activeAgents: [...new Set(rows.map(r => r.agent_label))],
-        inProgress: rows.map(r => ({
-          agent: r.agent_label,
-          task: r.task,
-          status: r.status,
-          lastHeartbeat: r.last_heartbeat,
-        })),
-      },
-    };
-  } catch (err) {
-    return {
-      available: false,
-      data: { online: false, activeAgents: [], inProgress: [] },
-      error: (err as Error).message,
-    };
-  }
-}
-
 // ─── Activity Log (best-effort) ────────────────────────────
 
 async function getRecentActivity(_repoRoot: string): Promise<ContextSource<ActivityEntry[]>> {
@@ -255,10 +198,9 @@ export async function buildContext(options: BuildContextOptions = {}): Promise<S
   const cwd = options.repoRoot ?? process.cwd();
 
   // Gather all sources in parallel (all best-effort)
-  const [gitInfo, registryCtx, colonyCtx, activityCtx] = await Promise.all([
+  const [gitInfo, registryCtx, activityCtx] = await Promise.all([
     getGitInfo(cwd),
     getGitInfo(cwd).then(g => getRegistryContext(g.data.branch)),
-    getColonySnapshot(),
     options.includeActivity ? getRecentActivity(cwd) : Promise.resolve(undefined),
   ]);
 
@@ -294,7 +236,6 @@ export async function buildContext(options: BuildContextOptions = {}): Promise<S
       behind: gitInfo.data.behind,
       dirty: gitInfo.data.dirty,
     },
-    colony: colonyCtx.data,
   };
 
   if (activityCtx?.available) {

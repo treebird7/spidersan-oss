@@ -1971,7 +1971,7 @@ server.tool(
 // Tool: spidersan_context
 server.tool(
     'spidersan_context',
-    'Gather full context about the current repo: registry state, branch conflicts, git status, colony health. Returns structured JSON for analysis.',
+    'Gather full context about the current repo: registry state, branch conflicts, git status. Returns structured JSON for analysis.',
     {
         repo: z.string().optional().describe('Repository path (default: current directory)'),
     },
@@ -1997,7 +1997,7 @@ server.tool(
 // Tool: spidersan_ask
 server.tool(
     'spidersan_ask',
-    'Ask the Spidersan AI a question about the current repo state. Uses LLM reasoning with full context (registry, conflicts, colony, git status) and knowledge of all spidersan commands.',
+    'Ask the Spidersan AI a question about the current repo state. Uses LLM reasoning with full context (registry, conflicts, git status) and knowledge of all spidersan commands.',
     {
         question: z.string().describe('Your question about the repo, branches, conflicts, or workflow'),
         repo: z.string().optional().describe('Repository path (default: current directory)'),
@@ -2033,7 +2033,7 @@ server.tool(
 // Tool: spidersan_advise
 server.tool(
     'spidersan_advise',
-    'Get proactive AI recommendations for the current repo. Analyzes registry, conflicts, stale branches, colony status, and dirty files to suggest next actions with specific spidersan commands.',
+    'Get proactive AI recommendations for the current repo. Analyzes registry, conflicts, stale branches, and dirty files to suggest next actions with specific spidersan commands.',
     {
         repo: z.string().optional().describe('Repository path (default: current directory)'),
         provider: z.enum(['lmstudio', 'ollama', 'copilot']).optional().describe('LLM provider (default: lmstudio)'),
@@ -2155,7 +2155,7 @@ server.tool(
             { name: 'get_branch_info', desc: 'Get detailed info about a branch', args: 'branch?' },
             { name: 'start_watch', desc: 'Start background file watcher daemon', args: 'agent?, dir?, hub?, quiet?' },
             { name: 'stop_watch', desc: 'Stop the background file watcher', args: 'none' },
-            { name: 'spidersan_context', desc: '🧠 AI: Gather full repo context (registry, conflicts, colony, git)', args: 'repo?' },
+            { name: 'spidersan_context', desc: '🧠 AI: Gather full repo context (registry, conflicts, git)', args: 'repo?' },
             { name: 'spidersan_ask', desc: '🧠 AI: Ask a question about the repo with LLM reasoning', args: 'question, repo?, provider?' },
             { name: 'spidersan_advise', desc: '🧠 AI: Get proactive recommendations for next actions', args: 'repo?, provider?' },
             { name: 'spidersan_explain', desc: '🧠 AI: Explain a branch\'s status and merge readiness', args: 'branch, repo?, provider?' },

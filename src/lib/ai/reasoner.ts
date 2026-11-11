@@ -154,13 +154,6 @@ function serializeContext(context: SpiderContext, verbose?: boolean): string {
     }
   }
 
-  sections.push('', `## Colony: ${context.colony.online ? 'online' : 'offline'}, ${context.colony.activeAgents.length} agents`);
-  if (context.colony.inProgress.length > 0) {
-    for (const w of context.colony.inProgress) {
-      sections.push(`  - ${w.agent}: ${w.task} (${w.status})`);
-    }
-  }
-
   if (verbose && context.activityLog && context.activityLog.length > 0) {
     sections.push('', '## Recent Activity (last 24h)');
     for (const a of context.activityLog.slice(0, 10)) {
@@ -233,13 +226,9 @@ export async function reason(
   }
 
   // Context-richness adjustments (additive, capped at 1.0):
-  //   +0.05 if colony is online with active agents (live fleet state available)
   //   +0.05 if activity log is present and non-empty (recent history available)
   //   -0.10 per unknown spidersan command in output (model hallucinated a command)
   //   -0.15 if tier-3 conflict exists and mode is 'advise' (high stakes, lower certainty)
-  if (request.context.colony.online && request.context.colony.activeAgents.length > 0) {
-    confidenceScore = Math.min(1.0, confidenceScore + 0.05);
-  }
   if (request.context.activityLog && request.context.activityLog.length > 0) {
     confidenceScore = Math.min(1.0, confidenceScore + 0.05);
   }
