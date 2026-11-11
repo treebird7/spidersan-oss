@@ -1,55 +1,33 @@
----
-tags: [agent/spidersan]
----
+# Data and network
 
-# Data Collection Policy
+Spidersan is a local CLI with no telemetry and no hosted service. This page lists what it
+stores on disk and every reason it goes over the network.
 
-## Overview
+## Stored locally
 
-Spidersan is designed with a **local-first** architecture. Your code and branch data stay on your machine.
+| Where | What |
+|---|---|
+| `.spidersan/registry.json` (in each repo) | Per registered branch: name, file paths, status, agent id, description, registration time, and the Claude Code session id when `CLAUDE_CODE_SESSION_ID` is set |
+| `~/.spidersan/activity.jsonl` | A local history of registry operations (`spidersan log`) |
+| `~/.spidersan/update-cache.json` | When the last version check ran and what it found |
 
-## What We Collect
+File **contents**, commit messages and diffs are never stored. `.spidersan/` is local
+state: add it to `.gitignore` unless you mean to commit it.
 
-### Local Mode
+## Network
 
-**Nothing.** Nothing is sent to Spidersan or any third party.
+| When | Where to | What is sent |
+|---|---|---|
+| Any command, at most once a day | `registry.npmjs.org` | A request for the latest `spidersan` version (to print an update notice) |
+| A registered branch has no ref on this machine | Your git remote (`git ls-remote --heads origin`) | The same request `git fetch` makes, to tell a deleted branch from an unfetched one |
+| `--pr`, `--vs-prs`, `pr-check`, `github-sync` | GitHub, through your `gh` CLI | `gh` API calls for PR metadata and changed-file lists |
+| Only if you configure `storage.syncModule` | Wherever **your** module sends it | Your registry entries, as above. The module is your code; spidersan ships no backend |
+| `conflicts --notify` with `SPIDERSAN_ROOM_TOKEN` set | The toak.me room the token names | The conflict alert: repo, branch, tier, file paths |
+| `spidersan log` with `SPIDERSAN_SUPABASE_URL` / `_KEY` set | That Supabase project | A read of the activity log table |
 
-The CLI does read from **your own git remote** (`origin`), the same way `git fetch` does. When a registry entry has no branch ref on this machine, `conflicts`, `ready-check`, `merge-order` and `sync` run `git ls-remote --heads origin` to tell a deleted branch from one that is simply unfetched. This is one call, made only in that case. `--pr` and `--vs-prs` use the `gh` CLI against your GitHub repo.
+Nothing else. Outbound calls are either `fetch(` or a spawned `git` / `gh`, so
+`rg 'fetch\(' src` plus the `gh` helpers in `src/lib/github.ts` cover them.
 
-### Optional Cloud Sync
+## Questions
 
-When using a cross-machine sync module (`storage.syncModule`), it decides where this is stored:
-
-| Data | Purpose | Retention |
-|------|---------|-----------|
-| Branch names | Coordination | Session only |
-| File paths (not contents) | Conflict detection | Session only |
-| Anonymous usage metrics | Product improvement | 30 days |
-
-## What We Never Collect
-
-- ❌ Source code contents
-- ❌ Git commit messages
-- ❌ Personal information
-- ❌ Repository secrets or credentials
-
-## Your Control
-
-- **All cloud features are opt-in** - Core works entirely offline
-- **Optional cross-machine sync** - Configure `storage.syncModule` to share the registry across machines
-- **No tracking by default** - Core CLI has zero telemetry
-- **Request data deletion anytime** - Contact us if you used cloud features
-
-## Version 0.4.0 Privacy
-
-Spidersan 0.4.0 **core** has:
-- ✅ Zero telemetry
-- ✅ No data sent anywhere but your own git remote and, for `--pr`/`--vs-prs`, GitHub via `gh` (unless you opt in to cloud sync)
-- ✅ All data stays local
-- ✅ Open source (MIT license) - audit the code yourself
-
-Advanced ecosystem features (optional plugin, coming soon) may include additional opt-in cloud features with the same privacy-first approach.
-
-## Contact
-
-Questions about data practices? File an issue on [GitHub](https://github.com/treebird7/spidersan-oss/issues)
+Open an issue on [GitHub](https://github.com/treebird7/spidersan-oss/issues).
