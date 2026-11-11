@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-11
+
 ### Removed
 
 - **Unused dependencies:** `execa` and `moment` (never imported), and `tweetnacl` /
@@ -16,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`conflicts` printed an empty `→` hint for a TIER 1 overlap**: the default tier was
+  seeded with an empty action. It now reads "Consider coordinating, but safe to proceed."
 - **A branch registered before its first commit no longer reads as merged**
   (sp-woci). Its tip is the trunk commit it forked from, so the is-ancestor
   check in reconcile-on-read called it merged: `conflicts`, `ready-check` and
@@ -25,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   trunk's first-parent chain AND is no newer than the registration. Merge-commit,
   fast-forward (of commits made after registering) and squash merges still
   reconcile away.
+
+### Documentation
+
+- README rewritten for 1.0, with a demo GIF recorded from real output
+  (`assets/demo.sh` regenerates it). CONTRIBUTING and `docs/DATA_COLLECTION.md`
+  rewritten; the stale AGENT_GUIDE, USE_CASES and LIMITATIONS docs are removed.
 
 ### Security
 
