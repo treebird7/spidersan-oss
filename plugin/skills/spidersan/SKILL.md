@@ -1,6 +1,6 @@
 ---
 name: spidersan
-description: Coordinate parallel branch work between AI coding agents with the spidersan CLI — register a branch, check real merge conflicts (git merge-tree, open PRs), order merges, and tidy stale or abandoned branches. Use before merging, when several agents share a repo, or when asked to triage or tidy branches.
+description: Coordinate parallel branch work between AI coding agents with the spidersan CLI — register a branch, check real merge conflicts (git merge-tree, open PRs), order merges, review a repo's branch health (including a public repo you don't own, read-only), and tidy stale or abandoned branches. Use before merging, when several agents share a repo, or when asked to review, triage or tidy branches.
 ---
 
 # /spidersan — branch coordination for agent teams
@@ -164,6 +164,62 @@ For a repo full of stale, superseded or abandoned branches.
 
 Never merge a branch with unresolved conflict markers, or scripts with hard-coded paths or
 `--no-verify`. Of two branches doing the same work, keep the more complete one.
+
+### Reviewing a repo (`/spidersan review`)
+
+A read-only health check of every branch. Report ✅ / ⚠️ / ❌ per check, then stop: acting on
+the findings is `tidy`, after approval.
+
+1. **Registry vs git.** Nothing here may change the registry yet.
+   ```bash
+   spidersan verify-trunk          # ❌ if trunk claims files: it overlaps every branch
+   spidersan list
+   spidersan sync --dry-run        # entries whose branch is gone (plain `sync` deletes them)
+   ```
+   ⚠️ when a branch's registered files differ from `git diff --name-only origin/main...<b>`:
+   its intent is stale, and `register --auto` on that branch refreshes it.
+2. **PR state before conflicts.** A branch whose PR merged is done, however far "ahead" git
+   says it is. Analysing it produces false conflicts.
+   ```bash
+   gh pr list --head <b> --state all --json number,state,baseRefName,mergedAt
+   ```
+   ❌ when a PR shows MERGED but its `baseRefName` is another feature branch. A stacked child
+   closes as merged when its base merges, but a squash leaves its own commits off trunk. Check
+   that its change is on `origin/main` before trusting the badge.
+3. **Real conflicts.** For each open PR, run `<skill dir>/bin/pr-conflicts <N>`. Registry
+   overlap is intent; this is the merge. A clean merge can still break at runtime. If one
+   branch renames or removes an exported symbol, grep the other branches' diffs for the old
+   name and report a ❌ semantic conflict.
+4. **Merge order.** `spidersan merge-order` (`--critical-path` when `depends` is declared).
+   ⚠️ when a PR is the base of another open PR (`gh pr list --base <its branch>`): retarget the
+   child to trunk before the base merges. A child that turns CONFLICTING right after its base
+   was squash-merged usually still carries the base's original commits. Fix it with
+   `git rebase --onto origin/main <old-base>`, not by resolving conflicts.
+5. **Stale.** `spidersan stale`, then classify each branch as in `tidy` step 2.
+
+### Reviewing a repo you don't own
+
+`pr-conflicts` needs only a clone whose `origin` is the GitHub repo. It never needs a registry
+or a working tree, so a stranger's repo can be reviewed without materialising or running any
+of its code:
+
+```bash
+REPO=owner/repo; W=$(mktemp -d)
+git clone -q --filter=blob:none --no-checkout "https://github.com/$REPO.git" "$W"
+cd "$W"
+gh pr list --state open --limit 100 --json number,mergeable,changedFiles,createdAt,title
+for n in <PR numbers>; do <skill dir>/bin/pr-conflicts "$n"; done
+cd - >/dev/null && rm -rf "$W"
+```
+
+`--no-checkout` leaves the working tree empty. `merge-tree` fetches the blobs it needs into
+the object store but writes no files, and git never clones hooks. **Never `git checkout`
+here**: that writes the foreign files to disk. Triage from the results:
+
+- conflicts against its base → that PR must rebase first;
+- one PR touching far more files than the rest → merge it last;
+- PRs that conflict only with each other → land the smaller one first;
+- conflicting and months old → check whether trunk superseded it.
 
 ## Troubleshooting
 
