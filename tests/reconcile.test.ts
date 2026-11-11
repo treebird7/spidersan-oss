@@ -193,3 +193,54 @@ describe('splitOrphans (sp-slemub)', () => {
         expect(probe).not.toHaveBeenCalled();
     });
 });
+
+describe('reconcileBranches — sp-woci: registered before the first commit', () => {
+    const REG = Date.parse('2026-11-01T12:00:00Z');
+    const at = (name: string): Branch => ({ name, files: [`${name}.ts`], registeredAt: new Date(REG), status: 'active' });
+
+    /** Every ref is an ancestor of trunk; per-ref tip time and first-parent answers. */
+    function ffDeps(tips: Record<string, { time: number | null; onChain: boolean | null }>): ReconcileDeps {
+        const name = (ref: string) => ref.replace('refs/remotes/origin/', '');
+        return {
+            trunkName: 'main',
+            trunkRef: 'origin/main',
+            resolveRef: (n) => `refs/remotes/origin/${n}`,
+            isMerged: () => true,
+            isSquashMerged: () => { throw new Error('squash probe must not run once is-ancestor answered'); },
+            tipTime: (ref) => tips[name(ref)].time,
+            isOnFirstParent: (ref) => tips[name(ref)].onChain,
+        };
+    }
+
+    it('keeps an unborn branch (tip = a trunk commit older than the registration) live', () => {
+        const d = ffDeps({ 'feat/unborn': { time: REG - 60_000, onChain: true } });
+        const { live, merged } = reconcileBranches([at('feat/unborn')], d);
+        expect(live.map(b => b.name)).toEqual(['feat/unborn']);
+        expect(merged).toEqual([]); // so `sync` won't prune it either
+        expect(activeBranches([at('feat/unborn')], d).map(b => b.name)).toEqual(['feat/unborn']);
+    });
+
+    it('still drops a branch that committed after registering and was fast-forwarded', () => {
+        const d = ffDeps({ 'feat/ff': { time: REG + 60_000, onChain: true } });
+        expect(reconcileBranches([at('feat/ff')], d).merged).toEqual(['feat/ff']);
+    });
+
+    it('still drops a merge-commit-merged branch even if its last commit predates registration', () => {
+        const d = ffDeps({ 'feat/mc': { time: REG - 60_000, onChain: false } });
+        expect(reconcileBranches([at('feat/mc')], d).merged).toEqual(['feat/mc']);
+    });
+
+    it('keeps the branch live when a probe fails (phantom beats missed)', () => {
+        const d = ffDeps({
+            'feat/no-chain': { time: REG + 60_000, onChain: null },
+            'feat/no-time': { time: null, onChain: true },
+        });
+        const { live } = reconcileBranches([at('feat/no-chain'), at('feat/no-time')], d);
+        expect(live.map(b => b.name)).toEqual(['feat/no-chain', 'feat/no-time']);
+    });
+
+    it('applies no guard when the probes are not injected (pre-sp-woci behaviour)', () => {
+        const d = { ...ffDeps({}), tipTime: undefined, isOnFirstParent: undefined };
+        expect(reconcileBranches([at('feat/x')], d).merged).toEqual(['feat/x']);
+    });
+});

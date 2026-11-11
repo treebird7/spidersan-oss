@@ -11,6 +11,10 @@
  * merge-order answer:
  *   - ref gone from local AND remote           → orphaned (drop)
  *   - tip is an ancestor of trunk              → merged   (drop)
+ *       …unless the branch has no work of its own (sp-woci): a branch
+ *       registered right after `git switch -c`, before its first commit,
+ *       has its tip on trunk too. If the tip is on trunk's first-parent
+ *       chain AND no newer than the registration, it is kept live.
  *   - trunk has a patch-id-equivalent squash   → merged   (drop, tb-tr1z)
  *   - otherwise                                 → live    (keep)
  *
@@ -18,7 +22,7 @@
  * already marked `completed` / `abandoned` are honoured without a git probe.
  */
 
-import { resolveBranchRef, resolveLocalBranchRef, isMergedInto, isSquashMergedInto, listRemoteHeads } from './git.js';
+import { resolveBranchRef, resolveLocalBranchRef, isMergedInto, isSquashMergedInto, listRemoteHeads, tipCommitTime, isOnFirstParentChain } from './git.js';
 import { getTrunkBranch } from './trunk.js';
 import type { Branch } from '../storage/adapter.js';
 
@@ -59,6 +63,19 @@ export interface ReconcileDeps {
      * Absent (injectors) behaves like `null`: orphans are kept.
      */
     remoteHeads?: () => Set<string> | null;
+    /**
+     * Committer time (epoch ms) of `ref`'s tip, or `null` if unreadable
+     * (sp-woci). With {@link isOnFirstParent}, lets reconcile tell an unborn
+     * branch (no commits since registering) from a merged one. If either is
+     * absent (injectors), no such guard is applied.
+     */
+    tipTime?: (ref: string) => number | null;
+    /**
+     * True if `ref` (already known to be an ancestor of `trunkRef`) is on
+     * trunk's first-parent chain — where a fresh branch forks from — rather
+     * than a merge commit's second parent. `null` if git can't answer.
+     */
+    isOnFirstParent?: (ref: string, trunkRef: string) => boolean | null;
     /** Bare trunk branch name (e.g. `main`) — never reconciled away. */
     trunkName: string;
     /** Ref used as the merge target for is-ancestor (prefers `origin/main`). */
@@ -75,6 +92,8 @@ export function defaultReconcileDeps(): ReconcileDeps {
         isMerged: (ref, trunk) => isMergedInto(ref, trunk),
         isSquashMerged: (ref, trunk) => isSquashMergedInto(ref, trunk),
         remoteHeads: () => listRemoteHeads(),
+        tipTime: (ref) => tipCommitTime(ref),
+        isOnFirstParent: (ref, trunk) => isOnFirstParentChain(ref, trunk),
         trunkName,
         trunkRef,
     };
@@ -114,8 +133,11 @@ export function reconcileBranches(
 
         // status === 'active' — fold in git truth. Squash merges never make
         // the tip an ancestor, so fall back to patch-id equivalence (tb-tr1z).
-        const provenMerged = (r: string) =>
-            deps.isMerged(r, deps.trunkRef) || (deps.isSquashMerged?.(r, deps.trunkRef) ?? false);
+        const registeredAt = new Date(branch.registeredAt).getTime();
+        const provenMerged = (r: string) => {
+            if (deps.isMerged(r, deps.trunkRef)) return !hasNoOwnWork(r, registeredAt, deps);
+            return deps.isSquashMerged?.(r, deps.trunkRef) ?? false;
+        };
 
         const ref = deps.resolveRef(branch.name);
         if (ref === null) {
@@ -136,6 +158,28 @@ export function reconcileBranches(
     }
 
     return { live, merged, orphaned };
+}
+
+/**
+ * sp-woci: a branch registered before its first commit (the "register early"
+ * workflow) has tip == the trunk commit it forked from, so is-ancestor calls
+ * it merged and readers dropped it. Treat an ancestor tip as "no work of its
+ * own" when it sits on trunk's first-parent chain (where branches fork from;
+ * a merge-commit merge leaves the tip off that chain) AND is no newer than
+ * the registration (a fast-forward merge of work committed after registering
+ * is still merged). Only consulted once is-ancestor said yes.
+ *
+ * Absent probes (injectors) → no guard, the pre-sp-woci behaviour. A probe
+ * that fails → keep live: a phantom conflict beats a missed one. A
+ * registration with no valid timestamp can't be compared → no guard.
+ */
+function hasNoOwnWork(ref: string, registeredAt: number, deps: ReconcileDeps): boolean {
+    if (!deps.tipTime || !deps.isOnFirstParent || !Number.isFinite(registeredAt)) return false;
+    const onChain = deps.isOnFirstParent(ref, deps.trunkRef);
+    if (onChain === null) return true;
+    if (!onChain) return false;
+    const tip = deps.tipTime(ref);
+    return tip === null || tip <= registeredAt;
 }
 
 /**
