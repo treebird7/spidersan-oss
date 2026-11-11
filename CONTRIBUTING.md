@@ -1,77 +1,51 @@
 # Contributing to Spidersan
 
-First off, thank you for considering contributing to Spidersan! 🕷️
+Thanks for helping. Bug reports, fixes and docs corrections are all welcome.
 
-## How Can I Contribute?
+## Reporting a bug
 
-### Reporting Bugs
+Open a [GitHub issue](https://github.com/treebird7/spidersan-oss/issues) with:
 
-Before creating bug reports, please check existing issues. When you create a bug report, include as many details as possible:
+- the exact commands you ran and what you expected
+- what happened instead (paste the output)
+- `spidersan --version`, `node --version` and your OS
 
-- **Use a clear and descriptive title**
-- **Describe the exact steps to reproduce the problem**
-- **Provide specific examples** (commands, files, etc.)
-- **Describe the behavior you observed vs. what you expected**
-- **Include your environment** (OS, Node version, Spidersan version)
+A minimal repro in a throwaway repo is the fastest route to a fix. `assets/demo.sh` shows
+how to build one with an isolated `HOME`, so your own config doesn't leak in.
 
-### Suggesting Enhancements
+## Development setup
 
-Enhancement suggestions are tracked as GitHub issues. When creating an enhancement suggestion:
-
-- **Use a clear and descriptive title**
-- **Provide a detailed description** of the proposed feature
-- **Explain why this would be useful** to most Spidersan users
-- **List any alternatives you've considered**
-
-### Pull Requests
-
-1. **Fork the repo** and create your branch from `main`
-2. **Install dependencies**: `npm install`
-3. **Make your changes** and add tests if applicable
-4. **Ensure the build passes**: `npm run build`
-5. **Run linting**: `npm run lint`
-6. **Run tests**: `npm test`
-7. **Commit your changes** with a clear commit message
-8. **Push to your fork** and submit a pull request
-
-## Development Setup
+Requires Node.js 22 or newer.
 
 ```bash
-# Clone your fork
-git clone https://github.com/YOUR_USERNAME/Spidersan.git
-cd Spidersan
-
-# Install dependencies
-npm install
-
-# Build the project
+git clone https://github.com/<you>/spidersan-oss.git
+cd spidersan-oss
+npm ci
 npm run build
-
-# Run in development mode
-npm run dev
+node dist/bin/spidersan.js --help
 ```
 
-## Code Style
+`npm run dev` rebuilds on change.
 
-- Use TypeScript for all source files
-- Follow the existing code style (ESLint configuration)
-- Use meaningful variable and function names
-- Add comments for complex logic
-- Keep functions focused and small
+## Before you open a pull request
 
-## Commit Messages
+```bash
+npm run typecheck
+npm run lint
+npm run build
+npm run test:run      # `npm test` starts vitest in watch mode
+```
 
-- Use the present tense ("Add feature" not "Added feature")
-- Use the imperative mood ("Move cursor to..." not "Moves cursor to...")
-- Keep the first line under 72 characters
-- Reference issues and pull requests liberally
+If you touch `mcp-server/`, it is its own package: run `npm ci`, `npm run build` and
+`npm run test:run` inside it too (it needs the root `dist/` built first).
 
-## Questions?
+- Branch from `main`, and keep a pull request to one change.
+- Add a test for behaviour you change. Bugs get a test that failed before the fix.
+- Add a line under `## [Unreleased]` in `CHANGELOG.md` for anything a user would notice.
+- Shell out with `execFileSync(cmd, [args])`, never a concatenated command string, and
+  validate branch names and paths with the helpers in `src/lib/security.ts`.
 
-Feel free to reach out:
-- **GitHub Issues**: [github.com/treebird7/spidersan-oss/issues](https://github.com/treebird7/spidersan-oss/issues)
-- **Email**: treebird@treebird.dev
+## Commit messages
 
----
-
-**Thank you for contributing!** 🌲
+[Conventional Commits](https://www.conventionalcommits.org/) (`fix:`, `feat:`, `docs:`,
+`feat!:` for breaking changes), imperative mood, first line under 72 characters.
