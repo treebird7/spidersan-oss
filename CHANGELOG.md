@@ -14,6 +14,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that nothing has imported since the ecosystem plugin was removed in 0.20.0. A
   production install goes from 39 packages to 14.
 
+### Fixed
+
+- **A branch registered before its first commit no longer reads as merged**
+  (sp-woci). Its tip is the trunk commit it forked from, so the is-ancestor
+  check in reconcile-on-read called it merged: `conflicts`, `ready-check` and
+  `merge-order` hid it ("vs 0 registered branches"), and `sync` would have
+  pruned it, while `list` still showed it. An ancestor tip now counts as merged
+  only if the branch did work of its own: the tip is kept live when it sits on
+  trunk's first-parent chain AND is no newer than the registration. Merge-commit,
+  fast-forward (of commits made after registering) and squash merges still
+  reconcile away.
+
 ### Security
 
 - **`minimatch` 10 → 11** (GHSA-g3hv-75wg-m249, a denial of service via glob patterns).

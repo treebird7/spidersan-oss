@@ -682,6 +682,47 @@ export function isMergedInto(ref: string, ancestorOf: string): boolean {
 }
 
 /**
+ * Committer time of `ref`'s tip in epoch milliseconds (git stores whole
+ * seconds), or `null` if it can't be read. Used by reconcile (sp-woci) to ask
+ * whether a branch has any commit newer than its registration.
+ */
+export function tipCommitTime(ref: string): number | null {
+    try {
+        const out = execGit(['show', '-s', '--format=%ct', ref, '--'], {
+            stdio: ['pipe', 'pipe', 'ignore'],
+        }).trim();
+        const secs = Number(out);
+        return out !== '' && Number.isFinite(secs) ? secs * 1000 : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * True if `ref`'s tip sits on `trunkRef`'s FIRST-PARENT chain — i.e. it is a
+ * commit trunk itself pointed at (where a fresh branch forks from), not the
+ * second parent of a merge commit. Precondition: `ref` is an ancestor of
+ * `trunkRef`. `null` if git can't answer.
+ *
+ * Walks only the first-parent commits trunk gained since `ref`
+ * (`rev-list --first-parent trunk ^ref`): the oldest of them has `ref` as its
+ * first parent exactly when `ref` is on the chain. Empty output means trunk
+ * IS `ref`.
+ */
+export function isOnFirstParentChain(ref: string, trunkRef: string): boolean | null {
+    const quiet: GitExecOptions = { stdio: ['pipe', 'pipe', 'ignore'] };
+    try {
+        const tip = execGit(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], quiet).trim();
+        const out = execGit(['rev-list', '--first-parent', '--parents', trunkRef, `^${tip}`], quiet).trim();
+        if (out === '') return true;
+        const oldest = out.split('\n').pop()!.split(' ');
+        return oldest[1] === tip;
+    } catch {
+        return null;
+    }
+}
+
+/**
  * True if `ref`'s content landed in `ancestorOf` via a SQUASH merge (tb-tr1z).
  *
  * Squash merges rewrite history, so `merge-base --is-ancestor` can never see

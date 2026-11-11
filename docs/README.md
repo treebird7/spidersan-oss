@@ -125,8 +125,6 @@ spidersan cleanup --days 7
 ## Documentation
 
 - [Core Guide](CORE.md)
-- [Use Cases](USE_CASES.md)
-- [Limitations](LIMITATIONS.md)
 
 ---
 

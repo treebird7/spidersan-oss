@@ -3,8 +3,7 @@
 Spidersan is a branch-coordination CLI for multi-agent coding: a registry of who
 is touching which files, tiered conflict detection, and merge ordering. Build and
 test with npm (`npm run typecheck`, `npm run build`, `npm run test:run`).
-Every command takes `--help`; the long-form guide is
-[docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md).
+Every command takes `--help`; the user-facing overview is [README.md](README.md).
 
 ## Pre-merge loop
 
