@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Unused dependencies:** `execa` and `moment` (never imported), and `tweetnacl` /
+  `tweetnacl-util`, with `src/lib/crypto.ts`, the old "Spider Mail" encryption module
+  that nothing has imported since the ecosystem plugin was removed in 0.20.0. A
+  production install goes from 39 packages to 14.
+
+### Security
+
+- **`minimatch` 10 → 11** (GHSA-g3hv-75wg-m249, a denial of service via glob patterns).
+  Only `ready-check`'s `excludeFiles` matching uses it, and the default patterns match
+  identically. `npm audit --omit=dev` is now clean.
+
 ## [1.0.0] - 2026-11-11
 
 First stable release: the core CLI (registry, file claims, tiered and real
