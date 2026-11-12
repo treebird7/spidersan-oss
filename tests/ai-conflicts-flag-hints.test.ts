@@ -1,7 +1,7 @@
 /**
  * Every `conflicts --<flag>` the AI layer suggests to users must be a real
  * option of the `conflicts` command. `--wake` was removed in sp-hnjf but kept
- * being recommended by reasoner.ts and event-handler.ts.
+ * being recommended by reasoner.ts.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -11,7 +11,7 @@ import { fileURLToPath } from 'url';
 import { conflictsCommand } from '../src/commands/conflicts.js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const HINT_FILES = ['src/lib/ai/reasoner.ts', 'src/lib/ai/event-handler.ts'];
+const HINT_FILES = ['src/lib/ai/reasoner.ts'];
 
 describe('AI conflicts flag hints', () => {
     const realFlags = new Set(conflictsCommand.options.map(o => o.long));

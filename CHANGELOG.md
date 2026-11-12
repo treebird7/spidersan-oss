@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stacked PRs, stale), and a way to review a repo you don't own from a blobless,
   `--no-checkout` clone that never writes or runs its code.
 
+### Removed
+
+- **`handleEvent` and the git-ops → Adapter B route** (`src/lib/ai/event-handler.ts`), with the
+  `EventPayload` / `EventType` / `Advice` types. Its only caller was the `git-watch` push
+  handler, retired in 0.22.0. It also listened for `'pr'` / `'create'`, which `EventType` never
+  produced. Nothing reached the `:1234` adapter or read `SPIDERSAN_LLM_URL_GITOPS` after that.
+  The `spidersan_ask` / `spidersan_advise` / `spidersan_explain` MCP tools are unchanged: they
+  use `SPIDERSAN_LLM_URL`.
+
 ## [1.0.1] - 2026-11-11
 
 ### Removed
