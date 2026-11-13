@@ -114,27 +114,6 @@ export interface ReasoningResult {
   tokensUsed: number;
 }
 
-// ─── Event Types ────────────────────────────────────────────
-
-export type EventType = 'push' | 'pull_request' | 'branch_register';
-
-export interface EventPayload {
-  type: EventType;
-  repo: string;
-  branch?: string;
-  agent?: string;
-  files?: string[];
-  metadata?: Record<string, unknown>;
-}
-
-export interface Advice {
-  tier: 0 | 1 | 2 | 3;
-  action: 'info' | 'warn' | 'pause' | 'block';
-  message: string;
-  commands: string[];
-  escalateToLLM: boolean;
-}
-
 // ─── Configuration ──────────────────────────────────────────
 
 export interface AIConfig {
@@ -152,7 +131,6 @@ export const DEFAULT_LLM_CONFIGS: Record<LLMProvider, LLMConfig> = {
     provider: 'lmstudio',
     // A4B general-purpose backend on :8082 (mlx_lm.server). The model id must be
     // the exact HF-cache id — mlx_lm.server resolves it from the local cache.
-    // gitOps routing is unaffected: event-handler.ts hardcodes its own :1234 default.
     model: 'mlx-community/gemma-4-26b-a4b-it-4bit',
     baseUrl: 'http://127.0.0.1:8082/v1',
     temperature: 0.4,

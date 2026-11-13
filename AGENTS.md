@@ -33,7 +33,7 @@ TIER 3) exit 0 by default; only errors exit 1. Read the report, or add `--exit-c
 | Recovery | `rescue --scan\|--symbols <branch>\|--salvage <file>` · `rebase-helper` |
 | Work split | `torrent create\|decompose\|status\|complete\|tree\|merge-order` (sequential) · `queen` (parallel) |
 | Watching | `watch` · `auto` · `dashboard` (`git-watch` is retired: refuses, exit 1) |
-| AI | `ask` `advise` `explain` `context` `ai-ping` `ai-setup` |
+| AI | `context` (CLI); ask / advise / explain are MCP tools (`spidersan_ask`, …) |
 
 The full list is `spidersan --help` (source of truth: `src/bin/command-registry.ts`).
 

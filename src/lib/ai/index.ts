@@ -1,7 +1,7 @@
 /**
  * Spidersan AI Core — Public API
  *
- * Shared library for CLI (ask/advise/explain), MCP tools, webhook, and agent mode.
+ * Shared library for the CLI (ask/advise/explain) and the MCP tools.
  */
 
 export { buildContext } from './context-builder.js';
@@ -11,17 +11,12 @@ export { chat, ping, resolveConfig } from './llm-client.js';
 
 export { reason } from './reasoner.js';
 
-export { handleEvent } from './event-handler.js';
-
 export type {
-  Advice,
   AIConfig,
   ActivityEntry,
   BranchSummary,
   ConflictSummary,
   DailyEntry,
-  EventPayload,
-  EventType,
   LLMConfig,
   LLMMessage,
   LLMProvider,
