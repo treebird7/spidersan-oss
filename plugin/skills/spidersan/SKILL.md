@@ -67,7 +67,7 @@ and CI gate on. `--tier <n>` only filters what is shown.
 | `spidersan conflicts --pr <N> --real` | Same for PR N, registry-independent |
 | `spidersan conflicts --real --all --exit-code` | Every active registered branch, for CI |
 | `spidersan conflicts --pr <N> --real --vs-prs` | ...plus file-*name* overlap with other open PRs (not a merge) |
-| `<skill dir>/bin/pr-conflicts <N>` | Real merge of PR N against its base **and** against every other open PR |
+| `<skill dir>/bin/pr-conflicts <N>` | Real merge of PR N against its base **and** against every other open PR on the same base |
 | `spidersan pr-check <N>` | Stacked base, red or behind state |
 
 **Hygiene**
@@ -167,7 +167,7 @@ Never merge a branch with unresolved conflict markers, or scripts with hard-code
 
 ### Reviewing a repo (`/spidersan review`)
 
-A read-only health check of every branch. Report ✅ / ⚠️ / ❌ per check, then stop: acting on
+A read-only health check of every registered branch and open PR. Report ✅ / ⚠️ / ❌ per check, then stop: acting on
 the findings is `tidy`, after approval.
 
 1. **Registry vs git.** Nothing here may change the registry yet.
@@ -177,7 +177,7 @@ the findings is `tidy`, after approval.
    spidersan sync --dry-run        # entries whose branch is gone (plain `sync` deletes them)
    ```
    ⚠️ when a branch's registered files differ from `git diff --name-only origin/main...<b>`:
-   its intent is stale, and `register --auto` on that branch refreshes it.
+   its intent is stale. `register --auto` adds missing files but never drops a stale one.
 2. **PR state before conflicts.** A branch whose PR merged is done, however far "ahead" git
    says it is. Analysing it produces false conflicts.
    ```bash
@@ -207,7 +207,7 @@ of its code:
 REPO=owner/repo; W=$(mktemp -d)
 git clone -q --filter=blob:none --no-checkout "https://github.com/$REPO.git" "$W"
 cd "$W"
-gh pr list --state open --limit 100 --json number,mergeable,changedFiles,createdAt,title
+gh pr list --state open --limit 200 --json number,mergeable,changedFiles,createdAt,title
 for n in <PR numbers>; do <skill dir>/bin/pr-conflicts "$n"; done
 cd - >/dev/null && rm -rf "$W"
 ```
