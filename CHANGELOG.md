@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`/spidersan` skill: `review` workflow** — a read-only branch health check (registry vs
+  git, PR state before conflicts, real conflicts via `pr-conflicts`, merge order including
+  stacked PRs, stale), and a way to review a repo you don't own from a blobless,
+  `--no-checkout` clone that never writes or runs its code.
+
 ## [1.0.1] - 2026-11-11
 
 ### Removed
