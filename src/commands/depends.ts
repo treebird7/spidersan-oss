@@ -11,6 +11,7 @@ import { Command } from 'commander';
 import { getStorage } from '../storage/index.js';
 import { getCurrentBranch } from '../lib/git.js';
 import { validateBranchName } from '../lib/security.js';
+import { findDeclaredCycles } from '../lib/graph.js';
 
 export const dependsCommand = new Command('depends')
     .description('Set or show dependencies for a branch (deps merge first)')
@@ -63,7 +64,26 @@ export const dependsCommand = new Command('depends')
             deps.push(safe);
         }
 
-        await storage.update(branchName, { dependsOn: [...new Set(deps)] });
+        const newDeps = [...new Set(deps)];
+
+        // Write-time cycle check on the raw declared edges, with this branch's
+        // list replaced by the new one. Nothing is written if it closes a cycle.
+        const all = await storage.list();
+        const proposed = [
+            ...all.filter((b) => b.name !== branchName).map((b) => ({ name: b.name, dependsOn: b.dependsOn ?? [] })),
+            { name: branchName, dependsOn: newDeps },
+        ];
+        const cycles = findDeclaredCycles(proposed);
+        if (cycles.length > 0) {
+            console.error(`❌ Refusing: this would create a dependency cycle (nothing written):`);
+            for (const edge of cycles.flat()) {
+                console.error(`   ${edge.dependent} depends on ${edge.dependency}`);
+            }
+            console.error(`   Break it with: spidersan depends --clear --branch ${branchName}`);
+            process.exit(1);
+        }
+
+        await storage.update(branchName, { dependsOn: newDeps });
         console.log(`🕷️ "${branchName}" now depends on: ${deps.join(', ')}`);
         console.log('   These merge first in `spidersan merge-order`.');
     });
