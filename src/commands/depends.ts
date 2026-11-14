@@ -73,7 +73,10 @@ export const dependsCommand = new Command('depends')
             ...all.filter((b) => b.name !== branchName).map((b) => ({ name: b.name, dependsOn: b.dependsOn ?? [] })),
             { name: branchName, dependsOn: newDeps },
         ];
-        const cycles = findDeclaredCycles(proposed);
+        // Only cycles this write closes: a pre-existing cycle elsewhere must not
+        // block every unrelated `depends` call (merge-order --critical-path reports those).
+        const cycles = findDeclaredCycles(proposed).filter((cycle) =>
+            cycle.some((edge) => edge.dependent === branchName));
         if (cycles.length > 0) {
             console.error(`❌ Refusing: this would create a dependency cycle (nothing written):`);
             for (const edge of cycles.flat()) {

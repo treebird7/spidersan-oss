@@ -64,6 +64,14 @@ describe('depends write-time cycle check', () => {
         expect(reg['feature-b'].dependsOn).toEqual(['feature-c']);
     });
 
+    it('a pre-existing cycle elsewhere does not block an unrelated write', async () => {
+        reg['feature-a'].dependsOn = ['feature-b'];
+        reg['feature-b'].dependsOn = ['feature-a'];
+        reg['feature-d'] = { name: 'feature-d', dependsOn: [] };
+        await run(['feature-c', '--branch', 'feature-d']);
+        expect(reg['feature-d'].dependsOn).toEqual(['feature-c']);
+    });
+
     it('--clear still works and unblocks the reverse edge', async () => {
         await run(['feature-b', '--branch', 'feature-a']);
         await run(['--clear', '--branch', 'feature-a']);
