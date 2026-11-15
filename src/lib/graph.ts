@@ -317,6 +317,18 @@ export function orientForMeasurement(
     return { ok: true, order, graph: oriented, droppedConflictEdges };
 }
 
+/**
+ * Declared dependency cycles among `branches`, from their raw `dependsOn`
+ * (never addDependencyEdges output — see buildDeclaredGraph). Each cycle is the
+ * edge list of one strongly connected component; empty means the graph is a DAG.
+ */
+export function findDeclaredCycles(
+    branches: Array<{ name: string; dependsOn?: string[] }>
+): DeclaredEdge[][] {
+    const nodes = branches.map((branch) => branch.name);
+    return findCycles(nodes, normalizeGraph(nodes, buildDeclaredGraph(branches)));
+}
+
 /** Tarjan's SCCs of size ≥ 2, each reported as its internal declared edges. */
 function findCycles(nodes: NodeId[], declared: Map<NodeId, NodeId[]>): DeclaredEdge[][] {
     const index = new Map<NodeId, number>();
