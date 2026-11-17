@@ -562,6 +562,12 @@ function reviewStage(s: PrSnapshot, policy: Policy): { decision: Decision } | { 
     }
     const open = blockingFindings(s.reviews, s.retirements, head);
     if (open === null) return { decision: escalate('invalid-snapshot', 'owner', 'reviews') };
+    // prsan saves no review that fails its schema, so such a run at this head is
+    // not a retry left behind. Its findings block like any other; with none
+    // open, its unreadable verdict must not pass on a valid sibling's.
+    if (open.length === 0 && atHead.some((run) => run.schemaValid !== true)) {
+        return { decision: escalate('invalid-snapshot', 'owner', 'reviews') };
+    }
     return { open };
 }
 

@@ -955,6 +955,16 @@ describe('decide: each gate\'s other outcomes', () => {
         expectReason(d(elsewhere), 'notify', 'blocking-findings');
     });
 
+    test('a schema-invalid run at head beside a complete, clean set escalates; at another head it is ignored', () => {
+        const extra = (headSha: string) =>
+            mut((x) => {
+                x.retirements = [{ headSha: HEAD, findingId: 'f1' }];
+                x.reviews.push(run({ runId: 'bad', headSha, schemaValid: false, verdict: null, blocking: [] }));
+            });
+        expect(d(extra(HEAD))).toMatchObject({ kind: 'escalate', reason: 'invalid-snapshot', field: 'reviews' });
+        expect(d(extra(OTHER)).kind).toBe('would-merge');
+    });
+
     test('a finding from a schema-invalid run at head still blocks', () => {
         const s = mut((x) => void x.reviews.push(run({ runId: 'bad', schemaValid: false, verdict: null, blocking: [{ id: 'f9' }] })));
         expect(d(s)).toMatchObject({ kind: 'notify', reason: 'blocking-findings', findings: [{ runId: 'bad', id: 'f9' }] });
