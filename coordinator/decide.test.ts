@@ -452,7 +452,6 @@ const ORDERED: Array<[kind: string, reason: string, brk: Break]> = [
     ['wait', 'deps-unmet', (c) => void (c.s.deps.state = 'unmet')],
     ['wait', 'pipeline-umbrella', (c) => void (c.s.deps.pipelineUmbrella = true)],
     ['escalate', 'touches-protected-paths', (c) => void (c.s.touches.protectedPaths = true)],
-    ['wait', 'awaiting-effects-approval', (c) => void (c.s.effectsApproval = null)],
     [
         'escalate',
         'review-heads-exhausted',
@@ -473,7 +472,10 @@ const ORDERED: Array<[kind: string, reason: string, brk: Break]> = [
     ['notify', 'ci-red', (c) => void (c.s.ci!.green = false)],
     ['notify', 'merge-conflict', (c) => void (c.s.conflicts!.status = 'conflict')],
     ['wait', 'ci-base-unknown', (c) => void (c.s.ci!.testedBase = null)],
-    ['ready', 'review-only-mode', (c) => void (c.p.mode = 'review-only')],
+    ['ready', 'effects-unclassified', (c) => void (c.p.effectsClassified = false)],
+    ['ready', 'live-prerequisites-missing', (c) => void (c.p.mergeGateApplied = false)],
+    // Owner approval of merge-triggered effects is the last thing asked for.
+    ['wait', 'awaiting-effects-approval', (c) => void (c.s.effectsApproval = null)],
 ];
 
 describe('decide: the ordered loop', () => {
@@ -652,6 +654,54 @@ describe('decide: each gate\'s other outcomes', () => {
             expectReason(d(withApproval(a)), 'wait', 'awaiting-effects-approval');
         }
         expectReason(d(withApproval({ state: 'denied', boundHead: HEAD })), 'escalate', 'effects-approval-denied');
+    });
+
+    test('an unapproved effects PR is triaged, reviewed, noted and checked like any other', () => {
+        const unapproved = (f: (s: PrSnapshot) => void): PrSnapshot =>
+            mut((s) => {
+                s.effectsApproval = null;
+                f(s);
+            });
+        expectReason(d(unapproved((s) => void (s.triage = null))), 'run-triage', 'triage-missing');
+        expectReason(d(unapproved((s) => void s.reviews.pop())), 'run-reviews', 'review-set-incomplete');
+        expectReason(d(unapproved((s) => void (s.retirements = []))), 'notify', 'blocking-findings');
+        expectReason(d(unapproved((s) => void (s.ci!.complete = false))), 'wait', 'ci-incomplete');
+        expectReason(d(unapproved((s) => void (s.ci!.green = false))), 'notify', 'ci-red');
+        expectReason(d(unapproved((s) => void (s.conflicts!.status = 'conflict'))), 'notify', 'merge-conflict');
+        expectReason(d(unapproved((s) => void (s.ci!.testedBase = OTHER))), 'wait', 'base-moved');
+        // A denial at head is likewise only reached once everything else is clean.
+        const denied = (f: (s: PrSnapshot) => void): PrSnapshot =>
+            mut((s) => {
+                s.effectsApproval = { state: 'denied', boundHead: HEAD };
+                f(s);
+            });
+        expectReason(d(denied((s) => void s.reviews.pop())), 'run-reviews', 'review-set-incomplete');
+        expectReason(d(denied((s) => void (s.ci!.green = false))), 'notify', 'ci-red');
+        for (const mode of ['dry-run', 'live'] as const) {
+            expectReason(d(unapproved(() => {}), policy(mode)), 'wait', 'awaiting-effects-approval');
+            expectReason(d(denied(() => {}), policy(mode)), 'escalate', 'effects-approval-denied');
+        }
+    });
+
+    test('review-only: an otherwise clean effects PR is ready, whatever the approval says', () => {
+        for (const a of [null, { state: 'pending', boundHead: HEAD }, { state: 'denied', boundHead: HEAD }] as const) {
+            expectReason(d(mut((s) => void (s.effectsApproval = a)), policy('review-only')), 'ready', 'review-only-mode');
+        }
+    });
+
+    test('approval is not asked for while effects are unclassified or live prerequisites are missing', () => {
+        const s = mut((x) => void (x.effectsApproval = null));
+        expectReason(d(s, { ...policy('dry-run'), effectsClassified: false }), 'ready', 'effects-unclassified');
+        expectReason(d(s, { ...policy('live'), webhookInstalled: false }), 'ready', 'live-prerequisites-missing');
+    });
+
+    test('protected paths escalate before triage or any review', () => {
+        const s = mut((x) => {
+            x.touches.protectedPaths = true;
+            x.triage = null;
+            x.reviews = [];
+        });
+        expectReason(d(s), 'escalate', 'touches-protected-paths');
     });
 
     test('no merge effects touched: no approval is needed', () => {
@@ -833,8 +883,6 @@ describe('decide: each gate\'s other outcomes', () => {
 
     test('a new head invalidates every piece of evidence at the old one', () => {
         const s = mut((x) => void (x.pr.head = OTHER));
-        expectReason(d(s), 'wait', 'awaiting-effects-approval');
-        s.touches.mergeEffects = false;
         expect(d(s)).toMatchObject({ kind: 'run-reviews', members: [{}, {}, {}] });
     });
 });

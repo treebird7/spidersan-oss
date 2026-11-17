@@ -548,17 +548,11 @@ export function decide(snapshot: PrSnapshot, policy: Policy, now: number): Decis
     // 8. Trusted roots, the gate, the coordinator, its config.
     if (snapshot.touches.protectedPaths !== false) return escalate('touches-protected-paths');
 
-    // 9. Merge-triggered effects need owner approval bound to this head.
-    if (snapshot.touches.mergeEffects !== false) {
-        const blocked = effectsApprovalGate(snapshot.effectsApproval, head);
-        if (blocked !== null) return blocked;
-    }
-
-    // 10–12. Triage, review set, self-contradicting runs.
+    // 9–11. Triage, review set, self-contradicting runs.
     const reviewed = reviewStage(snapshot, policy);
     if ('decision' in reviewed) return reviewed.decision;
 
-    // 13. Blocking findings, and the stall timers once the note is delivered.
+    // 12. Blocking findings, and the stall timers once the note is delivered.
     if (reviewed.open.length !== 0) {
         const notifiedAt = snapshot.blockingNotifiedAt;
         if (notifiedAt === null) return notify('blocking-findings', reviewed.open);
@@ -569,35 +563,42 @@ export function decide(snapshot: PrSnapshot, policy: Policy, now: number): Decis
         return wait('awaiting-author');
     }
 
-    // 14. CI for this head.
+    // 13. CI for this head.
     const ci = snapshot.ci;
     if (ci === null) return wait('ci-incomplete');
     if (ci.headSha !== head) return wait('ci-stale-head');
     if (ci.complete !== true) return wait('ci-incomplete');
     if (ci.green !== true) return notify('ci-red');
 
-    // 15. A real merge check: clean, for this PR, head and base.
+    // 14. A real merge check: clean, for this PR, head and base.
     if (conflictsClean(snapshot.conflicts, { pr: pr.number, head, base }) !== true) {
         return conflictsFailure(snapshot.conflicts, pr.number, head, base);
     }
 
-    // 16. CI must have tested against the base as it is now.
+    // 15. CI must have tested against the base as it is now.
     if (ci.testedBase === null) return wait('ci-base-unknown');
     if (ci.testedBase !== base) return wait('base-moved');
 
-    // 17. Every evidence gate passed. Mode decides, here and nowhere else.
+    // 16. Every evidence gate passed. Mode decides, here and nowhere else. A
+    // merge that triggers effects also needs the owner's approval bound to this
+    // head; it is asked for last, with the evidence in hand, and never in
+    // review-only, where nothing merges.
     const target = { repo: snapshot.repo, pr: pr.number, head, base };
+    const effectsBlocked =
+        snapshot.touches.mergeEffects !== false ? effectsApprovalGate(snapshot.effectsApproval, head) : null;
     switch (policy.mode) {
         case 'review-only':
             return { kind: 'ready', reason: 'review-only-mode', ...target };
         case 'dry-run':
             if (policy.effectsClassified !== true) return { kind: 'ready', reason: 'effects-unclassified', ...target };
+            if (effectsBlocked !== null) return effectsBlocked;
             return { kind: 'would-merge', reason: 'clean-dry-run', ...target };
         case 'live':
             if (policy.effectsClassified !== true) return { kind: 'ready', reason: 'effects-unclassified', ...target };
             if (policy.mergeGateApplied !== true || policy.webhookInstalled !== true) {
                 return { kind: 'ready', reason: 'live-prerequisites-missing', ...target };
             }
+            if (effectsBlocked !== null) return effectsBlocked;
             return { kind: 'merge', reason: 'clean-live', ...target };
         default:
             policy.mode satisfies never;
