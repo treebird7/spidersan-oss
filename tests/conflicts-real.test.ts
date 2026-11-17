@@ -484,12 +484,27 @@ describe('conflicts --real', () => {
             expect(out.errors[0].message).toContain('pull/999/head');
         });
 
-        it.each(['42junk', '42.5', '0', '-3'])('--pr %s is not a PR number: status error, exit 2, nothing fetched', async (raw) => {
+        it.each(['', '42junk', '42.5', '0', '-3'])('--pr "%s" is not a PR number: status error, exit 2, nothing fetched', async (raw) => {
             const code = await run(['--pr', raw, '--real', '--json', '--exit-code']);
 
             expect(code).toBe(2);
             expect(doc()).toMatchObject({ status: 'error', pr: null, results: [], errors: [{ stage: 'usage' }] });
             expect(execFileSync).not.toHaveBeenCalledWith('git', expect.arrayContaining(['fetch']), expect.anything());
+            expect(analyzeRealConflicts).not.toHaveBeenCalled();
+        });
+
+        it.each([
+            ['--gate without --pr', ['--real', '--gate']],
+            ['--carries without --pr', ['--real', '--carries']],
+            ['an empty --branch', ['--real', '--branch', '']],
+            ['an empty --base', ['--real', '--base', '']],
+        ])('%s is a usage error, not a check of the current checkout', async (_name, args) => {
+            (analyzeRealConflicts as Mock).mockResolvedValue(makeReport());
+
+            const code = await run([...args, '--json', '--exit-code']);
+
+            expect(code).toBe(2);
+            expect(doc()).toMatchObject({ status: 'error', results: [], errors: [{ stage: 'usage' }] });
             expect(analyzeRealConflicts).not.toHaveBeenCalled();
         });
 

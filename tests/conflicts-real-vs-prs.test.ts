@@ -338,6 +338,7 @@ describe('conflicts --real --vs-prs (sp-a1l3)', () => {
         mockRegistry();
 
         expect(await run(['--pr', '42junk', '--vs-prs'])).toBe(2);
+        expect(await run(['--pr', '', '--vs-prs'])).toBe(2); // empty is still --pr, not "current branch"
         expect(getPRDetails).not.toHaveBeenCalled();
     });
 });

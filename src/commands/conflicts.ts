@@ -379,7 +379,17 @@ async function runRealConflicts(options: {
         }
         return 2;
     };
-    if (options.pr) {
+    // An option given but unusable must not fall through to "check the current
+    // checkout": presence is tested, never truthiness (`--pr ""` is still --pr).
+    const usage = options.base === '' ? '--base is empty'
+        : options.branch === '' ? '--branch is empty'
+        : (options.gate || options.carries) && options.pr === undefined ? '--gate and --carries need --pr <N>'
+        : null;
+    if (usage) {
+        console.error(`❌ ${usage}`);
+        return abort('usage', usage);
+    }
+    if (options.pr !== undefined) {
         // --pr in real mode: the PR head isn't a local ref, so fetch it. Without
         // this, --real fell through to getCurrentBranch() and silently checked
         // trunk-vs-trunk → a false "clean" (tb-57fr).
@@ -529,7 +539,7 @@ export const conflictsCommand = new Command('conflicts')
         // the process code is max(real, overlap).
         const composeRealAndOverlap = !!(options.real && options.vsPrs);
         let realExitCode = 0;
-        if (options.real || (options.pr && !options.vsPrs)) {
+        if (options.real || (options.pr !== undefined && !options.vsPrs)) {
             realExitCode = await runRealConflicts(options);
             if (!composeRealAndOverlap) {
                 if (realExitCode !== 0) process.exit(realExitCode);
@@ -593,7 +603,7 @@ export const conflictsCommand = new Command('conflicts')
         let targetPrNumber: number | undefined;
         const prNumberByLabel = new Map<string, number>(); // display label -> PR number (labels are NOT git refs)
 
-        if (options.pr) {
+        if (options.pr !== undefined) {
             // --pr mode: fetch PR head branch + changed files from GitHub
             // These three are "could not check", not a conflict: exit 2, and through
             // finish() so a 2 from the --real half is never lowered.

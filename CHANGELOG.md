@@ -31,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`--pr 42junk` and `--pr 42.5` were read as PR 42.** `parseInt` accepts a numeric prefix.
   `validatePRNumber` now requires the whole string to be a positive integer, and both `--pr`
   paths in `conflicts` use it.
+- **An empty `--pr ""` no longer checks the current checkout.** It was treated as "no `--pr`"
+  and could report `clean` for a branch nobody asked about. An empty `--pr`, `--branch` or
+  `--base`, and `--gate` or `--carries` without `--pr`, are now usage errors on the `--real`
+  path (`status: "error"`, exit 2).
 - **`conflicts --real` on git older than 2.38 never reports `clean`.** The legacy
   `git merge-tree` form does no rename detection and prints modify/delete with no conflict
   marker, so "no conflict found" proved nothing and was reported as clean. A conflict it finds
