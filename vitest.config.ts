@@ -11,6 +11,8 @@ export default defineConfig({
             '**/dist/**',
             '**/mcp-server/node_modules/**',
             'tests/conflict-tier.test.ts',
+            // bun:test suites, run by `bun test coordinator`
+            'coordinator/**',
         ],
 
         // Increase memory limit to prevent OOM on larger tests
