@@ -138,6 +138,24 @@ jobs:
           done
           [ ${#failed[@]} -eq 0 ] || { printf 'FAILED: %s\n' "${failed[@]}"; exit 1; }
 
+  # coordinator/ runs on Bun and is not in the npm package, the root tsconfig, the
+  # root lint glob or vitest. Bun strips types without checking them, so tsc runs first.
+  coordinator:
+    name: coordinator typecheck · bun test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx tsc -p coordinator
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.4
+      - run: bun test coordinator
+
   ts-review-detect:
     name: ts-review detect step
     runs-on: ubuntu-latest
