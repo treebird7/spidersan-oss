@@ -125,7 +125,9 @@ const TWO_DEFECTS =
 const fileName = (runId = RUN1, model = 'gpt-6.1-sol', variant = '', head7 = SHA7): string =>
     `treebird7_toak-512-${head7}-${runId}-${model}${variant}.md`;
 
-const one = (name: string, text: string, ctx: ReviewContext = CTX) => readReviewFiles([{ name, text }], ctx);
+/** readReviewFiles with a listing count that matches what is passed. */
+const read = (files: unknown, ctx: ReviewContext = CTX) => readReviewFiles(files, ctx, Array.isArray(files) ? files.length : 0);
+const one = (name: string, text: string, ctx: ReviewContext = CTX) => read([{ name, text }], ctx);
 /** What a rejected file yields: nothing, or (named for this PR at its head) one schema-invalid run there. */
 const heldAtHead = (name: string) =>
     name.startsWith('treebird7_toak-512-') && !name.startsWith('treebird7_toak-512-ccccccc-')
@@ -159,7 +161,7 @@ describe('review files → ReviewRun[]', () => {
     });
 
     test('blocking findings get ids unique among the runs at one head', () => {
-        const { runs } = readReviewFiles(
+        const { runs } = read(
             [
                 { name: fileName(RUN1), text: header() + body({ blocking: TWO_DEFECTS, verdict: '**REQUEST CHANGES**' }) },
                 {
@@ -218,10 +220,26 @@ describe('review files → ReviewRun[]', () => {
         expect(rejected[0]?.name).toBe(name);
     });
 
+    test('"None." followed by anything else in Blocking defects is not a clean review', () => {
+        const { runs } = one(fileName(), header() + body({ blocking: 'None.\n- **P1** token logged at src/b.ts:3' }));
+        expect(runs[0]).toMatchObject({ schemaValid: false, verdict: null });
+        expect(one(fileName(), header() + body({ blocking: 'None.\n\n' })).runs[0]).toMatchObject({ schemaValid: true, verdict: 'APPROVE' });
+    });
+
+    test.each<[string, unknown]>([
+        ['fewer files than the source counted', 2],
+        ['no count', undefined],
+    ])('a listing with %s is held at the head beside the runs it does have', (_label, count) => {
+        const { runs, rejected } = readReviewFiles([{ name: fileName(), text: header() + body() }], CTX, count);
+        expect(runs.map((r) => r.runId)).toEqual(['rejected:listing', RUN1]);
+        expect(runs[0]).toMatchObject({ headSha: HEAD, schemaValid: false, verdict: null });
+        expect(rejected).toHaveLength(1);
+    });
+
     test('a rejected file that names this PR at its head blocks: a clean sibling does not pass', () => {
         const crlf = (header() + body({ blocking: '### 1. Guard fails open' })).replace(/\n/g, '\r\n');
         const bad = fileName(RUN2);
-        const { runs } = readReviewFiles(
+        const { runs } = read(
             [
                 { name: fileName(), text: header() + body() },
                 { name: bad, text: crlf },
@@ -320,7 +338,7 @@ describe('review files → ReviewRun[]', () => {
     test('the same file listed twice is passed through, and decide refuses the snapshot', () => {
         const f = { name: fileName(RUN1, 'gpt-5.6-luna'), text: header({ model: LUNA }) + body() };
         const s = snapshot();
-        s.reviews = readReviewFiles([f, f], CTX).runs;
+        s.reviews = read([f, f], CTX).runs;
         expect(s.reviews).toHaveLength(2);
         expect(decide(s, POLICY, NOW)).toMatchObject({ kind: 'escalate', reason: 'invalid-snapshot', field: 'reviews[1].runId' });
     });
@@ -330,13 +348,13 @@ describe('review files → ReviewRun[]', () => {
         ['a string', 'treebird7_toak-512.md'],
         ['an object', { name: fileName(), text: header() + body() }],
     ])('a file list that is %s yields no runs', (_label, files) => {
-        const { runs, rejected } = readReviewFiles(files, CTX);
+        const { runs, rejected } = read(files, CTX);
         expect(runs).toEqual([]);
         expect(rejected).toHaveLength(1);
     });
 
     test('an empty file list yields no runs', () => {
-        expect(readReviewFiles([], CTX)).toEqual({ runs: [], rejected: [] });
+        expect(read([], CTX)).toEqual({ runs: [], rejected: [] });
     });
 
     test.each<[string, unknown]>([
@@ -344,7 +362,7 @@ describe('review files → ReviewRun[]', () => {
         ['a non-string text', { name: fileName(), text: null }],
         ['null', null],
     ])('a file entry with %s is rejected', (_label, entry) => {
-        const { runs, rejected } = readReviewFiles([entry], CTX);
+        const { runs, rejected } = read([entry], CTX);
         const name = typeof (entry as { name?: unknown } | null)?.name === 'string' ? fileName() : '';
         expect(runs).toEqual(heldAtHead(name));
         expect(rejected).toHaveLength(1);

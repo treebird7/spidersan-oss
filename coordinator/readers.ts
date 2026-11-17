@@ -141,7 +141,8 @@ const RISK_LEVEL = /^- \*\*Level\*\*: *(CRITICAL|HIGH|MEDIUM|LOW)[ \t]*$/;
 /**
  * prsan's own completeness check (`review_defect`), run over everything under
  * the header: exactly one Risk section with a Level, then exactly one Blocking
- * defects section that holds a `### ` defect or starts with `None`, then
+ * defects section that holds a `### ` defect or is `None…` and nothing else
+ * (stricter than prsan, which reads only the first line), then
  * exactly one Verdict whose next line is exactly `**<VERDICT>**`. The findings
  * are the `### ` headings under Blocking defects, counted whether or not the
  * schema is valid. `review_defect`'s last rule, "a --second review never
@@ -154,6 +155,9 @@ function readSchema(body: readonly string[]): { verdict: Verdict | null; finding
     let level = false;
     let hasBody = false;
     let first = false;
+    /** The section opened with `None` and nothing has followed it. */
+    let none = false;
+    let noneBroken = false;
     let order = false;
     let findings = 0;
     let verdictLine: string | undefined;
@@ -182,13 +186,15 @@ function readSchema(body: readonly string[]): { verdict: Verdict | null; finding
                 hasBody = true;
                 findings++;
             }
+            // "None", then anything else in the section: a finding could hide under it.
+            if (none && line.trim() !== '') noneBroken = true;
             if (!first && line.trim() !== '') {
                 first = true;
-                if (line.startsWith('None')) hasBody = true;
+                if (line.startsWith('None')) hasBody = none = true;
             }
         }
     }
-    const valid = ver === 1 && risk === 1 && level && blk === 1 && hasBody && !order;
+    const valid = ver === 1 && risk === 1 && level && blk === 1 && hasBody && !order && !noneBroken;
     const word = verdictLine !== undefined && /^\*\*.+\*\*$/.test(verdictLine) ? verdictLine.slice(2, -2) : null;
     return { verdict: valid && isOneOf(VERDICTS, word) ? word : null, findings };
 }
@@ -210,6 +216,8 @@ function readSchema(body: readonly string[]): { verdict: Verdict | null; finding
 export function readReviewFiles(
     files: unknown,
     context: ReviewContext,
+    /** How many review files the source says exist for this PR; must equal `files.length`. */
+    expectedCount: unknown,
 ): { runs: ReviewRun[]; rejected: RejectedReviewFile[] } {
     const runs: ReviewRun[] = [];
     const rejected: RejectedReviewFile[] = [];
@@ -229,6 +237,19 @@ export function readReviewFiles(
         const sha7 = name.slice(mine.length, mine.length + 8);
         return !/^[0-9a-f]{7}-$/.test(sha7) || sha7 === `${context.head.slice(0, 7)}-`;
     };
+    // A listing that is not whole may be missing a run with open findings: held at the head.
+    if (contextOk && expectedCount !== files.length) {
+        rejected.push({ name: '', reason: 'the listing is not as long as the source says' });
+        runs.push({
+            runId: 'rejected:listing',
+            headSha: context.head,
+            family: 'rejected',
+            variant: 'plain',
+            schemaValid: false,
+            verdict: null,
+            blocking: [],
+        });
+    }
     for (const file of files as readonly unknown[]) {
         const name = isRecord(file) && typeof file.name === 'string' ? file.name : '';
         const reject = (reason: string): void => {
