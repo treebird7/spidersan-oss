@@ -512,6 +512,19 @@ function isPattern(value: unknown): value is string {
     return isText(value) && !value.startsWith('/') && !/[*?[\]\\]/.test(value);
 }
 
+/**
+ * A repo-relative path in normal form. A path git quoted (`"a/\303\251"`), or
+ * one with a `.`, `..` or empty segment, a leading `/`, a backslash or a
+ * control character, would not match a prefix it is really under.
+ */
+function isPlainPath(value: unknown): value is string {
+    return (
+        isText(value) &&
+        !/["\\\x00-\x1f\x7f]/.test(value) &&
+        value.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..')
+    );
+}
+
 /** Case-insensitive: on a case-insensitive checkout `Coordinator/x` is `coordinator/x`. */
 function matches(patterns: readonly string[], file: string): boolean {
     const f = file.toLowerCase();
@@ -523,7 +536,7 @@ function matches(patterns: readonly string[], file: string): boolean {
 
 /**
  * Classify a changed-file list. Null when `headSha` is not a full sha. Both
- * flags are true (fail closed) when the list is not an array of non-empty
+ * flags are true (fail closed) when the list is not an array of non-empty, plain (unquoted, normalised)
  * paths, is empty, repeats a path, is not as long as `expectedCount`, or when a pattern list
  * is malformed or `protectedPaths` is empty.
  */
@@ -539,7 +552,7 @@ export function classifyTouches(input: TouchesInput, patterns: TouchPatterns): P
     if (protectedPaths.length === 0 || !protectedPaths.every(isPattern) || !mergeEffects.every(isPattern)) return closed;
     const files: unknown = input.files;
     if (!Array.isArray(files) || files.length === 0 || files.length !== input.expectedCount) return closed;
-    if (!files.every(isText) || new Set(files).size !== files.length) return closed;
+    if (!files.every(isPlainPath) || new Set(files).size !== files.length) return closed;
     return {
         headSha,
         protectedPaths: files.some((f) => matches(protectedPaths, f)),

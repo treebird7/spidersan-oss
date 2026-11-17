@@ -794,6 +794,13 @@ describe('touches → PrSnapshot.touches', () => {
         ['a file list holding a non-string', ['src/a.ts', null], 2],
         ['a file list holding an empty path', ['src/a.ts', ''], 2],
         ['a file list that repeats a path', ['src/a.ts', 'src/a.ts'], 2],
+        ['a path with a .. segment', ['src/../coordinator/x.ts'], 1],
+        ['a path with a leading ./', ['./coordinator/x.ts'], 1],
+        ['a path with an empty segment', ['coordinator//x.ts'], 1],
+        ['an absolute path', ['/coordinator/x.ts'], 1],
+        ['a path git quoted', ['"coordinator/\\303\\251.ts"'], 1],
+        ['a path with a backslash', ['coordinator\\x.ts'], 1],
+        ['a path with a control character', ['src/a\n.ts'], 1],
     ])('%s is treated as touching protected paths', (_label, files, expectedCount) => {
         expect(touches(files, expectedCount)).toEqual(CLOSED);
     });
