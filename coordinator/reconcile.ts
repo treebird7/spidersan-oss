@@ -149,12 +149,16 @@ export class Actions {
             now,
         );
         if (!created) {
-            return intent.mergeCommit !== null ? { kind: 'merged', mergeCommit: intent.mergeCommit } : { kind: 'held' };
+            // `merged-elsewhere`: the PR is merged, at another head. There is nothing to merge.
+            if (intent.state === 'merged-elsewhere') return { kind: 'dropped' };
+            return intent.state === 'done' && intent.mergeCommit !== null
+                ? { kind: 'merged', mergeCommit: intent.mergeCommit }
+                : { kind: 'held' };
         }
         const pr = await this.#read((reads) => reads.readPr({ repo: intent.repo, pr: intent.pr }));
         if (pr.kind !== 'open' || pr.head !== intent.head || pr.base !== intent.base) {
             // Still `queued`: no call was made, so there is nothing to reconcile.
-            this.#state.drop(intent.id, 'rolled-back', now);
+            this.#state.drop(intent.id, 'unsent', now);
             return { kind: 'dropped' };
         }
         const outcome = await this.#perform(intent.id, now, (writes) =>
@@ -275,12 +279,14 @@ export class Actions {
     async #reconcileMerge(intent: Intent, now: number): Promise<void> {
         if (intent.state === 'queued') {
             // The merge call is made only after `pending` is committed: it was never sent.
-            this.#state.drop(intent.id, 'rolled-back', now);
+            this.#state.drop(intent.id, 'unsent', now);
             return;
         }
         const pr = await this.#read((reads) => reads.readPr({ repo: intent.repo, pr: intent.pr }));
         switch (pr.kind) {
             case 'merged':
+                // Whatever else this answer holds, the intent can no longer be rolled back.
+                if (!intent.seenMerged) this.#state.markMergedSeen(intent.id);
                 if (!isFullSha(pr.mergeCommit) || !isFullSha(pr.head)) return;
                 if (pr.head !== intent.head) {
                     // Merged, but not the head this intent was pinned to. Held until the
@@ -302,7 +308,14 @@ export class Actions {
                     if (raised.kind !== 'delivered') return;
                     const escalation = raised.receipt;
                     const approval = await this.#read((reads) => reads.readApproval({ escalation }));
-                    if (approval.kind === 'approved') this.#state.rollBackMerge(intent.id, now);
+                    if (approval.kind === 'approved') {
+                        // The PR did merge: keep what was observed. Never a rollback.
+                        this.#state.settleMergedElsewhere(
+                            intent.id,
+                            { mergedHead: pr.head, mergeCommit: pr.mergeCommit },
+                            now,
+                        );
+                    }
                     return;
                 }
                 // Whether the gate status was reset is not known here: check it.
@@ -310,6 +323,8 @@ export class Actions {
                 return;
             case 'open':
             case 'closed': {
+                // An earlier read said merged and this one does not: nothing can be concluded.
+                if (intent.seenMerged) return;
                 if (pr.kind === 'open' && !isFullSha(pr.head)) return;
                 // Open at another head: a merge pinned to the intent's head cannot have landed.
                 const movedOn = pr.kind === 'open' && pr.head !== intent.head;
@@ -341,7 +356,8 @@ export class Actions {
                 const outcome = await this.#perform(intent.id, now, (writes) =>
                     writes.resetGate({ actionId: intent.id, repo: intent.repo, head: intent.head }),
                 );
-                // A `dry-run` answer reset nothing: the intent stays open and the repo held.
+                // A `dry-run` answer reset nothing: the intent stays open and the repo held,
+                // whether it was queued or already pending.
                 if (outcome.kind === 'reset') this.#state.finish(intent.id, now);
                 return;
             }
@@ -389,6 +405,8 @@ export class Actions {
         }
         const { taskId, addressee } = intent;
         if (intent.body === null) return PENDING;
+        // Decided before the row is touched: `pending` means a real call may already have been made.
+        const neverSent = intent.state === 'queued';
         const body = `${intent.body}\n\naction-id: ${id}`;
 
         let found;
@@ -419,9 +437,10 @@ export class Actions {
             case 'sent':
                 return this.#keep(id, sent.receipt, now);
             case 'dry-run':
-                // A note or escalation is asked for again by the loop. A landed note is
-                // queued once, by the merge, so a record-only adapter must not close it.
-                if (intent.kind !== 'landed-note') this.#state.drop(id, 'dry-run', now);
+                // A record-only adapter may close only a row no real call was ever made
+                // for. A landed note is queued once, by the merge, so it is never closed.
+                if (!neverSent || intent.kind === 'landed-note') return PENDING;
+                this.#state.drop(id, 'dry-run', now);
                 return { kind: 'dry-run' };
             default:
                 return PENDING;

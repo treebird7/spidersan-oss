@@ -79,7 +79,7 @@ describe('schema', () => {
 
     test('a file with another schema version is refused', () => {
         state.close();
-        raw('UPDATE meta SET value = ? WHERE key = ?', '2', 'schema_version');
+        raw('UPDATE meta SET value = ? WHERE key = ?', String(SCHEMA_VERSION - 1), 'schema_version');
         expect(() => new State(path)).toThrow('unsupported schema version');
         raw('UPDATE meta SET value = ? WHERE key = ?', String(SCHEMA_VERSION), 'schema_version');
         state = new State(path);
@@ -166,13 +166,52 @@ describe('intents', () => {
         return rows.length;
     };
 
-    test('a rolled-back intent may be tried again, under a new id', () => {
+    test('an unsent or rolled-back intent may be tried again, under a new id', () => {
         const first = state.queue(merge(), NOW).intent;
-        state.drop(first.id, 'rolled-back', NOW);
+        state.drop(first.id, 'unsent', NOW);
         const second = state.queue(merge(), NOW);
         expect(second.created).toBe(true);
         expect(second.intent.id).toBe(`merge:${REPO}#42@${HEAD}:2`);
-        expect(rowCount()).toBe(2);
+        state.begin(second.intent.id, NOW);
+        state.rollBackMerge(second.intent.id, NOW);
+        expect(state.queue(merge(), NOW).intent.id).toBe(`merge:${REPO}#42@${HEAD}:3`);
+        expect(rowCount()).toBe(4); // three merges and the gate reset the rollback queued
+    });
+
+    test('a merge some read has seen merged cannot be rolled back; the row and its hold stay', () => {
+        const id = state.queue(merge(), NOW).intent.id;
+        state.begin(id, NOW);
+        state.markMergedSeen(id);
+        expect(() => state.rollBackMerge(id, NOW + 1)).toThrow('seen merged');
+        expect(state.intent(id)).toMatchObject({ state: 'pending', seenMerged: true, updatedAt: NOW });
+        expect(rowCount()).toBe(1); // no gate reset was queued either
+        expect(state.isHeld(REPO)).toBe(true);
+    });
+
+    test('merged-elsewhere keeps the observed head and commit and queues a gate reset for the intent head', () => {
+        const id = state.queue(merge(), NOW).intent.id;
+        state.begin(id, NOW);
+        state.markMergedSeen(id);
+        for (const bad of [
+            { mergedHead: HEAD, mergeCommit: BASE }, // the intent's own head is a normal merge
+            { mergedHead: OTHER.slice(0, 7), mergeCommit: BASE },
+            { mergedHead: OTHER, mergeCommit: 'abc1234' },
+        ]) {
+            expect(() => state.settleMergedElsewhere(id, bad, NOW)).toThrow('merged elsewhere');
+        }
+        expect(state.intent(id)?.state).toBe('pending');
+
+        state.settleMergedElsewhere(id, { mergedHead: OTHER, mergeCommit: BASE }, NOW + 1);
+        expect(state.intent(id)).toMatchObject({
+            state: 'merged-elsewhere',
+            head: HEAD,
+            mergedHead: OTHER,
+            mergeCommit: BASE,
+            seenMerged: true,
+        });
+        expect(state.openIntents().open.map((i) => [i.kind, i.head])).toEqual([['gate-reset', HEAD]]);
+        // The PR is merged: no new merge intent at this head.
+        expect(state.queue(merge(), NOW + 2)).toMatchObject({ created: false, intent: { state: 'merged-elsewhere' } });
     });
 
     test.each([['merge', merge()], ['note', note()]] as const)(
@@ -230,7 +269,7 @@ describe('intents', () => {
         const id = state.queue(note(), NOW).intent.id;
         state.recordReceipt(id, 'comment-1', NOW);
         expect(() => state.begin(id, NOW)).toThrow('not open');
-        expect(() => state.drop(id, 'rolled-back', NOW)).toThrow('not open');
+        expect(() => state.drop(id, 'unsent', NOW)).toThrow('not open');
         expect(() => state.recordReceipt(id, 'comment-2', NOW)).toThrow('not open');
         expect(state.receipt(id)).toBe('comment-1');
     });

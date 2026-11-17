@@ -10,9 +10,15 @@
  *
  * An intent is one external effect:
  *
- *   queued ──▶ pending ──▶ done          the effect happened (receipt / merge commit kept)
- *                    ├──▶ rolled-back    it is known not to have happened
- *                    └──▶ dry-run        a record-only adapter took it; nothing happened
+ *   queued ──▶ pending ──▶ done              the effect happened (receipt / merge commit kept)
+ *      │             ├──▶ rolled-back        a call was made and the effect did not happen
+ *      │             ├──▶ dry-run            a record-only adapter took it; nothing happened
+ *      │             └──▶ merged-elsewhere   merge only: the PR is merged at another head than
+ *      │                                     this intent's; that head and commit are kept
+ *      └──▶ unsent                           no call was made; says nothing about the PR
+ *
+ * A merge intent for which any read has said `merged` is never `rolled-back`:
+ * the update itself refuses it.
  *
  * Asking again for a `rolled-back` intent writes a new row. Asking again for a
  * `dry-run` one reopens the same row, so a dry-run repo keeps one row per
@@ -27,16 +33,25 @@ import { Database } from 'bun:sqlite';
 import { isFullSha } from './decide';
 import type { Attempt, BlockingNote } from './types';
 
-export const SCHEMA_VERSION = 1;
+/** 2: `intents.merged_head` and `intents.seen_merged`. A file at another version is refused, not migrated. */
+export const SCHEMA_VERSION = 2;
 
 export const INTENT_KINDS = ['merge', 'gate-reset', 'note', 'landed-note', 'escalation'] as const;
 export type IntentKind = (typeof INTENT_KINDS)[number];
 
-export const INTENT_STATES = ['queued', 'pending', 'done', 'rolled-back', 'dry-run'] as const;
+export const INTENT_STATES = [
+    'queued',
+    'pending',
+    'done',
+    'rolled-back',
+    'dry-run',
+    'unsent',
+    'merged-elsewhere',
+] as const;
 export type IntentState = (typeof INTENT_STATES)[number];
 
 /** States in which a row is finished and takes no further part in a wake. */
-const SETTLED = ['done', 'rolled-back', 'dry-run'] as const;
+const SETTLED = ['done', 'rolled-back', 'dry-run', 'unsent', 'merged-elsewhere'] as const;
 
 export interface Intent {
     /** Stable and derived from what the intent is about; doubles as the action id. */
@@ -56,8 +71,12 @@ export interface Intent {
     addressee: string | null;
     /** note, landed-note, escalation: the text to deliver, without the action id. */
     body: string | null;
-    /** merge, once done: GitHub's squash merge commit. */
+    /** merge, once done or merged-elsewhere: the merge commit on the base branch. */
     mergeCommit: string | null;
+    /** merge, merged-elsewhere only: the head the PR was merged at. */
+    mergedHead: string | null;
+    /** merge only: some read has said this PR is merged. Never unset. */
+    seenMerged: boolean;
     createdAt: number;
     updatedAt: number;
 }
@@ -84,7 +103,8 @@ export interface Reservation {
 
 const COLUMNS =
     'id, kind, repo, pr, head, base, state, reason, task_id AS taskId, addressee, body, ' +
-    'merge_commit AS mergeCommit, created_at AS createdAt, updated_at AS updatedAt';
+    'merge_commit AS mergeCommit, merged_head AS mergedHead, seen_merged AS seenMerged, ' +
+    'created_at AS createdAt, updated_at AS updatedAt';
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (
@@ -105,6 +125,8 @@ CREATE TABLE IF NOT EXISTS intents (
     addressee    TEXT,
     body         TEXT,
     merge_commit TEXT CHECK (merge_commit IS NULL OR length(merge_commit) = 40),
+    merged_head  TEXT CHECK (merged_head IS NULL OR length(merged_head) = 40),
+    seen_merged  INTEGER NOT NULL DEFAULT 0,
     created_at   INTEGER NOT NULL,
     updated_at   INTEGER NOT NULL
 );
@@ -165,8 +187,10 @@ function isAmount(value: unknown): value is number {
  */
 function parseIntent(row: unknown): Intent | null {
     if (!isRecord(row)) return null;
-    const { id, kind, repo, pr, head, base, state, reason, taskId, addressee, body, mergeCommit, createdAt, updatedAt } =
-        row;
+    const { id, kind, repo, pr, head, base, state, reason, taskId, addressee, body, mergeCommit, mergedHead } = row;
+    const { createdAt, updatedAt } = row;
+    if (row.seenMerged !== 0 && row.seenMerged !== 1 && typeof row.seenMerged !== 'boolean') return null;
+    const seenMerged = row.seenMerged === 1 || row.seenMerged === true;
     if (!isText(id) || !isOneOf(INTENT_KINDS, kind) || !isOneOf(INTENT_STATES, state)) return null;
     if (!isText(repo) || !isCount(pr) || pr < 1 || !isFullSha(head)) return null;
     if (base !== null && !isFullSha(base)) return null;
@@ -175,11 +199,15 @@ function parseIntent(row: unknown): Intent | null {
     if (addressee !== null && !isText(addressee)) return null;
     if (body !== null && !isText(body)) return null;
     if (mergeCommit !== null && !isFullSha(mergeCommit)) return null;
+    if (mergedHead !== null && !isFullSha(mergedHead)) return null;
+    if (kind !== 'merge' && (mergeCommit !== null || mergedHead !== null || seenMerged)) return null;
     if (!isCount(createdAt) || !isCount(updatedAt)) return null;
     switch (kind) {
         case 'merge':
             if (base === null || taskId === null) return null;
-            if ((state === 'done') !== (mergeCommit !== null)) return null;
+            if ((state === 'done' || state === 'merged-elsewhere') !== (mergeCommit !== null)) return null;
+            if ((state === 'merged-elsewhere') !== (mergedHead !== null) || mergedHead === head) return null;
+            if (state === 'rolled-back' && seenMerged) return null;
             break;
         case 'gate-reset':
             break;
@@ -196,7 +224,24 @@ function parseIntent(row: unknown): Intent | null {
             kind satisfies never;
             return null;
     }
-    return { id, kind, repo, pr, head, base, state, reason, taskId, addressee, body, mergeCommit, createdAt, updatedAt };
+    return {
+        id,
+        kind,
+        repo,
+        pr,
+        head,
+        base,
+        state,
+        reason,
+        taskId,
+        addressee,
+        body,
+        mergeCommit,
+        mergedHead,
+        seenMerged,
+        createdAt,
+        updatedAt,
+    };
 }
 
 function dedupeKey(spec: NewIntent): string {
@@ -206,11 +251,11 @@ function dedupeKey(spec: NewIntent): string {
 
 /**
  * Is this row history only, so that a new row may stand for the same key? A
- * rolled-back row records that nothing happened. A finished gate reset says
- * nothing about a later stale status on the same head.
+ * rolled-back or unsent row records that nothing happened. A finished gate
+ * reset says nothing about a later stale status on the same head.
  */
 function isHistory(kind: IntentKind, state: unknown): boolean {
-    return state === 'rolled-back' || (kind === 'gate-reset' && state === 'done');
+    return state === 'rolled-back' || state === 'unsent' || (kind === 'gate-reset' && state === 'done');
 }
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -269,6 +314,8 @@ export class State {
             id: `${key}:${rows.length + 1}`,
             state: 'queued',
             mergeCommit: null,
+            mergedHead: null,
+            seenMerged: false,
             createdAt: now,
             updatedAt: now,
         });
@@ -298,15 +345,24 @@ export class State {
         return { intent, created: true };
     }
 
-    /** Moves an open intent to `to`. Throws when the row is not open (queued or pending). */
-    #settle(id: string, to: IntentState, now: number, mergeCommit: string | null = null): void {
+    /**
+     * Moves an open intent to `to`. Throws when the row is not open (queued or
+     * pending), and when `to` is `rolled-back` for a merge some read has seen merged.
+     */
+    #settle(
+        id: string,
+        to: IntentState,
+        now: number,
+        merged: { commit: string; head: string | null } | null = null,
+    ): void {
         if (!isCount(now)) throw new TypeError('coordinator state: invalid clock');
         const done = this.#db
             .query(
-                "UPDATE intents SET state = ?, merge_commit = ?, updated_at = ? WHERE id = ? AND state IN ('queued', 'pending')",
+                'UPDATE intents SET state = ?, merge_commit = ?, merged_head = ?, updated_at = ? ' +
+                    "WHERE id = ? AND state IN ('queued', 'pending') AND (? <> 'rolled-back' OR seen_merged = 0)",
             )
-            .run(to, mergeCommit, now, id);
-        if (done.changes !== 1) throw new Error(`coordinator state: intent ${id} is not open`);
+            .run(to, merged?.commit ?? null, merged?.head ?? null, now, id, to);
+        if (done.changes !== 1) throw new Error(`coordinator state: intent ${id} is not open, or was seen merged`);
     }
 
     /**
@@ -317,9 +373,52 @@ export class State {
         this.#settle(id, 'pending', now);
     }
 
-    /** The effect is known not to have happened (`rolled-back`), or was only recorded (`dry-run`). */
-    drop(id: string, to: 'rolled-back' | 'dry-run', now: number): void {
+    /** No call was made (`unsent`), or a record-only adapter took it (`dry-run`). */
+    drop(id: string, to: 'unsent' | 'dry-run', now: number): void {
         this.#settle(id, to, now);
+    }
+
+    /** A read said this merge's PR is merged. From here on the intent cannot be rolled back. */
+    markMergedSeen(id: string): void {
+        const done = this.#db
+            .query("UPDATE intents SET seen_merged = 1 WHERE id = ? AND kind = 'merge' AND state IN ('queued', 'pending')")
+            .run(id);
+        if (done.changes !== 1) throw new Error(`coordinator state: merge ${id} is not open`);
+    }
+
+    /**
+     * The PR is merged at another head than this intent's. Keeps the head and
+     * commit that were observed, and queues a gate reset for the intent's own
+     * head. No landed note: this intent's merge is not what landed.
+     */
+    settleMergedElsewhere(id: string, observed: { mergedHead: string; mergeCommit: string }, now: number): void {
+        this.#db.transaction(() => {
+            const intent = this.intent(id);
+            if (
+                intent === null ||
+                intent.kind !== 'merge' ||
+                !isFullSha(observed.mergedHead) ||
+                !isFullSha(observed.mergeCommit) ||
+                observed.mergedHead === intent.head
+            ) {
+                throw new Error(`coordinator state: cannot settle ${id} as merged elsewhere`);
+            }
+            this.#settle(id, 'merged-elsewhere', now, { commit: observed.mergeCommit, head: observed.mergedHead });
+            this.#queue(
+                {
+                    kind: 'gate-reset',
+                    repo: intent.repo,
+                    pr: intent.pr,
+                    head: intent.head,
+                    base: null,
+                    reason: '',
+                    taskId: null,
+                    addressee: null,
+                    body: null,
+                },
+                now,
+            );
+        })();
     }
 
     /** An effect with no receipt (a gate reset) is done. */
@@ -337,14 +436,17 @@ export class State {
             if (intent === null || intent.kind !== 'merge' || !isFullSha(merged.mergeCommit)) {
                 throw new Error(`coordinator state: cannot finish merge ${id}`);
             }
-            this.#settle(id, 'done', now, merged.mergeCommit);
+            this.#settle(id, 'done', now, { commit: merged.mergeCommit, head: null });
             const about = { repo: intent.repo, pr: intent.pr, head: intent.head, base: null, reason: '', addressee: null };
             this.#queue({ ...about, kind: 'landed-note', taskId: intent.taskId, body: merged.landedBody }, now);
             if (merged.gateReset) this.#queue({ ...about, kind: 'gate-reset', taskId: null, body: null }, now);
         })();
     }
 
-    /** The merge did not happen: rolls the intent back and queues a gate reset for its head. */
+    /**
+     * A merge call was made and the PR is not merged: rolls the intent back and
+     * queues a gate reset for its head. Refused once any read has said `merged`.
+     */
     rollBackMerge(id: string, now: number): void {
         this.#db.transaction(() => {
             const intent = this.intent(id);
@@ -426,7 +528,7 @@ export class State {
      */
     openIntents(): { open: Intent[]; unrecognised: UnrecognisedRow[] } {
         const rows = this.#db
-            .query(`SELECT ${COLUMNS} FROM intents WHERE state NOT IN (?, ?, ?) ORDER BY rowid`)
+            .query(`SELECT ${COLUMNS} FROM intents WHERE state NOT IN (${SETTLED.map(() => '?').join(', ')}) ORDER BY rowid`)
             .all(...SETTLED);
         const open: Intent[] = [];
         const unrecognised: UnrecognisedRow[] = [];

@@ -74,6 +74,14 @@ function raw(sql: string, ...params: (string | number | null)[]): void {
 }
 
 const stateOf = (id: string): string | undefined => state.intent(id)?.state;
+
+/** Every state any row in the file is in, read on a second connection. */
+function statesInFile(): unknown[] {
+    const other = new Database(path, { readonly: true });
+    const rows = other.query('SELECT DISTINCT state FROM intents').all() as { state: unknown }[];
+    other.close();
+    return rows.map((row) => row.state);
+}
 const writeNames = (): string[] => fx.writes().map((call) => call.effect);
 
 /** Leaves a merge intent `pending` with the PR in fact merged: a crash right after the merge call. */
@@ -178,10 +186,10 @@ describe('merge', () => {
         ['the PR is closed', { kind: 'closed' }],
         ['the PR is already merged', { kind: 'merged', head: HEAD, mergeCommit: sha('e') }],
         ['the PR cannot be read', { kind: 'unknown' }],
-    ] as const)('when %s after the intent is written, the intent is dropped and no merge is sent', async (_name, pr) => {
+    ] as const)('when %s after the intent is written, the intent is dropped unsent and no merge is sent', async (_name, pr) => {
         fx.prs.set(PR_KEY, pr);
         expect(await actions.merge(TARGET, TASK, NOW)).toEqual({ kind: 'dropped' });
-        expect(stateOf(MERGE_ID)).toBe('rolled-back');
+        expect(stateOf(MERGE_ID)).toBe('unsent');
         expect(fx.writes()).toEqual([]);
         expect(state.heldRepos()).toEqual([]);
     });
@@ -253,14 +261,14 @@ describe('reconcile: crash after the merge call', () => {
         expect(report).toEqual({ pending: [], unrecognised: [], held: [] });
     });
 
-    test('a merge intent that was written but never sent is rolled back without asking or merging', async () => {
+    test('a merge intent that was written but never sent is closed unsent without asking or merging', async () => {
         state.queue(
             { kind: 'merge', ...TARGET, reason: '', taskId: TASK, addressee: null, body: null },
             NOW,
         );
         wake();
         const report = await actions.reconcile(NOW + 1);
-        expect(stateOf(MERGE_ID)).toBe('rolled-back');
+        expect(stateOf(MERGE_ID)).toBe('unsent');
         expect(fx.calls).toEqual([]);
         expect(report).toEqual({ pending: [], unrecognised: [], held: [] });
     });
@@ -349,18 +357,36 @@ describe('reconcile: ambiguous merge result', () => {
         expect(fx.calls.at(-1)).toEqual({ effect: 'readApproval', request: { escalation: 'task-1' } });
     });
 
-    test('… and is released, rolled back and gate-checked once the owner approves the escalation', async () => {
+    test('… and once the owner approves, the observed head and commit are kept; it is never recorded as rolled back', async () => {
         fx.gates.set(GATE, 'success');
+        fx.gates.set(`${REPO}@${OTHER}`, 'success');
         await mergeNeverLanded();
         fx.prs.set(PR_KEY, { kind: 'merged', head: OTHER, mergeCommit: sha('e') });
         expect((await actions.reconcile(NOW + 1)).held).toEqual([REPO]); // nobody answered: unverified
 
         fx.approvals.set('task-1', 'approved');
-        expect(await actions.reconcile(NOW + 2)).toEqual({ pending: [], unrecognised: [], held: [] });
-        expect(stateOf(MERGE_ID)).toBe('rolled-back');
+        expect(await actions.reconcile(LATER + 2)).toEqual({ pending: [], unrecognised: [], held: [] });
+        await actions.reconcile(LATER + 3);
+
+        expect(state.intent(MERGE_ID)).toMatchObject({
+            state: 'merged-elsewhere',
+            head: HEAD,
+            mergedHead: OTHER,
+            mergeCommit: sha('e'),
+        });
+        expect(statesInFile()).not.toContain('rolled-back');
+        // No landed note: the coordinator's merge is not what landed.
         expect(state.intent(LANDED_ID)).toBeNull();
+        expect(fx.posted).toHaveLength(1); // the escalation
+        // The gate is reset on the intent's head only.
+        expect(fx.writes().at(-1)).toEqual({ effect: 'resetGate', request: { actionId: GATE_ID, repo: REPO, head: HEAD } });
         expect(fx.gates.get(GATE)).toBe('clear');
+        expect(fx.gates.get(`${REPO}@${OTHER}`)).toBe('success');
         expect(writeNames()).toEqual(['merge', 'createEscalation', 'resetGate']);
+        // Asking to merge that head again makes no call.
+        const before = fx.calls.length;
+        expect(await actions.merge(TARGET, TASK, LATER + 4)).toEqual({ kind: 'dropped' });
+        expect(fx.calls.length).toBe(before);
     });
 
     test('an approval is not read for an escalation that has no receipt', async () => {
@@ -457,6 +483,63 @@ describe('reconcile: a PR that does not read as merged after a merge call', () =
         for (const bad of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
             expect(() => new Actions(state, fx, bad)).toThrow(TypeError);
         }
+    });
+});
+
+describe('a merge that any read has said is merged is never rolled back', () => {
+    const MERGED_READS: [string, Fault][] = [
+        ['merged at another head', { answer: { kind: 'merged', head: OTHER, mergeCommit: sha('e') } }],
+        ['merged with a short commit sha', { answer: { kind: 'merged', head: HEAD, mergeCommit: 'abc1234' } }],
+        ['merged with nothing else', { answer: { kind: 'merged' } }],
+    ];
+    const NOT_MERGED: [string, Fault][] = [
+        ['open at the intent head', { answer: { kind: 'open', head: HEAD, base: BASE } }],
+        ['open at another head', { answer: { kind: 'open', head: OTHER, base: BASE } }],
+        ['closed', { answer: { kind: 'closed' } }],
+    ];
+
+    describe.each(MERGED_READS)('after a read that said %s', (_name, merged) => {
+        test.each(NOT_MERGED)('reconcile: a later read of %s, past the grace period, does not roll it back', async (_n, later) => {
+            await mergeNeverLanded();
+            fx.failNext('readPr', merged);
+            await actions.reconcile(NOW + 1);
+            expect(state.intent(MERGE_ID)).toMatchObject({ state: 'pending', seenMerged: true });
+            wake();
+
+            fx.failNext('readPr', later);
+            const report = await actions.reconcile(LATER + 1);
+
+            expect(report.pending).toContain(MERGE_ID);
+            expect(report.held).toEqual([REPO]);
+            expect(statesInFile()).not.toContain('rolled-back');
+            expect(state.intent(GATE_ID)).toBeNull();
+        });
+
+        test('merge(): the refused path cannot be reached; the repo is held and no call is made', async () => {
+            await mergeNeverLanded();
+            fx.failNext('readPr', merged);
+            await actions.reconcile(NOW + 1);
+            fx.failNext('merge', { answer: { kind: 'refused' } });
+            const before = fx.calls.length;
+
+            expect(await actions.merge(TARGET, TASK, LATER + 1)).toEqual({ kind: 'held' });
+
+            expect(fx.calls.length).toBe(before);
+            expect(statesInFile()).not.toContain('rolled-back');
+        });
+    });
+
+    test('merge(): a PR that reads merged before the call closes the intent unsent, not rolled back', async () => {
+        fx.prs.set(PR_KEY, { kind: 'merged', head: HEAD, mergeCommit: sha('e') });
+        expect(await actions.merge(TARGET, TASK, NOW)).toEqual({ kind: 'dropped' });
+        expect(statesInFile()).toEqual(['unsent']);
+    });
+
+    test('merge(): refused straight after a read of open at the intent head is the one rollback merge() makes', async () => {
+        fx.failNext('merge', { answer: { kind: 'refused' } });
+        expect(await actions.merge(TARGET, TASK, NOW)).toEqual({ kind: 'refused' });
+        expect(fx.calls.map((call) => call.effect)).toEqual(['readPr', 'merge']);
+        expect(state.intent(MERGE_ID)).toMatchObject({ state: 'rolled-back', seenMerged: false });
     });
 });
 
@@ -889,6 +972,76 @@ describe('dry-run adapter', () => {
         expect(rows()).toEqual([{ id, state: 'done' }]);
         expect(fx.posted).toHaveLength(1);
         expect(state.receipt(id)).not.toBeNull();
+    });
+
+    describe.each([
+        ['note', NOTE_ID, 'deliverNote', () => actions.note(NOTE, NOW)],
+        ['escalation', ESCALATION_ID, 'createEscalation', () => actions.escalate(ESCALATION, NOW)],
+    ] as const)('a live %s whose request was lost', (_name, id, send, ask) => {
+        test('is not closed by a dry-run wake; the next live reconcile sends it once, without being asked again', async () => {
+            fx.failNext(send, 'lost-request');
+            expect(await ask()).toEqual({ kind: 'pending' });
+            wake();
+
+            const dry = new DryRunEffects(fx);
+            actions = new Actions(state, dry);
+            expect((await actions.reconcile(NOW + 1)).pending).toEqual([id]);
+            expect((await actions.reconcile(NOW + 2)).pending).toEqual([id]);
+            expect(dry.recorded.map((r) => r.effect)).toEqual([send, send]);
+            expect(stateOf(id)).toBe('pending');
+            expect(fx.posted).toEqual([]);
+            wake(); // live again; nobody asks for the note
+
+            expect(await actions.reconcile(NOW + 3)).toEqual({ pending: [], unrecognised: [], held: [] });
+            await actions.reconcile(NOW + 4);
+            expect(fx.posted).toHaveLength(1);
+            expect(fx.count(send)).toBe(2); // the lost request and this one
+            expect(stateOf(id)).toBe('done');
+            expect(state.receipt(id)).not.toBeNull();
+        });
+
+        test('is not closed when a dry-run wake asks for it again', async () => {
+            fx.failNext(send, 'lost-request');
+            await ask();
+            actions = new Actions(state, new DryRunEffects(fx));
+            expect(await ask()).toEqual({ kind: 'pending' });
+            expect(stateOf(id)).toBe('pending');
+        });
+    });
+
+    test('a live pending merge is not touched by a dry-run wake: no merge recorded, nothing closed', async () => {
+        await crashAfterMerge();
+        const dry = new DryRunEffects(fx);
+        actions = new Actions(state, dry);
+        fx.failNext('readPr', { answer: { kind: 'unknown' } });
+        expect(await actions.reconcile(NOW + 1)).toEqual({ pending: [MERGE_ID], unrecognised: [], held: [REPO] });
+        expect(await actions.merge(TARGET, TASK, NOW + 1)).toEqual({ kind: 'held' });
+        expect(dry.recorded).toEqual([]);
+        expect(stateOf(MERGE_ID)).toBe('pending');
+        wake();
+        await actions.reconcile(NOW + 2);
+        expect(state.intent(MERGE_ID)).toMatchObject({ state: 'done', mergeCommit: fx.mergeCommit });
+        expect(fx.count('merge')).toBe(1);
+    });
+
+    test('a live pending gate reset is not closed by a dry-run wake; the next live reconcile resets it', async () => {
+        fx.gateResetFails = true;
+        await actions.merge(TARGET, TASK, NOW);
+        fx.failNext('resetGate', 'lost-request');
+        await actions.reconcile(NOW + 1);
+        expect(stateOf(GATE_ID)).toBe('pending');
+        wake();
+
+        const dry = new DryRunEffects(fx);
+        actions = new Actions(state, dry);
+        expect(await actions.reconcile(NOW + 2)).toMatchObject({ held: [REPO] });
+        expect(dry.recorded.map((r) => r.effect)).toEqual(['resetGate']);
+        expect(stateOf(GATE_ID)).toBe('pending');
+        expect(fx.gates.get(GATE)).toBe('success');
+        wake();
+
+        expect((await actions.reconcile(NOW + 3)).held).toEqual([]);
+        expect(fx.gates.get(GATE)).toBe('clear');
     });
 
     test('a landed note owed for a real merge is not closed by a dry run; the next live wake sends it once', async () => {
