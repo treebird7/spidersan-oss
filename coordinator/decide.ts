@@ -347,6 +347,7 @@ function validateRest(s: PrSnapshot): string | null {
 
     const touches = raw.touches;
     if (!isRecord(touches)) return 'touches';
+    if (!isFullSha(touches.headSha)) return 'touches.headSha';
     if (!isBool(touches.protectedPaths)) return 'touches.protectedPaths';
     if (!isBool(touches.mergeEffects)) return 'touches.mergeEffects';
 
@@ -361,6 +362,7 @@ function validateRest(s: PrSnapshot): string | null {
     if (triage !== null) {
         if (!isRecord(triage)) return 'triage';
         if (!isBool(triage.ok)) return 'triage.ok';
+        if (!isFullSha(triage.headSha)) return 'triage.headSha';
         if (triage.ok) {
             if (!isOneOf(TRIAGE_MODELS, triage.model)) return 'triage.model';
             if (!isText(triage.effort)) return 'triage.effort';
@@ -390,7 +392,12 @@ function validateRest(s: PrSnapshot): string | null {
         if (a.loggedCost !== null && !isAmount(a.loggedCost)) return `attempts[${i}].loggedCost`;
     }
 
-    if (raw.blockingNotifiedAt !== null && !isAmount(raw.blockingNotifiedAt)) return 'blockingNotifiedAt';
+    const note = raw.blockingNote;
+    if (note !== null) {
+        if (!isRecord(note)) return 'blockingNote';
+        if (!isFullSha(note.headSha)) return 'blockingNote.headSha';
+        if (!isAmount(note.at)) return 'blockingNote.at';
+    }
 
     const ci = raw.ci;
     if (ci !== null) {
@@ -530,7 +537,10 @@ function reviewStage(s: PrSnapshot, policy: Policy): { decision: Decision } | { 
             break;
         case 'change': {
             // A failed triage is never a pick: no review set is derived from it.
-            if (s.triage === null) return { decision: dispatchTriage(budget, policy, 'triage-missing') };
+            // A triage run at another head says nothing about this one.
+            if (s.triage === null || s.triage.headSha !== head) {
+                return { decision: dispatchTriage(budget, policy, 'triage-missing') };
+            }
             if (s.triage.ok !== true) return { decision: dispatchTriage(budget, policy, 'triage-failed') };
             pick = s.triage.model;
             break;
@@ -609,6 +619,8 @@ export function decide(snapshot: PrSnapshot, policy: Policy, now: number): Decis
 
     // 6. Trusted roots, the gate, the coordinator, its config: escalate before
     // the link check, so before any triage or review, whatever the link says.
+    // What the diff touches is only known for the head it was computed at.
+    if (snapshot.touches.headSha !== head) return wait('touches-stale-head');
     if (snapshot.touches.protectedPaths !== false) return escalate('touches-protected-paths');
 
     // 7. No trusted task link: review and notify, never merge.
@@ -638,10 +650,11 @@ export function decide(snapshot: PrSnapshot, policy: Policy, now: number): Decis
 
     // 12. Blocking findings, and the stall timers once the note is delivered.
     if (reviewed.open.length !== 0) {
-        const notifiedAt = snapshot.blockingNotifiedAt;
-        if (notifiedAt === null) return notify('blocking-findings', reviewed.open);
-        const elapsed = now - notifiedAt;
-        if (!(elapsed >= 0)) return escalate('invalid-clock', 'owner', 'blockingNotifiedAt');
+        // A note delivered for another head told the author nothing about these findings.
+        const note = snapshot.blockingNote;
+        if (note === null || note.headSha !== head) return notify('blocking-findings', reviewed.open);
+        const elapsed = now - note.at;
+        if (!(elapsed >= 0)) return escalate('invalid-clock', 'owner', 'blockingNote.at');
         if (elapsed >= policy.stallOwnerMs) return escalate('stalled-owner', 'owner');
         if (elapsed >= policy.stallClaimantMs) return escalate('stalled-claimant', 'claimant');
         return wait('awaiting-author');

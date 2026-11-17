@@ -40,12 +40,19 @@ export type PrKind = (typeof PR_KINDS)[number];
 // ── Input: one PR ──────────────────────────────────────────────────────────
 
 /**
- * Triage output. The fallback line triage prints on any failure
- * (`<model> <effort> triage failed — default`) is `{ ok: false }`, never a pick.
+ * Triage output, for the head it was run at. The fallback line triage prints
+ * on any failure (`<model> <effort> triage failed — default`) is `ok: false`,
+ * never a pick. A triage whose `headSha` is not the PR's head counts as missing.
  */
 export type Triage =
-    | { ok: true; model: TriageModel; effort: string; reason: string }
-    | { ok: false };
+    | { ok: true; headSha: string; model: TriageModel; effort: string; reason: string }
+    | { ok: false; headSha: string };
+
+/** The delivered blocking-findings note: which head it was about, and when (ms). */
+export interface BlockingNote {
+    headSha: string;
+    at: number;
+}
 
 /** One member of a review set: a variant run by a model family. */
 export interface Member {
@@ -143,7 +150,9 @@ export interface PrSnapshot {
         /** The task sits under a pipeline umbrella (scoped session decides). */
         pipelineUmbrella: boolean;
     };
+    /** What the PR's diff touches, computed at `headSha`. Another head = not known. */
     touches: {
+        headSha: string;
         /** Trusted roots, the merge gate, the coordinator or its config. */
         protectedPaths: boolean;
         /** Paths whose merge triggers an effect (a deploy). */
@@ -151,15 +160,15 @@ export interface PrSnapshot {
     };
     /** Owner approval of the merge-triggered effects; null = none requested. */
     effectsApproval: OwnerApproval | null;
-    /** null = triage has not run at this head. */
+    /** null = triage has not run. One run at another head is treated the same. */
     triage: Triage | null;
     /** Every completed review run known for this PR, any head. */
     reviews: ReviewRun[];
     retirements: Retirement[];
     /** The attempt ledger for this PR, any head. */
     attempts: Attempt[];
-    /** When the blocking-findings note for this head was delivered (ms); null = not yet. */
-    blockingNotifiedAt: number | null;
+    /** The delivered blocking-findings note; null = none. A note for another head is treated as none. */
+    blockingNote: BlockingNote | null;
     ci: CiEvidence | null;
     conflicts: ConflictsResult | null;
 }
@@ -230,6 +239,7 @@ export const REASONS = {
         'deps-unmet',
         'deps-unknown',
         'pipeline-umbrella',
+        'touches-stale-head',
         'awaiting-effects-approval',
         'awaiting-author',
         'ci-incomplete',

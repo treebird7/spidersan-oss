@@ -30,6 +30,8 @@ const BASE = sha('b');
 const OTHER = sha('c');
 /** Shares its first 7 characters with HEAD. */
 const HEAD_SAME7 = 'aaaaaaa' + 'd'.repeat(33);
+/** Shares its first 7 characters with BASE. */
+const BASE_SAME7 = 'bbbbbbb' + 'd'.repeat(33);
 const NOW = 1_800_000_000_000;
 const HOUR = 60 * 60 * 1000;
 
@@ -55,9 +57,9 @@ function clean(): PrSnapshot {
         pr: { number: 42, draft: false, fork: false, kind: 'change', head: HEAD, base: BASE },
         link: { taskOpen: true, claimantRegisteredBranch: true, coordinatorCreatedPr: false },
         deps: { state: 'met', pipelineUmbrella: false },
-        touches: { protectedPaths: false, mergeEffects: true },
+        touches: { headSha: HEAD, protectedPaths: false, mergeEffects: true },
         effectsApproval: { state: 'approved', boundHead: HEAD },
-        triage: { ok: true, model: 'sol', effort: 'high', reason: 'touches auth' },
+        triage: { ok: true, headSha: HEAD, model: 'sol', effort: 'high', reason: 'touches auth' },
         reviews: [
             run({ runId: 'r1', variant: 'plain', blocking: [{ id: 'f1' }] }),
             run({ runId: 'r2', variant: 'vector', verdict: 'APPROVE' }),
@@ -68,7 +70,7 @@ function clean(): PrSnapshot {
             { headSha: HEAD, reservation: 1, loggedCost: 0.4 },
             { headSha: HEAD, reservation: 1, loggedCost: null },
         ],
-        blockingNotifiedAt: null,
+        blockingNote: null,
         ci: { headSha: HEAD, complete: true, green: true, testedBase: BASE },
         conflicts: { status: 'clean', pr: 42, headSha: HEAD, baseSha: BASE },
     };
@@ -92,7 +94,7 @@ function policy(mode: Mode = 'dry-run'): Policy {
 /** A terra-pick variant of the clean snapshot (primary + second). */
 function cleanTerra(): PrSnapshot {
     const s = clean();
-    s.triage = { ok: true, model: 'terra', effort: 'high', reason: 'x' };
+    s.triage = { ok: true, headSha: HEAD, model: 'terra', effort: 'high', reason: 'x' };
     s.reviews = [run({ runId: 'r1', family: 'terra' }), run({ runId: 'r3', variant: 'second', family: 'haiku' })];
     s.retirements = [];
     return s;
@@ -462,7 +464,7 @@ describe('decide: mode', () => {
     test('the terra and luna variants of the clean snapshot merge too', () => {
         expect(d(cleanTerra(), policy('live')).kind).toBe('merge');
         const luna = cleanTerra();
-        luna.triage = { ok: true, model: 'luna', effort: 'medium', reason: 'x' };
+        luna.triage = { ok: true, headSha: HEAD, model: 'luna', effort: 'medium', reason: 'x' };
         luna.reviews = [run({ family: 'luna' })];
         expect(d(luna, policy('live')).kind).toBe('merge');
     });
@@ -486,10 +488,11 @@ const ORDERED: Array<[kind: string, reason: string, brk: Break, anyLink?: boolea
     ['escalate', 'invalid-snapshot', (c) => void ((c.s.pr as { number: unknown }).number = 0), ANY_LINK],
     ['skip', 'draft', (c) => void (c.s.pr.draft = true), ANY_LINK],
     ['escalate', 'fork', (c) => void (c.s.pr.fork = true), ANY_LINK],
-    ['escalate', 'invalid-snapshot', (c) => void (c.s.blockingNotifiedAt = -1), ANY_LINK],
+    ['escalate', 'invalid-snapshot', (c) => void (c.s.blockingNote = { headSha: HEAD, at: -1 }), ANY_LINK],
     ['escalate', 'invalid-policy', (c) => void (c.p.ceiling = Number.NaN), ANY_LINK],
     ['escalate', 'invalid-clock', (c) => void (c.now = Number.NaN), ANY_LINK],
     ['escalate', 'self-authored-unsupported', (c) => void (c.s.link.coordinatorCreatedPr = true), ANY_LINK],
+    ['wait', 'touches-stale-head', (c) => void (c.s.touches.headSha = HEAD_SAME7), ANY_LINK],
     // Before the link check: escalates whatever the link says, before any paid run.
     ['escalate', 'touches-protected-paths', (c) => void (c.s.touches.protectedPaths = true), ANY_LINK],
     ['wait', 'deps-unmet', (c) => void (c.s.deps.state = 'unmet')],
@@ -636,7 +639,7 @@ describe('decide: each gate\'s other outcomes', () => {
                 s.pr.kind = 'release';
                 s.link.coordinatorCreatedPr = true;
                 s.link.claimantRegisteredBranch = false;
-                s.triage = { ok: false };
+                s.triage = { ok: false, headSha: HEAD };
             }, cleanTerra);
         expect(d(release(), policy('live')).kind).toBe('merge');
         // A sol primary is not the terra primary the release set requires.
@@ -666,7 +669,7 @@ describe('decide: each gate\'s other outcomes', () => {
                 s.link.taskOpen = false;
                 f(s);
             });
-        expectReason(d(untrusted((s) => void (s.triage = { ok: false }))), 'run-triage', 'triage-failed');
+        expectReason(d(untrusted((s) => void (s.triage = { ok: false, headSha: HEAD }))), 'run-triage', 'triage-failed');
         expectReason(d(untrusted((s) => void s.reviews.pop())), 'run-reviews', 'review-set-incomplete');
         expectReason(
             d(untrusted((s) => void (s.reviews[1]!.verdict = 'REQUEST CHANGES'))),
@@ -687,7 +690,7 @@ describe('decide: each gate\'s other outcomes', () => {
             (s) => void (s.conflicts = null),
             (s) => {
                 s.retirements = [];
-                s.blockingNotifiedAt = NOW - 100 * HOUR;
+                s.blockingNote = { headSha: HEAD, at: NOW - 100 * HOUR };
             },
         ];
         for (const f of later) expectReason(d(untrusted(f)), 'notify', 'untrusted-task-link');
@@ -790,7 +793,7 @@ describe('decide: each gate\'s other outcomes', () => {
     test('a triage fallback never yields a review set', () => {
         // Complete sets for every pick are on file; a failed triage still derives none.
         const s = mut((x) => {
-            x.triage = { ok: false };
+            x.triage = { ok: false, headSha: HEAD };
             x.reviews.push(run({ runId: 'r4', family: 'luna' }), run({ runId: 'r5', family: 'terra' }));
         });
         expect(d(s)).toEqual({ kind: 'run-triage', reason: 'triage-failed', reservation: 0.1 });
@@ -962,7 +965,7 @@ describe('decide: each gate\'s other outcomes', () => {
             d(
                 mut((s) => {
                     s.retirements = [];
-                    s.blockingNotifiedAt = NOW - elapsed;
+                    s.blockingNote = { headSha: HEAD, at: NOW - elapsed };
                 }),
             );
         expect(at(0)).toEqual({ kind: 'wait', reason: 'awaiting-author' });
@@ -970,13 +973,13 @@ describe('decide: each gate\'s other outcomes', () => {
         expect(at(24 * HOUR)).toEqual({ kind: 'escalate', reason: 'stalled-claimant', to: 'claimant' });
         expect(at(72 * HOUR - 1)).toEqual({ kind: 'escalate', reason: 'stalled-claimant', to: 'claimant' });
         expect(at(72 * HOUR)).toEqual({ kind: 'escalate', reason: 'stalled-owner', to: 'owner' });
-        expect(at(-1)).toMatchObject({ kind: 'escalate', reason: 'invalid-clock', field: 'blockingNotifiedAt' });
+        expect(at(-1)).toMatchObject({ kind: 'escalate', reason: 'invalid-clock', field: 'blockingNote.at' });
     });
 
     test('the stall thresholds come from policy', () => {
         const s = mut((x) => {
             x.retirements = [];
-            x.blockingNotifiedAt = NOW - 2 * HOUR;
+            x.blockingNote = { headSha: HEAD, at: NOW - 2 * HOUR };
         });
         expectReason(d(s, { ...policy(), stallClaimantMs: HOUR, stallOwnerMs: 3 * HOUR }), 'escalate', 'stalled-claimant');
         expectReason(d(s, { ...policy(), stallClaimantMs: HOUR, stallOwnerMs: 2 * HOUR }), 'escalate', 'stalled-owner');
@@ -1019,10 +1022,155 @@ describe('decide: each gate\'s other outcomes', () => {
         expectReason(d(mut((s) => void (s.pr.base = OTHER))), 'wait', 'base-moved');
     });
 
-    test('a new head invalidates every piece of evidence at the old one', () => {
-        const s = mut((x) => void (x.pr.head = OTHER));
-        expect(d(s)).toMatchObject({ kind: 'run-reviews', members: [{}, {}, {}] });
+    test('a new head carries nothing over: each piece of evidence must be redone at it, in order', () => {
+        const s = clean();
+        s.pr.head = OTHER; // only the head changes
+        expectReason(d(s), 'wait', 'touches-stale-head');
+        s.touches.headSha = OTHER; // the diff is classified again at the new head
+        expect(d(s)).toEqual({ kind: 'run-triage', reason: 'triage-missing', reservation: 0.1 });
+        s.triage = { ok: true, headSha: OTHER, model: 'sol', effort: 'high', reason: 'x' };
+        expect(d(s)).toMatchObject({ kind: 'run-reviews', members: [{ variant: 'plain' }, { variant: 'vector' }, { variant: 'second' }] });
+        for (const r of s.reviews) r.headSha = OTHER;
+        expect(d(s)).toEqual({ kind: 'notify', reason: 'blocking-findings', findings: [{ runId: 'r1', id: 'f1' }] });
+        s.retirements[0]!.headSha = OTHER;
+        expectReason(d(s), 'wait', 'ci-stale-head');
+        s.ci!.headSha = OTHER;
+        expectReason(d(s), 'notify', 'conflicts-unverified');
+        s.conflicts!.headSha = OTHER;
+        expectReason(d(s), 'wait', 'awaiting-effects-approval');
+        s.effectsApproval!.boundHead = OTHER;
+        expect(d(s)).toEqual({ kind: 'would-merge', reason: 'clean-dry-run', repo: 'owner/name', pr: 42, head: OTHER, base: BASE });
     });
+});
+
+// ── Head binding ───────────────────────────────────────────────────────────
+
+describe('head binding: evidence for another head is never used for this one', () => {
+    const key = (decision: Decision): string => `${decision.kind}/${decision.reason}`;
+    /** Each head- or base-bound field, and the decision when only its sha is stale. */
+    const BOUND: Array<[name: string, set: (s: PrSnapshot, v: string) => void, expected: string, bound: 'head' | 'base']> = [
+        ['touches.headSha', (s, v) => void (s.touches.headSha = v), 'wait/touches-stale-head', 'head'],
+        ['triage.headSha', (s, v) => void (s.triage!.headSha = v), 'run-triage/triage-missing', 'head'],
+        ['reviews[0].headSha', (s, v) => void (s.reviews[0]!.headSha = v), 'run-reviews/review-set-incomplete', 'head'],
+        ['reviews[1].headSha', (s, v) => void (s.reviews[1]!.headSha = v), 'run-reviews/review-set-incomplete', 'head'],
+        ['reviews[2].headSha', (s, v) => void (s.reviews[2]!.headSha = v), 'run-reviews/review-set-incomplete', 'head'],
+        ['retirements[0].headSha', (s, v) => void (s.retirements[0]!.headSha = v), 'notify/blocking-findings', 'head'],
+        ['ci.headSha', (s, v) => void (s.ci!.headSha = v), 'wait/ci-stale-head', 'head'],
+        ['conflicts.headSha', (s, v) => void (s.conflicts!.headSha = v), 'notify/conflicts-unverified', 'head'],
+        ['conflicts.baseSha', (s, v) => void (s.conflicts!.baseSha = v), 'wait/base-moved', 'base'],
+        ['ci.testedBase', (s, v) => void (s.ci!.testedBase = v), 'wait/base-moved', 'base'],
+        ['effectsApproval.boundHead', (s, v) => void (s.effectsApproval!.boundHead = v), 'wait/awaiting-effects-approval', 'head'],
+    ];
+
+    for (const [name, set, expected, bound] of BOUND) {
+        const stale: Array<[string, string]> = [
+            ['another full sha', OTHER],
+            ['a sha sharing the first 7 characters', bound === 'head' ? HEAD_SAME7 : BASE_SAME7],
+        ];
+        for (const [label, value] of stale) {
+            test(`${name} ← ${label}: ${expected}`, () => {
+                for (const mode of ['dry-run', 'live'] as const) {
+                    const s = clean();
+                    set(s, value);
+                    expect(key(d(s, policy(mode)))).toBe(expected);
+                }
+                // Review-only: the same, except the approval, which is not consulted there.
+                const s = clean();
+                set(s, value);
+                expect(key(d(s, policy('review-only')))).toBe(
+                    name === 'effectsApproval.boundHead' ? 'ready/review-only-mode' : expected,
+                );
+            });
+        }
+    }
+
+    test('a luna triage from an earlier head does not pick the set for this head', () => {
+        // Head A was triaged luna. At this head a complete luna set is on file and everything else is clean.
+        const s = clean();
+        s.triage = { ok: true, headSha: OTHER, model: 'luna', effort: 'medium', reason: 'docs only' };
+        s.reviews = [run({ family: 'luna' })];
+        s.retirements = [];
+        for (const mode of ['review-only', 'dry-run', 'live'] as const) {
+            expect(d(s, policy(mode))).toEqual({ kind: 'run-triage', reason: 'triage-missing', reservation: 0.1 });
+        }
+        // Same on an untrusted link, for a stale failed triage too.
+        s.link.taskOpen = false;
+        expect(key(d(s))).toBe('run-triage/triage-missing');
+        s.triage = { ok: false, headSha: HEAD_SAME7 };
+        expect(key(d(s))).toBe('run-triage/triage-missing');
+        // The same triage at this head is a pick: the luna set is complete.
+        s.triage = { ok: true, headSha: HEAD, model: 'luna', effort: 'medium', reason: 'docs only' };
+        expect(key(d(s))).toBe('notify/untrusted-task-link');
+    });
+
+    test('stale touches wait on an untrusted link too, before any paid run', () => {
+        const s = clean();
+        s.link.taskOpen = false;
+        s.touches.headSha = OTHER;
+        s.triage = null;
+        s.reviews = [];
+        expect(d(s)).toEqual({ kind: 'wait', reason: 'touches-stale-head' });
+    });
+
+    test('a note delivered for an earlier head does not stand in for this head\'s findings', () => {
+        const withNote = (headSha: string): PrSnapshot => {
+            const s = clean();
+            s.retirements = []; // f1 is open at this head
+            s.blockingNote = { headSha, at: NOW - 100 * HOUR };
+            return s;
+        };
+        const fresh = { kind: 'notify', reason: 'blocking-findings', findings: [{ runId: 'r1', id: 'f1' }] };
+        expect(d(withNote(OTHER))).toEqual(fresh);
+        expect(d(withNote(HEAD_SAME7))).toEqual(fresh);
+        // The same note for this head has run out both stall timers.
+        expect(key(d(withNote(HEAD)))).toBe('escalate/stalled-owner');
+    });
+
+    test('a retirement at another head retires nothing here, also by 7-character prefix', () => {
+        for (const headSha of [OTHER, HEAD_SAME7]) {
+            expect(blockingFindings(clean().reviews, [{ headSha, findingId: 'f1' }], HEAD)).toEqual([{ runId: 'r1', id: 'f1' }]);
+        }
+    });
+
+    for (const [route, make] of [
+        ['change', clean],
+        ['release', cleanRelease],
+    ] as const) {
+        test(`property, ${route} PR: no sha field set to a stale sha yields merge, would-merge or ready`, () => {
+            const settled = (decision: Decision): boolean => merges(decision) || decision.kind === 'ready';
+            let tried = 0;
+            const skipped = new Set<string>();
+            for (const mode of ['review-only', 'dry-run', 'live'] as const) {
+                const base = { s: make(), p: policy(mode) };
+                expect(settled(d(base.s, base.p))).toBe(true);
+                const nodes: Array<{ path: Path; value: unknown }> = [];
+                walk(base.s, [], nodes);
+                for (const { path, value } of nodes) {
+                    if (!isFullSha(value)) continue;
+                    const name = show(path);
+                    // The ledger spans every head of the PR by design; its shas only count admitted heads.
+                    if (/^\.attempts\[\d+\]\.headSha$/.test(name)) {
+                        skipped.add(name);
+                        continue;
+                    }
+                    // Review-only merges nothing, so the approval of merge effects is not consulted.
+                    if (mode === 'review-only' && name === '.effectsApproval.boundHead') {
+                        skipped.add(`${name} (review-only)`);
+                        continue;
+                    }
+                    const same7 = value.slice(0, 7) + 'e'.repeat(33);
+                    for (const staleSha of [value === OTHER ? sha('9') : OTHER, same7]) {
+                        const c = withValue(base, ['s', ...path], staleSha) as { s: unknown; p: unknown };
+                        tried++;
+                        const decision = d(c.s, c.p);
+                        if (settled(decision)) throw new Error(`${mode}: ${name} ← stale sha gave ${key(decision)}`);
+                    }
+                }
+            }
+            expect([...skipped].sort()).toEqual(['.attempts[0].headSha', '.attempts[1].headSha', '.effectsApproval.boundHead (review-only)']);
+            expect(tried).toBeGreaterThanOrEqual(route === 'change' ? 76 : 64);
+        });
+    }
 });
 
 // ── Property: one corrupted field never merges ─────────────────────────────
@@ -1073,8 +1221,6 @@ function exempt(path: string, value: unknown, mode: Mode, route: string): string
     // Fewer findings is legal (the retirement then retires nothing).
     if (/^\.s\.reviews\[\d+\]\.blocking$/.test(path) && Array.isArray(value)) return 'no findings is legal';
     if (/^\.s\.reviews\[\d+\]\.blocking\[\d+\]$/.test(path) && value === DELETE) return 'no findings is legal';
-    // With no open finding the note timestamp is not consulted.
-    if (path === '.s.blockingNotifiedAt' && value === 7) return 'a past timestamp is legal';
     // Opaque text: any non-empty string is legal.
     if (/^\.s\.(repo|triage\.(effort|reason)|reviews\[\d+\]\.runId)$/.test(path) && typeof value === 'string' && value !== '') {
         return 'opaque text';
@@ -1196,7 +1342,8 @@ describe('property: one corrupted, omitted or unknown field never merges', () =>
             (c) => void (c.s.attempts[0]!.loggedCost = null),
             (c) => void (c.s.attempts[1]!.loggedCost = 7),
             (c) => void (c.s.reviews[0]!.blocking = []),
-            (c) => void (c.s.blockingNotifiedAt = 7),
+            // With no open finding the note is not consulted, whatever head it names.
+            (c) => void (c.s.blockingNote = { headSha: OTHER, at: 7 }),
             (c) => void (c.s.repo = 'garbage'),
             (c) => void (c.s.reviews[0]!.runId = 'garbage'),
             (c) => void ((c.s.triage as { effort: string }).effort = 'garbage'),
