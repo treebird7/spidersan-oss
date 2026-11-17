@@ -230,6 +230,20 @@ describe('review files → ReviewRun[]', () => {
         );
         expect(runs).toHaveLength(2);
         expect(runs[1]).toEqual(heldAtHead(bad)[0]!);
+        // Through decide: the sol set is complete and clean beside it, and it still does not merge.
+        const s = snapshot();
+        s.triage = { ok: true, headSha: HEAD, model: 'sol', effort: 'high', reason: 'x' };
+        s.reviews = [
+            ...runs,
+            { runId: 'r2', headSha: HEAD, family: 'sol', variant: 'vector', schemaValid: true, verdict: 'APPROVE', blocking: [] },
+            { runId: 'r3', headSha: HEAD, family: 'haiku', variant: 'second', schemaValid: true, verdict: 'COMMENT', blocking: [] },
+        ];
+        expect(decide(s, POLICY, NOW)).toMatchObject({ kind: 'escalate', reason: 'invalid-snapshot', field: 'reviews' });
+        s.reviews = s.reviews.filter((r) => r.schemaValid);
+        expect(decide(s, POLICY, NOW)).toMatchObject({ kind: 'would-merge' });
+        // A file written by a prsan that predates the provenance header (no run id in the name) is held too.
+        const legacy = `treebird7_toak-512-${SHA7}-claude-haiku-5-5-second.md`;
+        expect(one(legacy, body()).runs).toEqual(heldAtHead(legacy));
         // The same name at another head is history: listed as rejected, not held.
         const old = fileName(RUN2, 'gpt-6.1-sol', '', OTHER.slice(0, 7));
         expect(one(old, crlf).runs).toEqual([]);
