@@ -12,7 +12,11 @@
  *
  *   queued ──▶ pending ──▶ done          the effect happened (receipt / merge commit kept)
  *                    ├──▶ rolled-back    it is known not to have happened
- *                    └──▶ dry-run        a record-only adapter took it
+ *                    └──▶ dry-run        a record-only adapter took it; nothing happened
+ *
+ * Asking again for a `rolled-back` intent writes a new row. Asking again for a
+ * `dry-run` one reopens the same row, so a dry-run repo keeps one row per
+ * intent however many wakes ask for it, and a later live adapter still sends.
  *
  * `queued` = no call has been started. `pending` = a call may have been sent
  * and its result is not recorded; only the reconcile pass may resolve it. The
@@ -59,6 +63,14 @@ export interface Intent {
 }
 
 export type NewIntent = Pick<Intent, 'kind' | 'repo' | 'pr' | 'head' | 'base' | 'reason' | 'taskId' | 'addressee' | 'body'>;
+
+/** An open row this code cannot read as an intent. `pr` and `head` are as stored, unchecked. */
+export interface UnrecognisedRow {
+    id: string;
+    repo: string;
+    pr: unknown;
+    head: unknown;
+}
 
 /** One paid run to reserve budget for. */
 export interface Reservation {
@@ -193,13 +205,12 @@ function dedupeKey(spec: NewIntent): string {
 }
 
 /**
- * Does a row with this key stop a new one? Rolled-back and dry-run rows record
- * that nothing happened, so the effect may be tried again. A finished gate
- * reset says nothing about a later stale status on the same head.
+ * Is this row history only, so that a new row may stand for the same key? A
+ * rolled-back row records that nothing happened. A finished gate reset says
+ * nothing about a later stale status on the same head.
  */
-function blocksNew(kind: IntentKind, state: unknown): boolean {
-    if (state === 'rolled-back' || state === 'dry-run') return false;
-    return !(kind === 'gate-reset' && state === 'done');
+function isHistory(kind: IntentKind, state: unknown): boolean {
+    return state === 'rolled-back' || (kind === 'gate-reset' && state === 'done');
 }
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -231,7 +242,9 @@ export class State {
 
     /**
      * The intent for `spec`: the existing row when one already stands for it
-     * (`created: false`), else a new `queued` row. Throws on a malformed spec.
+     * (`created: false`), else a `queued` row (`created: true`): a new one, or
+     * the same row reopened when it was only ever recorded by a dry run.
+     * Throws on a malformed spec.
      */
     queue(spec: NewIntent, now: number): { intent: Intent; created: boolean } {
         return this.#db.transaction(() => this.#queue(spec, now))();
@@ -241,10 +254,15 @@ export class State {
         const key = dedupeKey(spec);
         const rows = this.#db.query(`SELECT ${COLUMNS} FROM intents WHERE dedupe_key = ? ORDER BY rowid`).all(key);
         for (const row of rows) {
-            if (!blocksNew(spec.kind, isRecord(row) ? row.state : undefined)) continue;
+            if (isHistory(spec.kind, isRecord(row) ? row.state : undefined)) continue;
             const standing = parseIntent(row);
             if (standing === null) throw new Error(`coordinator state: unrecognised intent row for ${key}`);
-            return { intent: standing, created: false };
+            if (standing.state !== 'dry-run') return { intent: standing, created: false };
+            if (!isCount(now)) throw new TypeError('coordinator state: invalid clock');
+            this.#db
+                .query("UPDATE intents SET state = 'queued', updated_at = ? WHERE id = ? AND state = 'dry-run'")
+                .run(now, standing.id);
+            return { intent: { ...standing, state: 'queued', updatedAt: now }, created: true };
         }
         const intent = parseIntent({
             ...spec,
@@ -404,18 +422,20 @@ export class State {
 
     /**
      * Every row that is not settled, oldest first: the ones this code
-     * recognises, and the ids and repos of the ones it does not.
+     * recognises, and what can be read of the ones it does not.
      */
-    openIntents(): { open: Intent[]; unrecognised: { id: string; repo: string }[] } {
+    openIntents(): { open: Intent[]; unrecognised: UnrecognisedRow[] } {
         const rows = this.#db
             .query(`SELECT ${COLUMNS} FROM intents WHERE state NOT IN (?, ?, ?) ORDER BY rowid`)
             .all(...SETTLED);
         const open: Intent[] = [];
-        const unrecognised: { id: string; repo: string }[] = [];
+        const unrecognised: UnrecognisedRow[] = [];
         for (const row of rows) {
             const intent = parseIntent(row);
             if (intent !== null) open.push(intent);
-            else if (isRecord(row)) unrecognised.push({ id: String(row.id), repo: String(row.repo) });
+            else if (isRecord(row)) {
+                unrecognised.push({ id: String(row.id), repo: String(row.repo), pr: row.pr, head: row.head });
+            }
         }
         return { open, unrecognised };
     }

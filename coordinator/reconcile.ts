@@ -19,9 +19,20 @@ import type { EffectReader, Effects, EffectWriter } from './effects';
 import type { Intent, State } from './state';
 import type { MergeTarget, ReasonOf } from './types';
 
-/** Escalations the reconcile pass itself raises. Both go to the owner. */
-export const RECONCILE_ESCALATIONS = ['merged-at-unexpected-head', 'registry-abandoned-with-pr'] as const;
+/** Escalations the reconcile pass itself raises. All go to the owner. */
+export const RECONCILE_ESCALATIONS = [
+    'merged-at-unexpected-head',
+    'registry-abandoned-with-pr',
+    'unrecognised-intent-row',
+] as const;
 export type ReconcileEscalation = (typeof RECONCILE_ESCALATIONS)[number];
+
+/**
+ * How long after a merge call a PR that still does not read as merged keeps
+ * the intent unresolved. GitHub can show a PR open for a while after a merge
+ * that did land.
+ */
+export const MERGE_GRACE_MS = 10 * 60 * 1000;
 
 export type MergeResult =
     | { kind: 'merged'; mergeCommit: string }
@@ -83,7 +94,11 @@ export class Actions {
     /** Used in `#perform` and nowhere else. */
     readonly #writes: EffectWriter;
 
-    constructor(state: State, effects: Effects) {
+    readonly #mergeGraceMs: number;
+
+    constructor(state: State, effects: Effects, mergeGraceMs: number = MERGE_GRACE_MS) {
+        if (!Number.isFinite(mergeGraceMs) || mergeGraceMs < 0) throw new TypeError('coordinator: invalid merge grace');
+        this.#mergeGraceMs = mergeGraceMs;
         this.#state = state;
         this.#reads = effects;
         this.#writes = effects;
@@ -217,12 +232,44 @@ export class Actions {
                 }
             }
         }
+        await this.#escalateUnrecognised(now);
         const { open, unrecognised } = this.#state.openIntents();
         return {
             pending: open.map((intent) => intent.id),
             unrecognised: unrecognised.map((row) => row.id),
             held: this.#state.heldRepos(),
         };
+    }
+
+    /**
+     * A row this code cannot read holds its repo. Tell the owner, once per row
+     * position (repo, PR, head). A row whose repo, PR or head cannot be read
+     * either is only reported.
+     */
+    async #escalateUnrecognised(now: number): Promise<void> {
+        for (const row of this.#state.openIntents().unrecognised) {
+            const { pr, head } = row;
+            if (row.repo === '' || typeof pr !== 'number' || !Number.isSafeInteger(pr) || pr < 1 || !isFullSha(head)) {
+                continue;
+            }
+            try {
+                await this.escalate(
+                    {
+                        repo: row.repo,
+                        pr,
+                        head,
+                        reason: 'unrecognised-intent-row',
+                        to: 'owner',
+                        body:
+                            `The coordinator's state holds a row it cannot read: ${row.id}. ${row.repo} is held ` +
+                            'and nothing merges there until the row is repaired by hand.',
+                    },
+                    now,
+                );
+            } catch {
+                // The unreadable row is this escalation's own: it stays in the report.
+            }
+        }
     }
 
     async #reconcileMerge(intent: Intent, now: number): Promise<void> {
@@ -262,10 +309,17 @@ export class Actions {
                 this.#finishMerge(intent, pr.mergeCommit, true, now);
                 return;
             case 'open':
-            case 'closed':
+            case 'closed': {
+                if (pr.kind === 'open' && !isFullSha(pr.head)) return;
+                // Open at another head: a merge pinned to the intent's head cannot have landed.
+                const movedOn = pr.kind === 'open' && pr.head !== intent.head;
+                // Otherwise "not merged" may be a read that lags a merge that did land:
+                // believe it only once the grace period since the call has passed.
+                if (!movedOn && !(now - intent.updatedAt >= this.#mergeGraceMs)) return;
                 // Not merged, and not retried. A gate status may be left on the head.
                 this.#state.rollBackMerge(intent.id, now);
                 return;
+            }
             default:
                 return;
         }

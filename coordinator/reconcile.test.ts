@@ -7,7 +7,7 @@ import { DryRunEffects, READ_EFFECTS, WRITE_EFFECTS } from './effects';
 import type { RegistryRead } from './effects';
 import { EFFECT_NAMES, FakeEffects } from './fake-effects';
 import type { Fault } from './fake-effects';
-import { Actions } from './reconcile';
+import { Actions, MERGE_GRACE_MS } from './reconcile';
 import type { EscalationSpec, NoteSpec } from './reconcile';
 import { State } from './state';
 import type { MergeTarget } from './types';
@@ -22,6 +22,8 @@ const REPO = 'owner/name';
 const PR = 42;
 const TASK = 'mycs-abcd';
 const NOW = 1_800_000_000_000;
+/** The first moment at which a merge call made at NOW is past its grace period. */
+const LATER = NOW + MERGE_GRACE_MS;
 
 const TARGET: MergeTarget = { repo: REPO, pr: PR, head: HEAD, base: BASE };
 const MERGE_ID = `merge:${REPO}#${PR}@${HEAD}:1`;
@@ -292,8 +294,12 @@ describe('reconcile: ambiguous merge result', () => {
             mergeCommit: fx.mergeCommit,
         });
 
-        // Now the PR reads open: the merge did not happen. Rolled back, the gate checked, the hold lifted.
-        expect(await actions.reconcile(NOW + 4)).toEqual({
+        // The PR reads open, but inside the grace period that proves nothing.
+        expect(await actions.reconcile(NOW + 4)).toMatchObject({ held: [REPO] });
+        expect(stateOf(MERGE_ID)).toBe('pending');
+
+        // Still open after the grace period: the merge did not happen. Rolled back, the gate checked, the hold lifted.
+        expect(await actions.reconcile(LATER)).toEqual({
             pending: [`landed-note:owner/other#1@${OTHER}:1`], // the other repo's merge, waiting on its registry row
             unrecognised: [],
             held: [],
@@ -367,6 +373,93 @@ describe('reconcile: ambiguous merge result', () => {
     });
 });
 
+describe('reconcile: a PR that does not read as merged after a merge call', () => {
+    test('open at the intent head inside the grace period: held, nothing rolled back, nothing retried', async () => {
+        await mergeNeverLanded();
+        for (const now of [NOW + 1, LATER - 1]) {
+            expect(await actions.reconcile(now)).toEqual({ pending: [MERGE_ID], unrecognised: [], held: [REPO] });
+        }
+        expect(stateOf(MERGE_ID)).toBe('pending');
+        expect(state.intent(GATE_ID)).toBeNull();
+        expect(await actions.merge(TARGET, TASK, LATER - 1)).toEqual({ kind: 'held' });
+        expect(writeNames()).toEqual(['merge']);
+    });
+
+    test('open at the intent head once the grace period has passed: rolled back', async () => {
+        await mergeNeverLanded();
+        await actions.reconcile(LATER - 1);
+        expect(stateOf(MERGE_ID)).toBe('pending');
+        expect(await actions.reconcile(LATER)).toEqual({ pending: [], unrecognised: [], held: [] });
+        expect(stateOf(MERGE_ID)).toBe('rolled-back');
+        expect(state.intent(LANDED_ID)).toBeNull();
+        expect(fx.count('merge')).toBe(1);
+    });
+
+    test('read as open first, merged later: finishes, and the landed note is queued and sent exactly once', async () => {
+        await crashAfterMerge(); // the merge landed
+        const lagging = { answer: { kind: 'open', head: HEAD, base: BASE } };
+        fx.failNext('readPr', lagging);
+        expect(await actions.reconcile(NOW + 1)).toEqual({ pending: [MERGE_ID], unrecognised: [], held: [REPO] });
+        fx.failNext('readPr', lagging);
+        expect(await actions.reconcile(LATER - 1)).toEqual({ pending: [MERGE_ID], unrecognised: [], held: [REPO] });
+        expect(state.intent(LANDED_ID)).toBeNull();
+
+        // GitHub catches up.
+        expect(await actions.reconcile(LATER - 1)).toEqual({ pending: [LANDED_ID], unrecognised: [], held: [] });
+        expect(state.intent(MERGE_ID)).toMatchObject({ state: 'done', mergeCommit: fx.mergeCommit });
+
+        fx.registry.set(PR_KEY, { kind: 'row', status: 'merged', prNumber: PR });
+        await actions.reconcile(LATER);
+        await actions.reconcile(LATER + 1);
+        expect(fx.posted).toEqual([
+            `${REPO}#${PR} landed as ${fx.mergeCommit} (head ${HEAD}).\n\naction-id: ${LANDED_ID}`,
+        ]);
+        expect(fx.count('merge')).toBe(1);
+        const other = new Database(path, { readonly: true });
+        expect(other.query('SELECT id FROM intents WHERE kind = ?').all('landed-note')).toEqual([{ id: LANDED_ID }]);
+        other.close();
+    });
+
+    test('closed without merging gets the same grace period', async () => {
+        await mergeNeverLanded();
+        fx.prs.set(PR_KEY, { kind: 'closed' });
+        expect(await actions.reconcile(LATER - 1)).toEqual({ pending: [MERGE_ID], unrecognised: [], held: [REPO] });
+        expect(await actions.reconcile(LATER)).toEqual({ pending: [], unrecognised: [], held: [] });
+        expect(stateOf(MERGE_ID)).toBe('rolled-back');
+    });
+
+    test('open at another head is rolled back at once: the pinned merge cannot have landed', async () => {
+        await mergeNeverLanded();
+        fx.prs.set(PR_KEY, { kind: 'open', head: OTHER, base: BASE });
+        expect(await actions.reconcile(NOW + 1)).toEqual({ pending: [], unrecognised: [], held: [] });
+        expect(stateOf(MERGE_ID)).toBe('rolled-back');
+    });
+
+    test.each([
+        ['a short head', HEAD.slice(0, 7)],
+        ['no head', undefined],
+    ])('open with %s says nothing, even after the grace period', async (_name, head) => {
+        await mergeNeverLanded();
+        fx.failNext('readPr', { answer: { kind: 'open', head, base: BASE } });
+        expect(await actions.reconcile(LATER + 1)).toEqual({ pending: [MERGE_ID], unrecognised: [], held: [REPO] });
+    });
+
+    test('a clock that reads earlier than the merge call never ends the grace period', async () => {
+        await mergeNeverLanded();
+        expect(await actions.reconcile(NOW - 1)).toEqual({ pending: [MERGE_ID], unrecognised: [], held: [REPO] });
+    });
+
+    test('the grace period can be passed in; a value that is not a finite amount ≥ 0 is refused', async () => {
+        await mergeNeverLanded();
+        actions = new Actions(state, fx, 5);
+        expect((await actions.reconcile(NOW + 4)).held).toEqual([REPO]);
+        expect((await actions.reconcile(NOW + 5)).held).toEqual([]);
+        for (const bad of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+            expect(() => new Actions(state, fx, bad)).toThrow(TypeError);
+        }
+    });
+});
+
 // ── Reconcile: the merge gate ──────────────────────────────────────────────
 
 describe('reconcile: pr-status.sh exit 3 (merged, gate reset failed)', () => {
@@ -408,7 +501,7 @@ describe('reconcile: stale merge-gate success on a head that was not merged', ()
         fx.gates.set(GATE, 'success'); // posted before the merge call, which never landed
         await mergeNeverLanded();
 
-        const report = await actions.reconcile(NOW + 1);
+        const report = await actions.reconcile(LATER + 1);
 
         expect(stateOf(MERGE_ID)).toBe('rolled-back');
         expect(fx.gates.get(GATE)).toBe('clear');
@@ -429,6 +522,8 @@ describe('reconcile: stale merge-gate success on a head that was not merged', ()
         expect(fx.calls.filter((call) => call.effect === 'readGate')).toEqual([
             { effect: 'readGate', request: { repo: REPO, head: HEAD } },
         ]);
+        // Open at another head: rolled back at once, inside the grace period.
+        expect(stateOf(MERGE_ID)).toBe('rolled-back');
         expect(fx.gates.get(GATE)).toBe('clear');
         expect(fx.gates.get(`${REPO}@${OTHER}`)).toBe('success');
     });
@@ -437,14 +532,14 @@ describe('reconcile: stale merge-gate success on a head that was not merged', ()
         fx.gates.set(GATE, 'success');
         await mergeNeverLanded();
         fx.prs.set(PR_KEY, { kind: 'closed' });
-        await actions.reconcile(NOW + 1);
+        await actions.reconcile(LATER + 1);
         expect(stateOf(MERGE_ID)).toBe('rolled-back');
         expect(fx.gates.get(GATE)).toBe('clear');
     });
 
     test('a status that is not success is left alone: no reset call', async () => {
         await mergeNeverLanded();
-        const report = await actions.reconcile(NOW + 1);
+        const report = await actions.reconcile(LATER + 1);
         expect(stateOf(GATE_ID)).toBe('done');
         expect(writeNames()).toEqual(['merge']);
         expect(report.held).toEqual([]);
@@ -455,12 +550,12 @@ describe('reconcile: stale merge-gate success on a head that was not merged', ()
         await mergeNeverLanded();
         fx.failNext('readGate', fault);
 
-        expect(await actions.reconcile(NOW + 1)).toEqual({ pending: [GATE_ID], unrecognised: [], held: [REPO] });
+        expect(await actions.reconcile(LATER + 1)).toEqual({ pending: [GATE_ID], unrecognised: [], held: [REPO] });
         expect(writeNames()).toEqual(['merge']);
-        expect(await actions.merge(TARGET, TASK, NOW + 2)).toEqual({ kind: 'held' });
+        expect(await actions.merge(TARGET, TASK, LATER + 2)).toEqual({ kind: 'held' });
 
         // Once the gate can be read, it is reset and the hold lifts.
-        expect(await actions.reconcile(NOW + 3)).toEqual({ pending: [], unrecognised: [], held: [] });
+        expect(await actions.reconcile(LATER + 3)).toEqual({ pending: [], unrecognised: [], held: [] });
         expect(writeNames()).toEqual(['merge', 'resetGate']);
     });
 
@@ -471,10 +566,10 @@ describe('reconcile: stale merge-gate success on a head that was not merged', ()
             await mergeNeverLanded();
             fx.failNext('resetGate', fault);
 
-            expect(await actions.reconcile(NOW + 1)).toEqual({ pending: [GATE_ID], unrecognised: [], held: [REPO] });
+            expect(await actions.reconcile(LATER + 1)).toEqual({ pending: [GATE_ID], unrecognised: [], held: [REPO] });
             expect(stateOf(GATE_ID)).toBe('pending');
 
-            expect(await actions.reconcile(NOW + 2)).toEqual({ pending: [], unrecognised: [], held: [] });
+            expect(await actions.reconcile(LATER + 2)).toEqual({ pending: [], unrecognised: [], held: [] });
             expect(fx.gates.get(GATE)).toBe('clear');
             expect(fx.count('merge')).toBe(1);
         },
@@ -768,6 +863,34 @@ describe('dry-run adapter', () => {
         expect(report).toEqual({ pending: [GATE_ID], unrecognised: [], held: [REPO] });
     });
 
+    test.each([
+        ['note', NOTE_ID, () => actions.note(NOTE, NOW)],
+        ['escalation', ESCALATION_ID, () => actions.escalate(ESCALATION, NOW)],
+    ] as const)('three dry-run wakes asking for the same %s leave one row; a live adapter then delivers it', async (_name, id, ask) => {
+        const rows = (): unknown[] => {
+            const other = new Database(path, { readonly: true });
+            const found = other.query('SELECT id, state FROM intents').all();
+            other.close();
+            return found;
+        };
+        for (let n = 0; n < 3; n++) {
+            wake();
+            actions = new Actions(state, new DryRunEffects(fx));
+            expect(await ask()).toEqual({ kind: 'dry-run' });
+            expect(await actions.reconcile(NOW)).toEqual({ pending: [], unrecognised: [], held: [] });
+            expect(rows()).toEqual([{ id, state: 'dry-run' }]);
+        }
+        expect(fx.writes()).toEqual([]);
+        expect(state.receipt(id)).toBeNull();
+        expect(state.blockingNoteFor(REPO, PR)).toBeNull();
+
+        wake(); // live
+        expect(await ask()).toMatchObject({ kind: 'delivered' });
+        expect(rows()).toEqual([{ id, state: 'done' }]);
+        expect(fx.posted).toHaveLength(1);
+        expect(state.receipt(id)).not.toBeNull();
+    });
+
     test('a landed note owed for a real merge is not closed by a dry run; the next live wake sends it once', async () => {
         await actions.merge(TARGET, TASK, NOW); // live
         fx.registry.set(PR_KEY, { kind: 'row', status: 'merged', prNumber: PR });
@@ -808,11 +931,50 @@ describe('unrecognised rows', () => {
         const writesBefore = fx.writes().length;
 
         const report = await actions.reconcile(NOW + 1);
+        fx.failNext('findDelivery', { answer: { kind: 'unknown' } });
+        await actions.reconcile(NOW + 2);
 
         expect(report.unrecognised).toEqual([id]);
         expect(report.held).toEqual([REPO]);
-        expect(fx.writes().length).toBe(writesBefore);
-        expect(await actions.merge({ ...TARGET, pr: 43, head: OTHER }, 'mycs-efgh', NOW + 2)).toEqual({ kind: 'held' });
+        // The only write is one escalation to the owner that names the row.
+        const escalationId = `escalation:${REPO}#${PR}@${HEAD}:unrecognised-intent-row:1`;
+        expect(fx.writes().slice(writesBefore)).toEqual([
+            {
+                effect: 'createEscalation',
+                request: {
+                    actionId: escalationId,
+                    repo: REPO,
+                    pr: PR,
+                    head: HEAD,
+                    reason: 'unrecognised-intent-row',
+                    to: 'owner',
+                    body: expect.stringContaining(`cannot read: ${id}.`),
+                },
+            },
+        ]);
+        expect(state.intent(escalationId)).toMatchObject({ state: 'done', addressee: 'owner' });
+        expect(await actions.merge({ ...TARGET, pr: 43, head: OTHER }, 'mycs-efgh', NOW + 3)).toEqual({ kind: 'held' });
+    });
+
+    test.each([
+        ['head', 'UPDATE intents SET head = ? WHERE id = ?', 'z'.repeat(40)],
+        ['PR number', 'UPDATE intents SET pr = ? WHERE id = ?', 0],
+    ])('a row whose %s cannot be read either is reported and holds, without an escalation', async (_name, sql, value) => {
+        fx.failNext('deliverNote', 'lost-request');
+        await actions.note(NOTE, NOW);
+        raw(sql, value, NOTE_ID);
+        const report = await actions.reconcile(NOW + 1);
+        expect(report).toEqual({ pending: [], unrecognised: [NOTE_ID], held: [REPO] });
+        expect(fx.count('createEscalation')).toBe(0);
+    });
+
+    test('an unreadable escalation row does not stop the pass', async () => {
+        fx.failNext('createEscalation', 'lost-request');
+        await actions.escalate({ ...ESCALATION, reason: 'unrecognised-intent-row' }, NOW);
+        const id = `escalation:${REPO}#${PR}@${HEAD}:unrecognised-intent-row:1`;
+        raw('UPDATE intents SET state = ? WHERE id = ?', 'sending', id);
+        expect(await actions.reconcile(NOW + 1)).toEqual({ pending: [], unrecognised: [id], held: [REPO] });
+        expect(fx.count('createEscalation')).toBe(1);
     });
 });
 

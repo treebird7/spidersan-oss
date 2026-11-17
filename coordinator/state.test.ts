@@ -159,15 +159,39 @@ describe('intents', () => {
         expect(state.openIntents().open).toHaveLength(5);
     });
 
-    test('a rolled-back or dry-run intent may be tried again, under a new id', () => {
+    const rowCount = (): number => {
+        const other = new Database(path, { readonly: true });
+        const rows = other.query('SELECT id FROM intents').all();
+        other.close();
+        return rows.length;
+    };
+
+    test('a rolled-back intent may be tried again, under a new id', () => {
         const first = state.queue(merge(), NOW).intent;
         state.drop(first.id, 'rolled-back', NOW);
         const second = state.queue(merge(), NOW);
         expect(second.created).toBe(true);
         expect(second.intent.id).toBe(`merge:${REPO}#42@${HEAD}:2`);
-        state.drop(second.intent.id, 'dry-run', NOW);
-        expect(state.queue(merge(), NOW).intent.id).toBe(`merge:${REPO}#42@${HEAD}:3`);
+        expect(rowCount()).toBe(2);
     });
+
+    test.each([['merge', merge()], ['note', note()]] as const)(
+        'a dry-run %s asked for again reopens the same row instead of writing another',
+        (_name, spec) => {
+            const first = state.queue(spec, NOW).intent;
+            for (let wake = 1; wake <= 3; wake++) {
+                state.begin(first.id, NOW + wake);
+                state.drop(first.id, 'dry-run', NOW + wake);
+                const again = state.queue(spec, NOW + wake + 1);
+                expect(again).toEqual({
+                    created: true,
+                    intent: { ...first, state: 'queued', updatedAt: NOW + wake + 1 },
+                });
+                expect(state.intent(first.id)?.state).toBe('queued');
+            }
+            expect(rowCount()).toBe(1);
+        },
+    );
 
     test('a done merge or note is never queued again; a done gate reset can be', () => {
         const m = state.queue(merge(), NOW).intent;
@@ -319,7 +343,8 @@ describe('held repos', () => {
     ])('an open row with %s is unrecognised and holds its repo, whatever its kind', (_name, sql, value) => {
         const id = state.queue(note(), NOW).intent.id;
         raw(sql, value);
-        expect(state.openIntents()).toEqual({ open: [], unrecognised: [{ id, repo: REPO }] });
+        const head = sql.includes('head') ? value : HEAD;
+        expect(state.openIntents()).toEqual({ open: [], unrecognised: [{ id, repo: REPO, pr: 42, head }] });
         expect(state.heldRepos()).toEqual([REPO]);
         expect(state.intent(id)).toBeNull();
         expect(() => state.queue(note(), NOW)).toThrow();
