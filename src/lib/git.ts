@@ -204,6 +204,9 @@ export type MergeConflictKind = 'content' | 'add/add' | 'delete/modify' | 'renam
 export interface MergeConflictResult {
     base: string;
     branch: string;
+    /** Full commit shas handed to merge-tree; null when that ref did not resolve. */
+    baseSha: string | null;
+    headSha: string | null;
     mergeBase: string | null;
     conflicts: { file: string; kind: MergeConflictKind }[];
     clean: boolean; // conflicts.length === 0 && !error
@@ -400,6 +403,8 @@ export function getMergeConflicts(base: string, branch: string): MergeConflictRe
     const baseResult: MergeConflictResult = {
         base,
         branch,
+        baseSha: null,
+        headSha: null,
         mergeBase: null,
         conflicts: [],
         clean: false,
@@ -421,6 +426,7 @@ export function getMergeConflicts(base: string, branch: string): MergeConflictRe
     if (baseSha === null) {
         return { ...baseResult, error: `ref not found: ${base}` };
     }
+    baseResult.baseSha = baseSha;
     try {
         branchSha = resolveRefToSha(branch);
     } catch (error) {
@@ -432,6 +438,7 @@ export function getMergeConflicts(base: string, branch: string): MergeConflictRe
     if (branchSha === null) {
         return { ...baseResult, error: `ref not found: ${branch}` };
     }
+    baseResult.headSha = branchSha;
 
     // Compute merge-base (best-effort; not fatal if unrelated histories).
     let mergeBase: string | null;
@@ -527,14 +534,15 @@ export function getMergeConflicts(base: string, branch: string): MergeConflictRe
             return { ...baseResult, mergeBase, method: 'legacy', error: 'Not in a git repository' };
         }
         // Legacy form may still produce output on a thrown error in some gits.
+        // A failed merge-tree with no parseable conflict is an error, never "clean".
         const stdout = getThrownStdout(error);
-        if (stdout) {
-            const conflicts = parseLegacyConflicts(stdout);
+        const conflicts = stdout ? parseLegacyConflicts(stdout) : [];
+        if (conflicts.length > 0) {
             return {
                 ...baseResult,
                 mergeBase,
                 conflicts,
-                clean: conflicts.length === 0,
+                clean: false,
                 method: 'legacy',
                 rawOutput: stdout,
             };

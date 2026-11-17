@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`conflicts --real --json` is safe to gate a script on** (sp-poga). The document gains a
+  top-level `status` (`clean` | `conflict` | `blocked` | `incomplete` | `error`), `pr`, `repo`
+  and an `errors` list; each result gains `baseSha` and `headSha`, the full commit shas handed
+  to `git merge-tree`. `base`, `results`, `carries` and `gate` are unchanged. A failure before
+  the analysis (bad `--pr`, fetch failed, `--all` with no registry) used to print nothing on
+  stdout; it now prints the same document with `status: "error"`.
+- **Exit code 2 means "no verdict"**. `--exit-code` and `--strict` ignored analysis errors: an
+  unresolved ref or a failed merge-tree exited 0, the same as a clean merge. They now exit 2,
+  and an error outranks a conflict. Unreadable `--gate` labels move from 1 to 2. A bad `--pr`,
+  a failed PR fetch and `--real --all` with no registry move from 1 to 2, with or without a
+  flag, so 1 only ever means a conflict or an unmet gate. Without a flag, an error the analyzer
+  returns still exits 0 (the MCP server reads the JSON instead).
+- `conflicts --vs-prs --json` adds `skipped`: open PRs whose changed-file list could not be
+  read, or all of them when `gh` is unavailable. They were dropped from the comparison silently.
+
+### Fixed
+
+- **A failed legacy `git merge-tree` no longer reads as clean.** On git older than 2.38, a
+  merge-tree that exited non-zero with output but no conflict markers returned `clean: true`.
+  It is now an error.
+
 ### Added
 
 - **`/spidersan` skill: `review` workflow** — a read-only branch health check (registry vs

@@ -159,4 +159,40 @@ describe('getMergeConflicts — legacy fallback parser (mocked, recorded fixture
         expect(result.clean).toBe(false);
         expect(result.conflicts).toEqual([]);
     });
+
+    it('reports the shas it passed to merge-tree (sp-poga)', () => {
+        const baseSha = 'b'.repeat(40);
+        const headSha = 'a'.repeat(40);
+        mockExecFileSync.mockImplementation(((_cmd: string, args: readonly string[]) => {
+            const a = args as string[];
+            if (a[0] === 'rev-parse') return a[2].startsWith('bx') ? `${baseSha}\n` : `${headSha}\n`;
+            if (a[0] === 'merge-tree' && a.includes('--write-tree')) throw unknownOptionError();
+            if (a[0] === 'merge-base') return 'cafebabecafebabecafebabecafebabecafebabe\n';
+            return LEGACY_DISJOINT_CLEAN;
+        }) as unknown as typeof ExecFileSync);
+
+        const result = getMergeConflicts('bx', 'by');
+
+        expect(result).toMatchObject({ baseSha, headSha, clean: true });
+        expect(mockExecFileSync).toHaveBeenCalledWith(
+            'git', ['merge-tree', 'cafebabecafebabecafebabecafebabecafebabe', baseSha, headSha], expect.anything(),
+        );
+    });
+
+    it('a failed legacy merge-tree with no parseable conflict is an error, not clean (sp-poga)', () => {
+        mockExecFileSync.mockImplementation(((_cmd: string, args: readonly string[]) => {
+            const a = args as string[];
+            if (a[0] === 'rev-parse') return 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n';
+            if (a[0] === 'merge-tree' && a.includes('--write-tree')) throw unknownOptionError();
+            if (a[0] === 'merge-base') return 'cafebabecafebabecafebabecafebabecafebabe\n';
+            const err = new Error('Command failed: git merge-tree') as Error & { stdout?: string };
+            err.stdout = 'fatal: unable to read tree\n';
+            throw err;
+        }) as unknown as typeof ExecFileSync);
+
+        const result = getMergeConflicts('bx', 'by');
+
+        expect(result.clean).toBe(false);
+        expect(result.error).toBeDefined();
+    });
 });

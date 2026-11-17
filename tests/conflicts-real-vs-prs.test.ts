@@ -83,6 +83,8 @@ function makeReport(over: Partial<RealConflictReport> = {}): RealConflictReport 
     return {
         base: 'main',
         branch: 'feat/current',
+        baseSha: 'b'.repeat(40),
+        headSha: 'a'.repeat(40),
         mergeBase: 'abc123',
         conflicts: [],
         clean: true,
@@ -274,5 +276,25 @@ describe('conflicts --real --vs-prs (sp-a1l3)', () => {
         expect(analyzeRealConflicts).not.toHaveBeenCalled();
         expect(listOpenPRs).toHaveBeenCalled();
         expect(logged()).toContain('PR #64 (other/branch)');
+    });
+
+    it('an analysis error in the real half survives the overlap pass as exit 2 (sp-poga)', async () => {
+        mockRegistry();
+        (analyzeRealConflicts as Mock).mockResolvedValue(makeReport({ clean: false, error: 'merge-tree failed' }));
+
+        const code = await run(['--real', '--vs-prs', '--exit-code']);
+
+        expect(code).toBe(2);
+        expect(listOpenPRs).toHaveBeenCalled(); // the overlap half still ran
+    });
+
+    it('--vs-prs --json reports open PRs it could not compare instead of dropping them (sp-poga)', async () => {
+        mockRegistry();
+        (listOpenPRs as Mock).mockResolvedValue([{ number: 7, title: 't', headBranch: 'feat/other', draft: false }]);
+        (getPRChangedFiles as Mock).mockResolvedValue([]); // what a failed `gh pr diff` returns
+
+        await run(['--vs-prs', '--json']);
+
+        expect(JSON.parse(logged()).skipped).toEqual(['PR #7 (feat/other): no changed-file list']);
     });
 });

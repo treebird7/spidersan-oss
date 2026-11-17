@@ -16,7 +16,7 @@ import { getStorage } from '../storage/index.js';
 import type { Branch } from '../storage/adapter.js';
 import type { MachineRegistryView } from '../types/cloud.js';
 import { loadMachineIdentity } from '../lib/machine.js';
-import { getRepoName, registryRepoNames, resolveBranchRef } from '../lib/git.js';
+import { execGit, getRepoName, registryRepoNames, resolveBranchRef } from '../lib/git.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
 import { analyzeSemantic, resolveBranchTip, resolveCrossMachineRef } from '../lib/semantic-analysis.js';
 import { getCLIPath } from '../lib/security.js';
@@ -265,7 +265,20 @@ function renderRealReport(report: RealConflictReport): void {
  * Only `--all` (which enumerates registered branches) requires an initialized
  * registry, and that path is gated here.
  *
- * @returns the process exit code (0 always, unless `--exit-code` + conflicts → 1).
+ * `--json` always prints exactly one document, including on a failure before
+ * the analysis (bad --pr, fetch failed, no registry for --all). `status` is the
+ * verdict a script gates on — anything but `clean` is not a pass:
+ *   clean      every target analysed, no conflict, tested shas known
+ *   conflict   a real conflict                       → exit 1 under --exit-code/--strict
+ *   blocked    merges cleanly, a --gate label is set → exit 1 under --exit-code/--strict
+ *   incomplete nothing was analysed (--all, no active branches) → exit 0
+ *   error      listed in `errors`; no verdict        → exit 2
+ * A failure before the analysis exits 2 with or without a flag. An error the
+ * analyzer returns (unresolved ref, merge-tree failure) or an unreadable gate
+ * exits 2 only under --exit-code/--strict: unflagged it stays 0, which the MCP
+ * server's `conflicts --real --json` call relies on. Error outranks conflict.
+ *
+ * @returns the process exit code.
  */
 /**
  * The ref `--real` merges INTO: the remote-tracking trunk when it exists,
@@ -316,6 +329,20 @@ function renderCarries(report: CarriesReport): void {
     }
 }
 
+type RealStatus = 'clean' | 'conflict' | 'blocked' | 'incomplete' | 'error';
+interface RealError { stage: 'usage' | 'fetch' | 'registry' | 'analysis' | 'gate'; message: string; ref?: string }
+
+/** `owner/name` from the origin URL, or null — pure git, like the rest of --real. */
+function originRepo(): string | null {
+    try {
+        const m = execGit(['remote', 'get-url', 'origin'], { stdio: ['pipe', 'pipe', 'ignore'] })
+            .trim().match(/[/:]([^/:]+\/[^/]+?)(?:\.git)?$/);
+        return m ? m[1] : null;
+    } catch {
+        return null;
+    }
+}
+
 async function runRealConflicts(options: {
     base?: string;
     branch?: string;
@@ -334,14 +361,24 @@ async function runRealConflicts(options: {
     // Determine target branches.
     let targets: string[];
     let prNumber: number | undefined;
+    // Nothing was analysed: say so in the JSON too, and exit 2 (never 1 = conflict).
+    const abort = (stage: RealError['stage'], message: string): number => {
+        if (options.json) {
+            console.log(JSON.stringify({
+                status: 'error', pr: prNumber ?? null, repo: originRepo(), base, results: [], errors: [{ stage, message }],
+            }, null, 2));
+        }
+        return 2;
+    };
     if (options.pr) {
         // --pr in real mode: the PR head isn't a local ref, so fetch it. Without
         // this, --real fell through to getCurrentBranch() and silently checked
         // trunk-vs-trunk → a false "clean" (tb-57fr).
         prNumber = parseInt(options.pr, 10);
         if (isNaN(prNumber) || prNumber <= 0) {
+            prNumber = undefined;
             console.error('❌ Invalid PR number. Provide a positive integer, e.g. --pr 42');
-            return 1;
+            return abort('usage', 'invalid PR number');
         }
         const ref = `refs/spidersan/pr-${prNumber}`;
         try {
@@ -362,7 +399,7 @@ async function runRealConflicts(options: {
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             console.error(`❌ Could not fetch PR #${prNumber} head: ${msg}`);
-            return 1;
+            return abort('fetch', `could not fetch PR #${prNumber} head or trunk: ${msg}`);
         }
         targets = [ref];
     } else if (options.all) {
@@ -371,7 +408,7 @@ async function runRealConflicts(options: {
         if (!(await storage.isInitialized())) {
             console.error('❌ Spidersan not initialized. Run: spidersan init');
             console.error('   (--real --all needs the registry; --real alone does not)');
-            return 1;
+            return abort('registry', 'spidersan not initialized (--real --all needs the registry)');
         }
         // Reconcile-on-read: fold git truth over stale `active` status so a
         // branch already merged into trunk isn't checked for conflicts (tb-8sa.1).
@@ -386,6 +423,12 @@ async function runRealConflicts(options: {
     }
 
     const anyConflicts = results.some((r) => !r.error && !r.clean);
+    const errors: RealError[] = [];
+    for (const r of results) {
+        if (r.error) errors.push({ stage: 'analysis', ref: r.branch, message: r.error });
+        // A verdict with no named commits can't be pinned to what was tested.
+        else if (!r.baseSha || !r.headSha) errors.push({ stage: 'analysis', ref: r.branch, message: 'analyzer did not report the shas it tested' });
+    }
 
     // --pr extras: precondition() gate + carries() provenance (opt-in, compose).
     let gate: { labels: string[]; unmet: boolean; unknown?: boolean } | undefined;
@@ -398,6 +441,7 @@ async function runRealConflicts(options: {
             const labels = isGhAvailable() ? await getPRLabels(prNumber) : null;
             if (labels === null) {
                 gate = { labels: [], unmet: true, unknown: true };
+                errors.push({ stage: 'gate', message: 'could not read PR labels (gh missing or unauthenticated)' });
             } else {
                 const needs = preconditionLabels(labels);
                 gate = { labels: needs, unmet: needs.length > 0 };
@@ -412,8 +456,14 @@ async function runRealConflicts(options: {
         }
     }
 
+    const status: RealStatus = errors.length > 0 ? 'error'
+        : anyConflicts ? 'conflict'
+        : gate?.unmet ? 'blocked'
+        : results.length === 0 ? 'incomplete'
+        : 'clean';
+
     if (options.json) {
-        console.log(JSON.stringify({ base, results, carries, gate }, null, 2));
+        console.log(JSON.stringify({ status, pr: prNumber ?? null, repo: originRepo(), base, results, errors, carries, gate }, null, 2));
     } else {
         if (results.length === 0) {
             console.log(`🕷️ No active branches to check vs ${base}.`);
@@ -427,7 +477,8 @@ async function runRealConflicts(options: {
 
     // --strict is the advertised CI flag on the legacy path; honour it here too
     // instead of silently ignoring it (real conflicts are always tier-blocking).
-    return (options.exitCode || options.strict) && (anyConflicts || gate?.unmet === true) ? 1 : 0;
+    if (!(options.exitCode || options.strict)) return 0;
+    return status === 'error' ? 2 : status === 'conflict' || status === 'blocked' ? 1 : 0;
 }
 
 export const conflictsCommand = new Command('conflicts')
@@ -445,7 +496,7 @@ export const conflictsCommand = new Command('conflicts')
     .option('--real', 'Compute TRUE merge conflicts via git merge-tree (vs registry overlap)')
     .option('--base <ref>', 'Base/trunk ref to merge into for --real (default: detected trunk)')
     .option('--all', 'With --real: check every active registered branch')
-    .option('--exit-code', 'With --real: exit 1 if any real conflicts found (like git diff)')
+    .option('--exit-code', 'With --real: exit 1 on a real conflict, 2 on an analysis error (no verdict)')
     .option('--carries', 'With --pr: show carries() provenance (own vs inherited commits)')
     .option('--gate', 'With --pr: check precondition() needs-* labels; --exit-code blocks if unmet')
     .action(async (options) => {
@@ -593,9 +644,11 @@ export const conflictsCommand = new Command('conflicts')
         // ponytail: 1 + N gh calls (list + per-PR diff); fine for typical open-PR counts,
         // parallelise if a repo ever carries hundreds of open PRs.
         const prHeadBranches: string[] = [];
+        const vsPrsSkipped: string[] = []; // --vs-prs coverage that did not run, for --json
         if (options.vsPrs) {
             if (!isGhAvailable()) {
                 console.error('⚠️  --vs-prs needs gh (unavailable/unauthenticated); checking registered branches only.');
+                vsPrsSkipped.push('open PRs: gh unavailable or unauthenticated');
             } else {
                 const openPRs = (await listOpenPRs()).filter(pr => pr.headBranch !== targetBranch);
                 prHeadBranches.push(...openPRs.map(pr => pr.headBranch));
@@ -608,6 +661,8 @@ export const conflictsCommand = new Command('conflicts')
                     description: pr.title,
                 })));
                 allBranches.push(...prBranches.filter(b => b.files.length > 0));
+                // getPRChangedFiles returns [] when gh fails, so an empty list is "not compared".
+                vsPrsSkipped.push(...prBranches.filter(b => b.files.length === 0).map(b => `${b.name}: no changed-file list`));
             }
         }
 
@@ -747,6 +802,7 @@ export const conflictsCommand = new Command('conflicts')
                 branch: targetBranch,
                 conflicts,
                 crossMachine: cross.status,
+                ...(options.vsPrs ? { skipped: vsPrsSkipped } : {}),
                 summary: {
                     tier3: tier3Count,
                     tier2: tier2Count,
