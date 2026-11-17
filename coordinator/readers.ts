@@ -378,6 +378,8 @@ export interface CiInput {
     required: unknown;
     /** The coordinator's own merge-gate status context, dropped before judging; null = none. */
     gateContext: unknown;
+    /** The app that posts the gate status; null = a commit status with no app. Only its entries are dropped. */
+    gateAppId: unknown;
     /** The merge commit the run tested, as `{baseParent, headParent}` full shas; null = not exposed. */
     testedMerge: unknown;
 }
@@ -424,6 +426,11 @@ export function readCi(input: CiInput): CiEvidence | null {
         seen.add(r.context);
     }
 
+    // Only the coordinator's own gate entry is dropped. The same name from any other source is
+    // not its status, and a red one must not vanish: no verdict.
+    const gateApp = input.gateAppId;
+    if (gateApp !== null && !isAppId(gateApp)) return evidence(false, false);
+    if (all.some((o) => o.context === input.gateContext && o.appId !== gateApp)) return evidence(false, false);
     const judged = all.filter((o) => o.context !== input.gateContext);
     let complete = !judged.some((o) => o.state === 'pending' || !isOneOf(CI_STATES, o.state));
     let green = judged.every((o) => o.state === 'success' || o.state === 'skipped' || o.state === 'neutral');
@@ -557,7 +564,8 @@ export interface TouchesInput {
 }
 
 function isPattern(value: unknown): value is string {
-    return isText(value) && !value.startsWith('/') && !/[*?[\]\\]/.test(value);
+    // In the same normal form as the paths it is matched against, or it matches nothing.
+    return isText(value) && !/[*?[\]]/.test(value) && isPlainPath(value.endsWith('/') ? value.slice(0, -1) : value);
 }
 
 /**

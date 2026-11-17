@@ -466,6 +466,7 @@ const ci = (over: Partial<CiInput> = {}): CiInput => {
         expectedCount: Array.isArray(observations) ? observations.length : 0,
         required: REQUIRED,
         gateContext: null,
+        gateAppId: null,
         testedMerge: { baseParent: BASE, headParent: HEAD },
         ...over,
     };
@@ -534,6 +535,14 @@ describe('CI → CiEvidence', () => {
         ['a required context listed twice', { required: [...REQUIRED, REQUIRED[0]] }],
         ['the gate context listed as required', { required: REQUIRED, gateContext: 'Dependency and secret scan' }],
         ['a gate context that is not a string', { gateContext: 7 }],
+        [
+            'a gate-named entry from an app that is not the gate\'s',
+            {
+                gateContext: 'spidersan/merge-gate',
+                observations: [obs('typecheck · build · test'), obs('Dependency and secret scan'), obs('spidersan/merge-gate', 'failure', 99)],
+            },
+        ],
+        ['a gate app id that is not an app id', { gateAppId: -1 }],
     ])('%s → not complete, not green', (_label, over) => {
         expect(readCi(ci(over))).toEqual(INCOMPLETE);
     });
@@ -866,6 +875,11 @@ describe('touches → PrSnapshot.touches', () => {
         ['a glob pattern', { protectedPaths: ['.github/**'], mergeEffects: [] }],
         ['an absolute pattern', { protectedPaths: ['/coordinator/'], mergeEffects: [] }],
         ['an empty pattern', { protectedPaths: ['coordinator/'], mergeEffects: [''] }],
+        ['a pattern with a doubled slash', { protectedPaths: ['coordinator//'], mergeEffects: [] }],
+        ['a pattern with a leading ./', { protectedPaths: ['./coordinator/'], mergeEffects: [] }],
+        ['a pattern with a .. segment', { protectedPaths: ['src/../coordinator/'], mergeEffects: [] }],
+        ['a pattern that is only a slash', { protectedPaths: ['coordinator/'], mergeEffects: ['/'] }],
+        ['a quoted pattern', { protectedPaths: ['"coordinator/"'], mergeEffects: [] }],
         ['a non-string pattern', { protectedPaths: ['coordinator/', 7], mergeEffects: [] }],
         ['a missing merge-effect list', { protectedPaths: ['coordinator/'] }],
         ['no patterns at all', null],
