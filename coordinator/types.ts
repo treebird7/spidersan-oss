@@ -83,6 +83,7 @@ export interface Retirement {
 /**
  * One paid call in the attempt ledger (triage, review, verify …). It is charged
  * at `loggedCost` once the run completed and logged one, else at `reservation`.
+ * `reservation` must be > 0, so a run with no logged cost is never free.
  */
 export interface Attempt {
     headSha: string;
@@ -163,11 +164,26 @@ export interface PrSnapshot {
     conflicts: ConflictsResult | null;
 }
 
+/** What is reserved against the ceiling before each kind of paid run. Each > 0. */
+export interface Reservations {
+    triage: number;
+    plain: number;
+    second: number;
+    vector: number;
+}
+
+/** A review-set member to run, with the amount to reserve for it. */
+export interface DispatchedMember extends Member {
+    reservation: number;
+}
+
 /** Per-repo policy. Nothing here has a built-in fleet value. */
 export interface Policy {
     mode: Mode;
     /** Per-PR spend ceiling. */
     ceiling: number;
+    /** Planned reservation per paid run; a run is dispatched only if it fits under the ceiling. */
+    reservations: Reservations;
     /** Max reviewed heads per PR. */
     maxHeads: number;
     /** Model family that runs the `second` variant. */
@@ -264,8 +280,9 @@ export type Decision =
           field?: string;
       }
     | { kind: 'wait'; reason: ReasonOf<'wait'> }
-    | { kind: 'run-triage'; reason: ReasonOf<'run-triage'> }
-    | { kind: 'run-reviews'; reason: ReasonOf<'run-reviews'>; pick: ReviewPick; members: Member[] }
+    | { kind: 'run-triage'; reason: ReasonOf<'run-triage'>; reservation: number }
+    /** `members`: the missing members that fit under the ceiling, in required order. */
+    | { kind: 'run-reviews'; reason: ReasonOf<'run-reviews'>; pick: ReviewPick; members: DispatchedMember[] }
     | { kind: 'notify'; reason: ReasonOf<'notify'>; findings: OpenFinding[] }
     /** Passed every evidence gate, but policy does not merge it. */
     | ({ kind: 'ready'; reason: ReasonOf<'ready'> } & MergeTarget)

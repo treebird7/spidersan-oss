@@ -24,6 +24,7 @@ import type {
     BudgetState,
     ConflictsResult,
     Decision,
+    DispatchedMember,
     Member,
     Mode,
     OpenFinding,
@@ -31,10 +32,12 @@ import type {
     Policy,
     PrSnapshot,
     ReasonOf,
+    Reservations,
     Retirement,
     ReviewPick,
     ReviewRun,
     ReviewSetState,
+    Variant,
 } from './types';
 
 // ── Primitive checks ───────────────────────────────────────────────────────
@@ -65,6 +68,11 @@ function isBool(value: unknown): value is boolean {
 /** A finite number ≥ 0 (costs, timestamps, durations). NaN and Infinity are refused. */
 function isAmount(value: unknown): value is number {
     return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+/** A finite number > 0 (reservations). */
+function isPositive(value: unknown): value is number {
+    return isAmount(value) && value > 0;
 }
 
 // ── Exported helpers ───────────────────────────────────────────────────────
@@ -168,9 +176,11 @@ export function blockingFindings(
 /**
  * Spend and head admission for one PR. An attempt is charged at its logged cost
  * once it has one, else at its reservation (so failed and unknown outcomes stay
- * charged). A head is admitted once any attempt names it. `blockedBy` says why
- * no new paid run may start at `head`: a malformed ledger or limit, a new head
- * when `maxHeads` are already admitted, or spend at or over the ceiling.
+ * charged). A reservation must be > 0. A head is admitted once any attempt
+ * names it. `blockedBy` says why no new paid run may start at `head`: a
+ * malformed ledger or limit, a new head when `maxHeads` are already admitted,
+ * or spend at or over the ceiling. `blockedBy: null` does not mean a given run
+ * fits: use `fitsUnderCeiling` with the run's planned reservation.
  */
 export function budgetState(
     attempts: readonly unknown[],
@@ -185,7 +195,7 @@ export function budgetState(
     let spent = 0;
     const admittedHeads: string[] = [];
     for (const attempt of attempts) {
-        if (!isRecord(attempt) || !isFullSha(attempt.headSha) || !isAmount(attempt.reservation)) return invalid;
+        if (!isRecord(attempt) || !isFullSha(attempt.headSha) || !isPositive(attempt.reservation)) return invalid;
         if (attempt.loggedCost !== null && !isAmount(attempt.loggedCost)) return invalid;
         spent += attempt.loggedCost === null ? attempt.reservation : attempt.loggedCost;
         if (!admittedHeads.includes(attempt.headSha)) admittedHeads.push(attempt.headSha);
@@ -195,6 +205,53 @@ export function budgetState(
     if (!headAdmitted && admittedHeads.length >= limits.maxHeads) blockedBy = 'heads';
     else if (!(spent < limits.ceiling)) blockedBy = 'ceiling';
     return { valid: true, spent, admittedHeads, headAdmitted, blockedBy };
+}
+
+/**
+ * The planned reservation for one paid run, or null when `reservations` does
+ * not hold a finite amount > 0 for it.
+ */
+export function reservationFor(run: 'triage' | Variant, reservations: Reservations): number | null {
+    if (!isRecord(reservations)) return null;
+    let amount: unknown;
+    switch (run) {
+        case 'triage':
+            amount = reservations.triage;
+            break;
+        case 'plain':
+            amount = reservations.plain;
+            break;
+        case 'second':
+            amount = reservations.second;
+            break;
+        case 'vector':
+            amount = reservations.vector;
+            break;
+        default:
+            run satisfies never;
+            return null;
+    }
+    return isPositive(amount) ? amount : null;
+}
+
+/**
+ * How many of `planned` (reservations of the runs to dispatch, in order) fit:
+ * the longest prefix with `spent + Σ prefix ≤ ceiling`. 0 when the budget is
+ * blocked or malformed, the ceiling is not a positive amount, or the first run
+ * does not fit. A planned amount that is not > 0 ends the prefix.
+ */
+export function fitsUnderCeiling(budget: BudgetState, ceiling: number, planned: readonly number[]): number {
+    if (!isRecord(budget) || budget.valid !== true || budget.blockedBy !== null) return 0;
+    if (!isAmount(budget.spent) || !isPositive(ceiling) || !Array.isArray(planned)) return 0;
+    let total = budget.spent;
+    let count = 0;
+    for (const amount of planned as readonly unknown[]) {
+        if (!isPositive(amount)) break;
+        total += amount;
+        if (!(total <= ceiling)) break;
+        count++;
+    }
+    return count;
 }
 
 /**
@@ -329,7 +386,7 @@ function validateRest(s: PrSnapshot): string | null {
         const a: unknown = attempts[i];
         if (!isRecord(a)) return `attempts[${i}]`;
         if (!isFullSha(a.headSha)) return `attempts[${i}].headSha`;
-        if (!isAmount(a.reservation)) return `attempts[${i}].reservation`;
+        if (!isPositive(a.reservation)) return `attempts[${i}].reservation`;
         if (a.loggedCost !== null && !isAmount(a.loggedCost)) return `attempts[${i}].loggedCost`;
     }
 
@@ -356,6 +413,11 @@ function validatePolicy(p: unknown): string | null {
     if (!isOneOf(MODES, p.mode)) return 'mode';
     if (!isAmount(p.ceiling) || p.ceiling <= 0) return 'ceiling';
     if (!Number.isSafeInteger(p.maxHeads) || (p.maxHeads as number) < 1) return 'maxHeads';
+    const reservations = p.reservations;
+    if (!isRecord(reservations)) return 'reservations';
+    for (const run of ['triage', 'plain', 'second', 'vector'] as const) {
+        if (!isPositive(reservations[run])) return `reservations.${run}`;
+    }
     if (!isText(p.secondFamily)) return 'secondFamily';
     if (!isAmount(p.stallClaimantMs)) return 'stallClaimantMs';
     if (!isAmount(p.stallOwnerMs) || p.stallOwnerMs < p.stallClaimantMs) return 'stallOwnerMs';
@@ -398,6 +460,40 @@ function admission(budget: BudgetState): Decision | null {
     }
 }
 
+/** `run-triage` if the head is admitted and the triage reservation fits; else the escalation. */
+function dispatchTriage(budget: BudgetState, policy: Policy, reason: ReasonOf<'run-triage'>): Decision {
+    const blocked = admission(budget);
+    if (blocked !== null) return blocked;
+    const reservation = reservationFor('triage', policy.reservations);
+    if (reservation === null) return escalate('invalid-policy', 'owner', 'reservations.triage');
+    if (fitsUnderCeiling(budget, policy.ceiling, [reservation]) !== 1) return escalate('budget-ceiling-reached');
+    return { kind: 'run-triage', reason, reservation };
+}
+
+/**
+ * `run-reviews` for the longest prefix of the missing members (in required
+ * order) whose reservations fit under the ceiling; an escalation when the head
+ * is not admitted or not even the first member fits.
+ */
+function dispatchReviews(budget: BudgetState, policy: Policy, pick: ReviewPick, missing: Member[]): Decision {
+    const blocked = admission(budget);
+    if (blocked !== null) return blocked;
+    const planned: DispatchedMember[] = [];
+    for (const member of missing) {
+        const reservation = reservationFor(member.variant, policy.reservations);
+        if (reservation === null) return escalate('invalid-policy', 'owner', `reservations.${member.variant}`);
+        planned.push({ ...member, reservation });
+    }
+    const fit = fitsUnderCeiling(
+        budget,
+        policy.ceiling,
+        planned.map((m) => m.reservation),
+    );
+    // An incomplete set with nothing missing (no valid pick) dispatches nothing either.
+    if (fit < 1) return escalate('budget-ceiling-reached');
+    return { kind: 'run-reviews', reason: 'review-set-incomplete', pick, members: planned.slice(0, fit) };
+}
+
 /** null = approved at this head; otherwise the non-merging decision. */
 function effectsApprovalGate(approval: OwnerApproval | null, head: string): Decision | null {
     if (approval === null) return wait('awaiting-effects-approval');
@@ -434,12 +530,8 @@ function reviewStage(s: PrSnapshot, policy: Policy): { decision: Decision } | { 
             break;
         case 'change': {
             // A failed triage is never a pick: no review set is derived from it.
-            if (s.triage === null) {
-                return { decision: admission(budget) ?? { kind: 'run-triage', reason: 'triage-missing' } };
-            }
-            if (s.triage.ok !== true) {
-                return { decision: admission(budget) ?? { kind: 'run-triage', reason: 'triage-failed' } };
-            }
+            if (s.triage === null) return { decision: dispatchTriage(budget, policy, 'triage-missing') };
+            if (s.triage.ok !== true) return { decision: dispatchTriage(budget, policy, 'triage-failed') };
             pick = s.triage.model;
             break;
         }
@@ -449,16 +541,7 @@ function reviewStage(s: PrSnapshot, policy: Policy): { decision: Decision } | { 
     }
 
     const set = reviewSetState(pick, s.reviews, head, policy.secondFamily);
-    if (set.complete !== true) {
-        return {
-            decision: admission(budget) ?? {
-                kind: 'run-reviews',
-                reason: 'review-set-incomplete',
-                pick,
-                members: set.missing,
-            },
-        };
-    }
+    if (set.complete !== true) return { decision: dispatchReviews(budget, policy, pick, set.missing) };
 
     const atHead = s.reviews.filter((run) => run.headSha === head);
     if (atHead.some((run) => run.variant === 'second' && run.verdict === 'APPROVE')) {
@@ -524,14 +607,18 @@ export function decide(snapshot: PrSnapshot, policy: Policy, now: number): Decis
     if (pr.kind === 'release' && selfAuthored !== true) return escalate('release-not-coordinator-created');
     if (pr.kind !== 'release' && selfAuthored !== false) return escalate('self-authored-unsupported');
 
-    // 6. No trusted task link: review and notify, never merge.
+    // 6. Trusted roots, the gate, the coordinator, its config: escalate before
+    // the link check, so before any triage or review, whatever the link says.
+    if (snapshot.touches.protectedPaths !== false) return escalate('touches-protected-paths');
+
+    // 7. No trusted task link: review and notify, never merge.
     if (taskLinkTrusted(pr.fork, snapshot.link) !== true) {
         const reviewed = reviewStage(snapshot, policy);
         if ('decision' in reviewed) return reviewed.decision;
         return notify('untrusted-task-link', reviewed.open);
     }
 
-    // 7. Dependencies and umbrellas.
+    // 8. Dependencies and umbrellas.
     switch (snapshot.deps.state) {
         case 'met':
             break;
@@ -544,9 +631,6 @@ export function decide(snapshot: PrSnapshot, policy: Policy, now: number): Decis
             return wait('deps-unknown');
     }
     if (snapshot.deps.pipelineUmbrella !== false) return wait('pipeline-umbrella');
-
-    // 8. Trusted roots, the gate, the coordinator, its config.
-    if (snapshot.touches.protectedPaths !== false) return escalate('touches-protected-paths');
 
     // 9–11. Triage, review set, self-contradicting runs.
     const reviewed = reviewStage(snapshot, policy);

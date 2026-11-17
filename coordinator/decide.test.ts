@@ -4,8 +4,10 @@ import {
     budgetState,
     conflictsClean,
     decide,
+    fitsUnderCeiling,
     isFullSha,
     requiredMembers,
+    reservationFor,
     resolveMode,
     reviewSetState,
     taskLinkTrusted,
@@ -18,7 +20,7 @@ import {
     DEFAULT_STALL_OWNER_MS,
     REASONS,
 } from './types';
-import type { Attempt, Decision, Mode, Policy, PrSnapshot, ReviewRun } from './types';
+import type { Attempt, BudgetState, Decision, Mode, Policy, PrSnapshot, ReviewRun } from './types';
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -77,6 +79,7 @@ function policy(mode: Mode = 'dry-run'): Policy {
         mode,
         ceiling: DEFAULT_CEILING,
         maxHeads: DEFAULT_MAX_HEADS,
+        reservations: { triage: 0.1, plain: 1, second: 0.25, vector: 1 },
         secondFamily: 'haiku',
         stallClaimantMs: DEFAULT_STALL_CLAIMANT_MS,
         stallOwnerMs: DEFAULT_STALL_OWNER_MS,
@@ -359,6 +362,8 @@ describe('budgetState', () => {
         const bad: unknown[][] = [
             [at(HEAD, Number.NaN)],
             [at(HEAD, -1)],
+            [at(HEAD, 0)],
+            [at(HEAD, 0, 0.5)],
             [at(HEAD, 1, Number.NaN)],
             [at(HEAD, 1, Number.POSITIVE_INFINITY)],
             [at('aaaaaaa', 1)],
@@ -373,6 +378,40 @@ describe('budgetState', () => {
         expect(budgetState([], { ceiling: 5, maxHeads: 0 }, HEAD).blockedBy).toBe('invalid');
         expect(budgetState([], { ceiling: 5, maxHeads: 1.5 }, HEAD).blockedBy).toBe('invalid');
         expect(budgetState([], limits, 'aaaaaaa').blockedBy).toBe('invalid');
+    });
+});
+
+describe('reservationFor / fitsUnderCeiling', () => {
+    const reservations = { triage: 0.1, plain: 1, second: 0.25, vector: 2 };
+    const budget = (spent: number): BudgetState => budgetState([{ headSha: HEAD, reservation: 9, loggedCost: spent }], { ceiling: 5, maxHeads: 4 }, HEAD);
+
+    test('reservationFor returns the planned amount, or null when it is not > 0 or the run is unknown', () => {
+        expect(reservationFor('triage', reservations)).toBe(0.1);
+        expect(reservationFor('vector', reservations)).toBe(2);
+        expect(reservationFor('plain', { ...reservations, plain: 0 })).toBeNull();
+        expect(reservationFor('second', { ...reservations, second: Number.NaN })).toBeNull();
+        expect(reservationFor('constructor' as never, reservations)).toBeNull();
+        expect(reservationFor('plain', null as never)).toBeNull();
+    });
+
+    test('fitsUnderCeiling counts the longest prefix with spent + Σ ≤ ceiling', () => {
+        expect(fitsUnderCeiling(budget(4.99), 5, [1])).toBe(0);
+        expect(fitsUnderCeiling(budget(4), 5, [1])).toBe(1);
+        expect(fitsUnderCeiling(budget(4), 5, [1, 0.25])).toBe(1);
+        expect(fitsUnderCeiling(budget(3), 5, [1, 0.25, 0.75])).toBe(3);
+        expect(fitsUnderCeiling(budget(4), 5, [2, 0.25])).toBe(0);
+        expect(fitsUnderCeiling(budget(1), 5, [])).toBe(0);
+    });
+
+    test('fitsUnderCeiling is 0 for a blocked or malformed budget, ceiling or plan', () => {
+        expect(fitsUnderCeiling(budget(5), 5, [0.1])).toBe(0);
+        expect(fitsUnderCeiling(budgetState(null as never, { ceiling: 5, maxHeads: 4 }, HEAD), 5, [0.1])).toBe(0);
+        expect(fitsUnderCeiling(null as never, 5, [0.1])).toBe(0);
+        expect(fitsUnderCeiling(budget(1), Number.NaN, [0.1])).toBe(0);
+        expect(fitsUnderCeiling(budget(1), 5, [0])).toBe(0);
+        expect(fitsUnderCeiling(budget(1), 5, [Number.NaN, 1])).toBe(0);
+        expect(fitsUnderCeiling(budget(1), 5, [1, -1, 1])).toBe(1);
+        expect(fitsUnderCeiling(budget(1), 5, null as never)).toBe(0);
     });
 });
 
@@ -435,36 +474,41 @@ interface Ctx {
     now: number;
 }
 type Break = (c: Ctx) => void;
+/** Rows marked `true` must give the same reason when the task link is untrusted. */
+const ANY_LINK = true;
 
 /**
  * The loop, in order. Each row breaks one gate. Row i is run with its own break
  * AND every later row's break applied, so it only yields its reason if its gate
  * is consulted before all the later ones.
  */
-const ORDERED: Array<[kind: string, reason: string, brk: Break]> = [
-    ['escalate', 'invalid-snapshot', (c) => void ((c.s.pr as { number: unknown }).number = 0)],
-    ['skip', 'draft', (c) => void (c.s.pr.draft = true)],
-    ['escalate', 'fork', (c) => void (c.s.pr.fork = true)],
-    ['escalate', 'invalid-snapshot', (c) => void (c.s.blockingNotifiedAt = -1)],
-    ['escalate', 'invalid-policy', (c) => void (c.p.ceiling = Number.NaN)],
-    ['escalate', 'invalid-clock', (c) => void (c.now = Number.NaN)],
-    ['escalate', 'self-authored-unsupported', (c) => void (c.s.link.coordinatorCreatedPr = true)],
+const ORDERED: Array<[kind: string, reason: string, brk: Break, anyLink?: boolean]> = [
+    ['escalate', 'invalid-snapshot', (c) => void ((c.s.pr as { number: unknown }).number = 0), ANY_LINK],
+    ['skip', 'draft', (c) => void (c.s.pr.draft = true), ANY_LINK],
+    ['escalate', 'fork', (c) => void (c.s.pr.fork = true), ANY_LINK],
+    ['escalate', 'invalid-snapshot', (c) => void (c.s.blockingNotifiedAt = -1), ANY_LINK],
+    ['escalate', 'invalid-policy', (c) => void (c.p.ceiling = Number.NaN), ANY_LINK],
+    ['escalate', 'invalid-clock', (c) => void (c.now = Number.NaN), ANY_LINK],
+    ['escalate', 'self-authored-unsupported', (c) => void (c.s.link.coordinatorCreatedPr = true), ANY_LINK],
+    // Before the link check: escalates whatever the link says, before any paid run.
+    ['escalate', 'touches-protected-paths', (c) => void (c.s.touches.protectedPaths = true), ANY_LINK],
     ['wait', 'deps-unmet', (c) => void (c.s.deps.state = 'unmet')],
     ['wait', 'pipeline-umbrella', (c) => void (c.s.deps.pipelineUmbrella = true)],
-    ['escalate', 'touches-protected-paths', (c) => void (c.s.touches.protectedPaths = true)],
     [
         'escalate',
         'review-heads-exhausted',
         (c) => void (c.s.attempts = ['1', '2', '3', '4'].map((x) => ({ headSha: sha(x), reservation: 9, loggedCost: null }))),
+        ANY_LINK,
     ],
     // The budget check comes before any paid run, triage included.
-    ['run-triage', 'triage-missing', (c) => void (c.s.triage = null)],
-    ['run-reviews', 'review-set-incomplete', (c) => void (c.s.reviews = c.s.reviews.filter((r) => r.variant !== 'vector'))],
-    ['escalate', 'second-approved', (c) => void (c.s.reviews.find((r) => r.variant === 'second')!.verdict = 'APPROVE')],
+    ['run-triage', 'triage-missing', (c) => void (c.s.triage = null), ANY_LINK],
+    ['run-reviews', 'review-set-incomplete', (c) => void (c.s.reviews = c.s.reviews.filter((r) => r.variant !== 'vector')), ANY_LINK],
+    ['escalate', 'second-approved', (c) => void (c.s.reviews.find((r) => r.variant === 'second')!.verdict = 'APPROVE'), ANY_LINK],
     [
         'escalate',
         'request-changes-without-findings',
         (c) => void (c.s.reviews.find((r) => r.runId === 'r2')!.verdict = 'REQUEST CHANGES'),
+        ANY_LINK,
     ],
     ['notify', 'blocking-findings', (c) => void (c.s.retirements = [])],
     ['wait', 'ci-stale-head', (c) => void (c.s.ci!.headSha = HEAD_SAME7)],
@@ -488,6 +532,21 @@ describe('decide: the ordered loop', () => {
             const decision = d(c.s, c.p, c.now);
             expect(`${decision.kind}/${decision.reason}`).toBe(`${kind}/${reason}`);
         });
+
+        if (ORDERED[i]![3] === true) {
+            for (const untrust of [
+                (c: Ctx) => void (c.s.link.taskOpen = false),
+                (c: Ctx) => void (c.s.link.claimantRegisteredBranch = false),
+            ]) {
+                test(`gate ${i + 1}: ${kind}/${reason} also wins when the task link is untrusted`, () => {
+                    const c: Ctx = { s: clean(), p: policy('live'), now: NOW };
+                    for (let j = ORDERED.length - 1; j >= i; j--) ORDERED[j]![2](c);
+                    untrust(c);
+                    const decision = d(c.s, c.p, c.now);
+                    expect(`${decision.kind}/${decision.reason}`).toBe(`${kind}/${reason}`);
+                });
+            }
+        }
 
         test(`gate ${i + 1}: ${kind}/${reason} alone, on an otherwise clean snapshot`, () => {
             const c: Ctx = { s: clean(), p: policy('live'), now: NOW };
@@ -623,7 +682,6 @@ describe('decide: each gate\'s other outcomes', () => {
         const later: Array<(s: PrSnapshot) => void> = [
             (s) => void (s.deps.state = 'unmet'),
             (s) => void (s.deps.pipelineUmbrella = true),
-            (s) => void (s.touches.protectedPaths = true),
             (s) => void (s.effectsApproval = null),
             (s) => void (s.ci = null),
             (s) => void (s.conflicts = null),
@@ -633,6 +691,23 @@ describe('decide: each gate\'s other outcomes', () => {
             },
         ];
         for (const f of later) expectReason(d(untrusted(f)), 'notify', 'untrusted-task-link');
+    });
+
+    test('protected paths escalate on an untrusted link too, before any triage or review', () => {
+        for (const brk of [
+            (s: PrSnapshot) => void (s.link.taskOpen = false),
+            (s: PrSnapshot) => void (s.link.claimantRegisteredBranch = false),
+        ]) {
+            const s = mut((x) => {
+                brk(x);
+                x.touches.protectedPaths = true;
+                x.triage = null;
+                x.reviews = [];
+            });
+            for (const mode of ['review-only', 'dry-run', 'live'] as const) {
+                expect(d(s, policy(mode))).toEqual({ kind: 'escalate', reason: 'touches-protected-paths', to: 'owner' });
+            }
+        }
     });
 
     test('dependencies: unmet and unknown both wait', () => {
@@ -718,8 +793,8 @@ describe('decide: each gate\'s other outcomes', () => {
             x.triage = { ok: false };
             x.reviews.push(run({ runId: 'r4', family: 'luna' }), run({ runId: 'r5', family: 'terra' }));
         });
-        expect(d(s)).toEqual({ kind: 'run-triage', reason: 'triage-failed' });
-        expect(d(s, policy('live'))).toEqual({ kind: 'run-triage', reason: 'triage-failed' });
+        expect(d(s)).toEqual({ kind: 'run-triage', reason: 'triage-failed', reservation: 0.1 });
+        expect(d(s, policy('live'))).toEqual({ kind: 'run-triage', reason: 'triage-failed', reservation: 0.1 });
     });
 
     test('an incomplete set names the missing members', () => {
@@ -729,8 +804,8 @@ describe('decide: each gate\'s other outcomes', () => {
             reason: 'review-set-incomplete',
             pick: 'sol',
             members: [
-                { variant: 'vector', family: 'sol' },
-                { variant: 'second', family: 'haiku' },
+                { variant: 'vector', family: 'sol', reservation: 1 },
+                { variant: 'second', family: 'haiku', reservation: 0.25 },
             ],
         });
         const secondOnly = mut((s) => void (s.reviews = [s.reviews[2]!]));
@@ -760,7 +835,7 @@ describe('decide: each gate\'s other outcomes', () => {
             ];
         };
         expectReason(d(mut(midSet(4))), 'escalate', 'budget-ceiling-reached');
-        expectReason(d(mut(midSet(3.99))), 'run-reviews', 'review-set-incomplete');
+        expectReason(d(mut(midSet(1))), 'run-reviews', 'review-set-incomplete');
         // An admitted head finishes even when four heads are already admitted.
         const admitted = mut((s) => {
             s.reviews = [s.reviews[0]!];
@@ -768,6 +843,69 @@ describe('decide: each gate\'s other outcomes', () => {
             s.attempts.push({ headSha: HEAD, reservation: 1, loggedCost: 0.5 });
         });
         expectReason(d(admitted), 'run-reviews', 'review-set-incomplete');
+    });
+
+    test('budget: a run is dispatched only if its planned reservation fits under the ceiling', () => {
+        // Missing: vector (reserve 1) then second (reserve 0.25). `spent` is one logged attempt at head.
+        const spentAt = (spent: number): Decision =>
+            d(
+                mut((s) => {
+                    s.reviews = [s.reviews[0]!];
+                    s.attempts = [{ headSha: HEAD, reservation: 9, loggedCost: spent }];
+                }),
+            );
+        const vector = { variant: 'vector', family: 'sol', reservation: 1 };
+        const second = { variant: 'second', family: 'haiku', reservation: 0.25 };
+        // 4.99 of 5 with a missing review reserved at 1: not dispatched.
+        expect(spentAt(4.99)).toEqual({ kind: 'escalate', reason: 'budget-ceiling-reached', to: 'owner' });
+        expect(spentAt(4.01)).toEqual({ kind: 'escalate', reason: 'budget-ceiling-reached', to: 'owner' });
+        // Only the first of the two missing members fits: one is dispatched.
+        expect(spentAt(4)).toMatchObject({ kind: 'run-reviews', members: [vector] });
+        expect((spentAt(4) as { members: unknown[] }).members).toHaveLength(1);
+        expect(spentAt(3.76)).toMatchObject({ kind: 'run-reviews', members: [vector] });
+        expect((spentAt(3.76) as { members: unknown[] }).members).toHaveLength(1);
+        // Both fit, exactly at the ceiling.
+        expect(spentAt(3.75)).toEqual({ kind: 'run-reviews', reason: 'review-set-incomplete', pick: 'sol', members: [vector, second] });
+        // The prefix is in required order: a later member that would fit alone is not dispatched past one that does not.
+        const p = { ...policy(), reservations: { triage: 0.1, plain: 1, second: 0.25, vector: 2 } };
+        const s = mut((x) => {
+            x.reviews = [x.reviews[0]!];
+            x.attempts = [{ headSha: HEAD, reservation: 9, loggedCost: 4 }];
+        });
+        expect(d(s, p)).toEqual({ kind: 'escalate', reason: 'budget-ceiling-reached', to: 'owner' });
+    });
+
+    test('budget: a triage run must fit under the ceiling too', () => {
+        const spentAt = (spent: number): Decision =>
+            d(
+                mut((s) => {
+                    s.triage = null;
+                    s.attempts = [{ headSha: HEAD, reservation: 9, loggedCost: spent }];
+                }),
+            );
+        expect(spentAt(4.95)).toEqual({ kind: 'escalate', reason: 'budget-ceiling-reached', to: 'owner' });
+        expect(spentAt(4.5)).toEqual({ kind: 'run-triage', reason: 'triage-missing', reservation: 0.1 });
+    });
+
+    test('a ledger attempt whose reservation is zero, negative, non-finite or missing is an invalid snapshot', () => {
+        for (const reservation of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, '1', null, undefined]) {
+            for (const loggedCost of [null, 0.5]) {
+                const s = mut((x) => void ((x.attempts[0] as unknown) = { headSha: HEAD, reservation, loggedCost }));
+                expect(d(s)).toEqual({ kind: 'escalate', reason: 'invalid-snapshot', to: 'owner', field: 'attempts[0].reservation' });
+            }
+        }
+        const missing = mut((x) => void ((x.attempts[0] as unknown) = { headSha: HEAD, loggedCost: null }));
+        expect(d(missing)).toMatchObject({ reason: 'invalid-snapshot', field: 'attempts[0].reservation' });
+    });
+
+    test('a planned reservation that is zero, negative, non-finite or missing is invalid-policy', () => {
+        for (const run of ['triage', 'plain', 'second', 'vector'] as const) {
+            for (const value of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, '1', null, undefined]) {
+                const p = { ...policy(), reservations: { ...policy().reservations, [run]: value } };
+                expect(d(clean(), p)).toEqual({ kind: 'escalate', reason: 'invalid-policy', to: 'owner', field: `reservations.${run}` });
+            }
+        }
+        expect(d(clean(), { ...policy(), reservations: undefined })).toMatchObject({ reason: 'invalid-policy', field: 'reservations' });
     });
 
     test('budget also gates a triage run', () => {
@@ -1009,6 +1147,44 @@ describe('property: one corrupted, omitted or unknown field never merges', () =>
             }
         });
     }
+
+    test('a corrupted reservation never dispatches a paid run either', () => {
+        const needsTriage = (): PrSnapshot => {
+            const s = clean();
+            s.triage = null;
+            return s;
+        };
+        const needsReviews = (): PrSnapshot => {
+            const s = clean();
+            s.reviews = [];
+            return s;
+        };
+        const dispatches = (decision: Decision): boolean => decision.kind === 'run-triage' || decision.kind === 'run-reviews';
+        const bad: unknown[] = [0, -1, -0.1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, '1', null, undefined, DELETE, {}, [], true];
+        let tried = 0;
+        for (const make of [needsTriage, needsReviews]) {
+            expect(dispatches(d(make()))).toBe(true); // uncorrupted, it does dispatch
+            for (const mode of ['review-only', 'dry-run', 'live'] as const) {
+                for (const value of bad) {
+                    for (const path of [['p', 'reservations'], ...['triage', 'plain', 'second', 'vector'].map((k) => ['p', 'reservations', k])]) {
+                        const c = withValue({ s: make(), p: policy(mode) }, path, value) as { s: unknown; p: unknown };
+                        const decision = d(c.s, c.p);
+                        tried++;
+                        expect(dispatches(decision) || merges(decision)).toBe(false);
+                        expect(decision.reason).toBe('invalid-policy');
+                    }
+                    for (const key of ['reservation']) {
+                        const c = withValue({ s: make(), p: policy(mode) }, ['s', 'attempts', 0, key], value) as { s: unknown; p: unknown };
+                        const decision = d(c.s, c.p);
+                        tried++;
+                        expect(dispatches(decision) || merges(decision)).toBe(false);
+                        expect(decision.reason).toBe('invalid-snapshot');
+                    }
+                }
+            }
+        }
+        expect(tried).toBe(2 * 3 * bad.length * 6);
+    });
 
     test('every exempted substitution really is legal: it still merges', () => {
         const live = policy('live');
