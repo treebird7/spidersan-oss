@@ -94,27 +94,44 @@ const RUN_ID = /^r\d{8}T\d{6}Zp\d+(x\d+)?$/;
 
 type Provenance = Record<(typeof PROVENANCE_KEYS)[number], string>;
 
+/** More header lines than this before `-->` is not a header. */
+const PROVENANCE_MAX_LINES = 32;
+
 /**
- * The runner-written header: only the block that starts at byte 0, with exactly
- * prsan's keys, each once, in prsan's order, then `-->`. Returns the header and
- * the lines under it, or null.
+ * The runner-written header: only the block that starts at byte 0. Each line
+ * up to the closing `-->` is `key: value`, no key twice, and every key prsan's
+ * v1 header prints must be there. A key this reader does not know is allowed
+ * and ignored (prsan adds keys). Returns the header and the lines under it,
+ * or null.
  */
 function readProvenance(text: string): { header: Provenance; body: string[] } | null {
     const lines = text.split('\n');
-    if (lines[0] !== PROVENANCE_OPEN || lines[PROVENANCE_KEYS.length + 1] !== '-->') return null;
-    const values: string[] = [];
-    for (let i = 0; i < PROVENANCE_KEYS.length; i++) {
-        const prefix = `${PROVENANCE_KEYS[i]}: `;
-        const line = lines[i + 1];
-        if (line === undefined || !line.startsWith(prefix) || line.length === prefix.length) return null;
-        values.push(line.slice(prefix.length));
+    if (lines[0] !== PROVENANCE_OPEN) return null;
+    const fields = new Map<string, string>();
+    let close = -1;
+    for (let i = 1; i < lines.length && i <= PROVENANCE_MAX_LINES; i++) {
+        const line = lines[i] ?? '';
+        if (line === '-->') {
+            close = i;
+            break;
+        }
+        const m = /^([a-z_]+): (.+)$/.exec(line);
+        if (m === null || m[1] === undefined || m[2] === undefined || fields.has(m[1])) return null;
+        fields.set(m[1], m[2]);
     }
-    const [run_id, head_sha, model, variant, effort, prsan, pin] = values;
-    if (!run_id || !head_sha || !model || !variant || !effort || !prsan || !pin) return null;
-    return {
-        header: { run_id, head_sha, model, variant, effort, prsan, pin },
-        body: lines.slice(PROVENANCE_KEYS.length + 2),
+    if (close === -1) return null;
+    const value = (key: (typeof PROVENANCE_KEYS)[number]): string => fields.get(key) ?? '';
+    const header: Provenance = {
+        run_id: value('run_id'),
+        head_sha: value('head_sha'),
+        model: value('model'),
+        variant: value('variant'),
+        effort: value('effort'),
+        prsan: value('prsan'),
+        pin: value('pin'),
     };
+    if (PROVENANCE_KEYS.some((key) => header[key] === '')) return null;
+    return { header, body: lines.slice(close + 1) };
 }
 
 const RISK_LEVEL = /^- \*\*Level\*\*: *(CRITICAL|HIGH|MEDIUM|LOW)[ \t]*$/;
@@ -125,7 +142,8 @@ const RISK_LEVEL = /^- \*\*Level\*\*: *(CRITICAL|HIGH|MEDIUM|LOW)[ \t]*$/;
  * defects section that holds a `### ` defect or starts with `None`, then
  * exactly one Verdict whose next line is exactly `**<VERDICT>**`. The findings
  * are the `### ` headings under Blocking defects, counted whether or not the
- * schema is valid.
+ * schema is valid. `review_defect`'s last rule, "a --second review never
+ * APPROVEs", is left out: `decide` escalates that run (`second-approved`).
  */
 function readSchema(body: readonly string[]): { verdict: Verdict | null; findings: number } {
     let risk = 0;
@@ -327,11 +345,11 @@ function isAppId(value: unknown): value is number {
  * an observation that names another commit.
  *
  * `complete`: the listing is whole, the required list is usable, nothing
- * reported is pending, and every required context has at least one entry from
+ * reported is pending or in an unknown state, and every required context has at least one entry from
  * its expected app, all in the same state. `green`: complete, every such entry
  * is `success` (skipped and neutral are not), and every other reported entry
- * is success, skipped or neutral. An unknown state is red. `green` implies
- * `complete`.
+ * is success, skipped or neutral. A state outside `CI_STATES` is no verdict:
+ * not complete. `green` implies `complete`.
  */
 export function readCi(input: CiInput): CiEvidence | null {
     if (!isRecord(input) || !isFullSha(input.headSha) || !Array.isArray(input.observations)) return null;
@@ -359,7 +377,7 @@ export function readCi(input: CiInput): CiEvidence | null {
     }
 
     const judged = all.filter((o) => o.context !== input.gateContext);
-    let complete = !judged.some((o) => o.state === 'pending');
+    let complete = !judged.some((o) => o.state === 'pending' || !isOneOf(CI_STATES, o.state));
     let green = judged.every((o) => o.state === 'success' || o.state === 'skipped' || o.state === 'neutral');
     for (const r of required as readonly RequiredContext[]) {
         const states = judged.filter((o) => o.context === r.context && o.appId === r.appId).map((o) => o.state);
@@ -472,7 +490,7 @@ export async function fetchConflicts(
 
 /**
  * Path patterns: an exact path (`scripts/release.sh`), or a directory prefix
- * ending in `/` (`supabase/`). No globs.
+ * ending in `/` (`supabase/`). No globs. Matched without regard to case.
  */
 export interface TouchPatterns {
     /** Trusted roots, the merge gate, the coordinator, its config. Must not be empty. */
@@ -494,14 +512,19 @@ function isPattern(value: unknown): value is string {
     return isText(value) && !value.startsWith('/') && !/[*?[\]\\]/.test(value);
 }
 
+/** Case-insensitive: on a case-insensitive checkout `Coordinator/x` is `coordinator/x`. */
 function matches(patterns: readonly string[], file: string): boolean {
-    return patterns.some((p) => (p.endsWith('/') ? file.startsWith(p) : file === p));
+    const f = file.toLowerCase();
+    return patterns.some((pattern) => {
+        const p = pattern.toLowerCase();
+        return p.endsWith('/') ? f.startsWith(p) : f === p;
+    });
 }
 
 /**
  * Classify a changed-file list. Null when `headSha` is not a full sha. Both
  * flags are true (fail closed) when the list is not an array of non-empty
- * paths, is empty, is not as long as `expectedCount`, or when a pattern list
+ * paths, is empty, repeats a path, is not as long as `expectedCount`, or when a pattern list
  * is malformed or `protectedPaths` is empty.
  */
 export function classifyTouches(input: TouchesInput, patterns: TouchPatterns): PrSnapshot['touches'] | null {
@@ -516,7 +539,7 @@ export function classifyTouches(input: TouchesInput, patterns: TouchPatterns): P
     if (protectedPaths.length === 0 || !protectedPaths.every(isPattern) || !mergeEffects.every(isPattern)) return closed;
     const files: unknown = input.files;
     if (!Array.isArray(files) || files.length === 0 || files.length !== input.expectedCount) return closed;
-    if (!files.every(isText)) return closed;
+    if (!files.every(isText) || new Set(files).size !== files.length) return closed;
     return {
         headSha,
         protectedPaths: files.some((f) => matches(protectedPaths, f)),

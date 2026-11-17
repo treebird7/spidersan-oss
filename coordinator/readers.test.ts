@@ -144,6 +144,14 @@ describe('review files → ReviewRun[]', () => {
         expect(runs[0]).toMatchObject({ variant, family, schemaValid: true, verdict: verdict.slice(2, -2) });
     });
 
+    test('a header key this reader does not know is ignored (prsan adds keys)', () => {
+        // The header an in-flight prsan branch (bc718df) writes: v1 plus `isolation:`.
+        const text = header({ pin: `${OTHER}/${BASE}` }).replace('-->', 'isolation: sandbox-exec\n-->') + body();
+        const { runs, rejected } = one(fileName(), text);
+        expect(rejected).toEqual([]);
+        expect(runs[0]).toMatchObject({ runId: RUN1, headSha: HEAD, family: 'sol', variant: 'plain', schemaValid: true });
+    });
+
     test('blocking findings get ids unique among the runs at one head', () => {
         const { runs } = readReviewFiles(
             [
@@ -177,9 +185,10 @@ describe('review files → ReviewRun[]', () => {
         ['a header that is not at byte 0', fileName(), '\n' + header() + body()],
         ['a header with a leading BOM', fileName(), '﻿' + header() + body()],
         ['a header with CRLF line ends', fileName(), header().replace(/\n/g, '\r\n') + body()],
-        ['a header whose keys are out of order', fileName(), header().replace(/(run_id: .*\n)(head_sha: .*\n)/, '$2$1') + body()],
         ['a header with a key missing', fileName(), header().replace(/pin: .*\n/, '') + body()],
-        ['a header with an extra key', fileName(), header().replace('-->', 'extra: 1\n-->') + body()],
+        ['a header with a line that is not key: value', fileName(), header().replace('-->', 'note\n-->') + body()],
+        ['a header with a blank line', fileName(), header().replace('-->', '\n-->') + body()],
+        ['a header that never closes within 32 lines', fileName(), header().replace('-->', Array.from({ length: 30 }, (_, i) => `${'x'.repeat(i + 1)}: 1`).join('\n') + '\n-->') + body()],
         ['a header with a repeated key', fileName(), header().replace(/(variant: .*\n)/, '$1$1') + body()],
         ['a header with an empty value', fileName(), header({ pin: '' }) + body()],
         ['a sha7 head_sha', fileName(), header({ head_sha: SHA7 }) + body()],
@@ -251,6 +260,16 @@ describe('review files → ReviewRun[]', () => {
         s.reviews = one(fileName(RUN1, 'gpt-5.6-luna'), header({ model: LUNA }) + body({ verdict: '**LGTM**' })).runs;
         expect(s.reviews).toHaveLength(1);
         expect(decide(s, POLICY, NOW)).toMatchObject({ kind: 'run-reviews', reason: 'review-set-incomplete' });
+    });
+
+    test('a --second run that APPROVEs is emitted as it is, and decide escalates it', () => {
+        const s = snapshot();
+        s.triage = { ok: true, headSha: HEAD, model: 'terra', effort: 'high', reason: 'x' };
+        const second = one(fileName(RUN2, 'claude-haiku-5-5', '-second'), header({ run_id: RUN2, model: HAIKU, variant: 'second' }) + body()).runs;
+        expect(second).toHaveLength(1);
+        expect(second[0]).toMatchObject({ variant: 'second', schemaValid: true, verdict: 'APPROVE' });
+        s.reviews = [{ runId: 'r1', headSha: HEAD, family: 'terra', variant: 'plain', schemaValid: true, verdict: 'COMMENT', blocking: [] }, ...second];
+        expect(decide(s, POLICY, NOW)).toMatchObject({ kind: 'escalate', reason: 'second-approved' });
     });
 
     test('a run for another head is filed under that head, not coerced', () => {
@@ -413,6 +432,10 @@ describe('CI → CiEvidence', () => {
         ['a non-required context pending', [obs('typecheck · build · test'), obs('Dependency and secret scan'), obs('lint', 'pending')]],
         ['a required context duplicated with disagreement', [obs('typecheck · build · test'), obs('Dependency and secret scan'), obs('Dependency and secret scan', 'failure')]],
         ['a failure alongside a pending context', [obs('typecheck · build · test', 'failure'), obs('Dependency and secret scan', 'pending')]],
+        ['a required context in an unknown state', [obs('typecheck · build · test', 'STALE'), obs('Dependency and secret scan')]],
+        ['a required context in an un-normalised state', [obs('typecheck · build · test', 'SUCCESS'), obs('Dependency and secret scan')]],
+        ['a non-required context in an unknown state', [obs('typecheck · build · test'), obs('Dependency and secret scan'), obs('lint', 'startup_failure')]],
+        ['a failure alongside an unknown state', [obs('typecheck · build · test', 'failure'), obs('Dependency and secret scan', 'in_progress')]],
         ['no observations at all', []],
     ])('%s → not complete, not green', (_label, observations) => {
         expect(readCi(ci({ observations }))).toEqual(INCOMPLETE);
@@ -422,9 +445,7 @@ describe('CI → CiEvidence', () => {
         ['a required context failed', [obs('typecheck · build · test', 'failure'), obs('Dependency and secret scan')]],
         ['a required context skipped', [obs('typecheck · build · test', 'skipped'), obs('Dependency and secret scan')]],
         ['a required context neutral', [obs('typecheck · build · test', 'neutral'), obs('Dependency and secret scan')]],
-        ['a required context in an unknown state', [obs('typecheck · build · test', 'STALE'), obs('Dependency and secret scan')]],
         ['a non-required context failed', [obs('typecheck · build · test'), obs('Dependency and secret scan'), obs('lint', 'failure')]],
-        ['a non-required context in an unknown state', [obs('typecheck · build · test'), obs('Dependency and secret scan'), obs('lint', 'startup_failure')]],
         ['the right app green but the wrong app red on the same context', [obs('typecheck · build · test'), obs('Dependency and secret scan'), obs('Dependency and secret scan', 'failure', OTHER_APP)]],
     ])('%s → complete, not green', (_label, observations) => {
         expect(readCi(ci({ observations }))).toEqual(RED);
@@ -758,7 +779,8 @@ describe('touches → PrSnapshot.touches', () => {
         ['both', ['coordinator/decide.ts', 'supabase/x.sql'], true, true],
         ['a look-alike of an exact path', ['scripts/pr-status.sh.bak', 'x/scripts/pr-status.sh'], false, false],
         ['a look-alike of a directory', ['coordinator2/a.ts', 'src/coordinator/a.ts', 'supabase.md'], false, false],
-        ['a path that differs only in case', ['Coordinator/decide.ts'], false, false],
+        ['a protected path that differs only in case', ['Coordinator/decide.ts', 'Scripts/PR-status.sh'], true, false],
+        ['a merge-effect path that differs only in case', ['Supabase/x.sql'], false, true],
     ])('%s', (_label, files, protectedPaths, mergeEffects) => {
         expect(touches(files)).toEqual({ headSha: HEAD, protectedPaths, mergeEffects });
     });
@@ -771,6 +793,7 @@ describe('touches → PrSnapshot.touches', () => {
         ['a file list that is a string', 'src/a.ts', 1],
         ['a file list holding a non-string', ['src/a.ts', null], 2],
         ['a file list holding an empty path', ['src/a.ts', ''], 2],
+        ['a file list that repeats a path', ['src/a.ts', 'src/a.ts'], 2],
     ])('%s is treated as touching protected paths', (_label, files, expectedCount) => {
         expect(touches(files, expectedCount)).toEqual(CLOSED);
     });
