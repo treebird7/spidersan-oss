@@ -53,8 +53,9 @@ export function validateBranchName(branch: string): string {
  * @throws Error if invalid
  */
 export function validatePRNumber(prNumber: number | string): number {
-    const num = typeof prNumber === 'string' ? parseInt(prNumber, 10) : prNumber;
-    if (!Number.isInteger(num) || num <= 0) {
+    // Anchored: parseInt alone reads "42junk" and "42.5" as 42.
+    const num = typeof prNumber === 'string' ? (/^[1-9]\d*$/.test(prNumber) ? Number(prNumber) : NaN) : prNumber;
+    if (!Number.isSafeInteger(num) || num <= 0) {
         throw new Error(`Invalid PR number: ${prNumber}`);
     }
     return num;

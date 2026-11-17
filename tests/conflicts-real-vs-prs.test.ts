@@ -20,7 +20,7 @@ import { conflictsCommand } from '../src/commands/conflicts';
 import { analyzeRealConflicts } from '../src/lib/git-merge-analyzer';
 import { getTrunkBranch } from '../src/lib/trunk';
 import { getStorage } from '../src/storage/index';
-import { listOpenPRs, getPRChangedFiles } from '../src/lib/github';
+import { listOpenPRs, getPRChangedFiles, getPRDetails, isGhAvailable } from '../src/lib/github';
 import { execFileSync } from 'child_process';
 import type { RealConflictReport } from '../src/lib/git-merge-analyzer';
 
@@ -296,5 +296,48 @@ describe('conflicts --real --vs-prs (sp-a1l3)', () => {
         await run(['--vs-prs', '--json']);
 
         expect(JSON.parse(logged()).skipped).toEqual(['PR #7 (feat/other): no changed-file list']);
+    });
+
+    // Reviewer finding: the overlap half's --pr failures called process.exit(1)
+    // directly, lowering a 2 from the real half and reading as "conflict".
+    it('--pr N --real --vs-prs: a failed PR fetch exits 2, not 1 (sp-poga)', async () => {
+        mockRegistry();
+        (execFileSync as Mock).mockImplementation((_cmd: string, args?: string[]) => {
+            if (Array.isArray(args) && args.includes('fetch')) throw new Error("couldn't find remote ref pull/999/head");
+            return '';
+        });
+        // The overlap half fails too; its exit must not lower the real half's 2.
+        (isGhAvailable as Mock).mockReturnValueOnce(false);
+
+        const code = await run(['--pr', '999', '--real', '--vs-prs', '--exit-code']);
+
+        expect(code).toBe(2);
+        expect(analyzeRealConflicts).not.toHaveBeenCalled();
+    });
+
+    it('--pr N --real --vs-prs: gh unavailable exits 2 even when the real half is clean (sp-poga)', async () => {
+        mockRegistry();
+        (analyzeRealConflicts as Mock).mockResolvedValue(makeReport({ branch: 'refs/spidersan/pr-81' }));
+        (isGhAvailable as Mock).mockReturnValueOnce(false);
+
+        const code = await run(['--pr', '81', '--real', '--vs-prs', '--exit-code']);
+
+        expect(code).toBe(2);
+        expect(listOpenPRs).not.toHaveBeenCalled();
+    });
+
+    it('--pr N --real --vs-prs: a failed gh PR lookup exits 2 (sp-poga)', async () => {
+        mockRegistry();
+        (analyzeRealConflicts as Mock).mockResolvedValue(makeReport({ branch: 'refs/spidersan/pr-81' }));
+        (getPRDetails as Mock).mockRejectedValueOnce(new Error('gh: not found'));
+
+        expect(await run(['--pr', '81', '--real', '--vs-prs', '--exit-code'])).toBe(2);
+    });
+
+    it('--pr 42junk --vs-prs (overlap only) is rejected, not read as PR 42 (sp-poga)', async () => {
+        mockRegistry();
+
+        expect(await run(['--pr', '42junk', '--vs-prs'])).toBe(2);
+        expect(getPRDetails).not.toHaveBeenCalled();
     });
 });

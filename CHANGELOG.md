@@ -19,17 +19,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unresolved ref or a failed merge-tree exited 0, the same as a clean merge. They now exit 2,
   and an error outranks a conflict. Unreadable `--gate` labels move from 1 to 2. A bad `--pr`,
   a failed PR fetch and `--real --all` with no registry move from 1 to 2, with or without a
-  flag, so on `--real` without `--vs-prs` 1 only ever means a conflict or an unmet gate (the
-  overlap pass keeps its own exit 1 for a missing `gh` or registry). Without a flag, an error the analyzer
+  flag. The `--pr` failures in the `--vs-prs` overlap pass (bad number, `gh` unavailable, PR
+  lookup failed) also move from 1 to 2 and no longer lower a 2 from the `--real` half. With
+  `--pr`, 1 now only ever means a conflict, an unmet gate, or `--strict` overlap. Without a flag, an error the analyzer
   returns still exits 0 (the MCP server reads the JSON instead).
 - `conflicts --vs-prs --json` adds `skipped`: open PRs whose changed-file list could not be
   read, or all of them when `gh` is unavailable. They were dropped from the comparison silently.
 
 ### Fixed
 
-- **A failed legacy `git merge-tree` no longer reads as clean.** On git older than 2.38, a
-  merge-tree that exited non-zero with output but no conflict markers returned `clean: true`.
-  It is now an error.
+- **`--pr 42junk` and `--pr 42.5` were read as PR 42.** `parseInt` accepts a numeric prefix.
+  `validatePRNumber` now requires the whole string to be a positive integer, and both `--pr`
+  paths in `conflicts` use it.
+- **`conflicts --real` on git older than 2.38 never reports `clean`.** The legacy
+  `git merge-tree` form does no rename detection and prints modify/delete with no conflict
+  marker, so "no conflict found" proved nothing and was reported as clean. A conflict it finds
+  is still reported; finding none is now an error (`needs git >= 2.38`, `status: "error"`,
+  exit 2 under `--exit-code`). A legacy merge-tree that exits non-zero with no parseable
+  conflict is an error too, where it used to read as clean.
 
 ### Added
 

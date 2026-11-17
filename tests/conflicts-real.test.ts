@@ -484,6 +484,28 @@ describe('conflicts --real', () => {
             expect(out.errors[0].message).toContain('pull/999/head');
         });
 
+        it.each(['42junk', '42.5', '0', '-3'])('--pr %s is not a PR number: status error, exit 2, nothing fetched', async (raw) => {
+            const code = await run(['--pr', raw, '--real', '--json', '--exit-code']);
+
+            expect(code).toBe(2);
+            expect(doc()).toMatchObject({ status: 'error', pr: null, results: [], errors: [{ stage: 'usage' }] });
+            expect(execFileSync).not.toHaveBeenCalledWith('git', expect.arrayContaining(['fetch']), expect.anything());
+            expect(analyzeRealConflicts).not.toHaveBeenCalled();
+        });
+
+        it('a legacy-method result the analyzer could not verify is status error, never clean', async () => {
+            (analyzeRealConflicts as Mock).mockResolvedValue(makeReport({
+                method: 'legacy', clean: false,
+                error: 'legacy merge-tree found no conflict but cannot verify modify/delete or rename; needs git >= 2.38',
+            }));
+
+            const code = await run(['--pr', '81', '--json', '--exit-code']);
+
+            expect(code).toBe(2);
+            expect(doc().status).not.toBe('clean');
+            expect(doc().status).toBe('error');
+        });
+
         it('a "clean" report that names no shas is an error, not clean', async () => {
             (analyzeRealConflicts as Mock).mockResolvedValue(makeReport({ headSha: null }));
 

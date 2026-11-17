@@ -19,7 +19,7 @@ import { loadMachineIdentity } from '../lib/machine.js';
 import { execGit, getRepoName, registryRepoNames, resolveBranchRef } from '../lib/git.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
 import { analyzeSemantic, resolveBranchTip, resolveCrossMachineRef } from '../lib/semantic-analysis.js';
-import { getCLIPath } from '../lib/security.js';
+import { getCLIPath, validatePRNumber } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
 import { ECOSYSTEM_UNCONFIGURED_HINT, resolveEcosystemRepos } from '../lib/ecosystem-env.js';
@@ -329,6 +329,15 @@ function renderCarries(report: CarriesReport): void {
     }
 }
 
+/** `--pr` as a positive integer, or null — "42junk" and "42.5" are not PR 42. */
+function parsePrOption(raw: unknown): number | null {
+    try {
+        return validatePRNumber(String(raw));
+    } catch {
+        return null;
+    }
+}
+
 type RealStatus = 'clean' | 'conflict' | 'blocked' | 'incomplete' | 'error';
 interface RealError { stage: 'usage' | 'fetch' | 'registry' | 'analysis' | 'gate'; message: string; ref?: string }
 
@@ -374,9 +383,8 @@ async function runRealConflicts(options: {
         // --pr in real mode: the PR head isn't a local ref, so fetch it. Without
         // this, --real fell through to getCurrentBranch() and silently checked
         // trunk-vs-trunk → a false "clean" (tb-57fr).
-        prNumber = parseInt(options.pr, 10);
-        if (isNaN(prNumber) || prNumber <= 0) {
-            prNumber = undefined;
+        prNumber = parsePrOption(options.pr) ?? undefined;
+        if (prNumber === undefined) {
             console.error('❌ Invalid PR number. Provide a positive integer, e.g. --pr 42');
             return abort('usage', 'invalid PR number');
         }
@@ -587,15 +595,19 @@ export const conflictsCommand = new Command('conflicts')
 
         if (options.pr) {
             // --pr mode: fetch PR head branch + changed files from GitHub
-            const prNumber = parseInt(options.pr, 10);
-            if (isNaN(prNumber) || prNumber <= 0) {
+            // These three are "could not check", not a conflict: exit 2, and through
+            // finish() so a 2 from the --real half is never lowered.
+            const prNumber = parsePrOption(options.pr);
+            if (prNumber === null) {
                 console.error('❌ Invalid PR number. Provide a positive integer, e.g. --pr 42');
-                process.exit(1);
+                finish(2);
+                return;
             }
             if (!isGhAvailable()) {
                 console.error('❌ GitHub CLI (gh) is not available or not authenticated.');
                 console.error('   Install: https://cli.github.com  →  gh auth login');
-                process.exit(1);
+                finish(2);
+                return;
             }
             let prDetails;
             try {
@@ -603,7 +615,8 @@ export const conflictsCommand = new Command('conflicts')
             } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
                 console.error(`❌ Failed to fetch PR #${prNumber}: ${msg}`);
-                process.exit(1);
+                finish(2);
+                return;
             }
             targetBranch = prDetails.headBranch;
             targetFiles = prDetails.files;
