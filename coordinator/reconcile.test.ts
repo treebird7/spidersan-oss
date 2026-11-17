@@ -529,6 +529,52 @@ describe('a merge that any read has said is merged is never rolled back', () => 
         });
     });
 
+    test.each([
+        ['open at the intent head', { kind: 'open', head: HEAD, base: BASE }, `open at head ${HEAD}`],
+        ['closed', { kind: 'closed' }, 'closed without merging'],
+    ] as const)(
+        'merged, then %s past the grace period: escalated to the owner once across three reconciles, still held, never rolled back',
+        async (_name, later, wording) => {
+            await mergeNeverLanded();
+            fx.failNext('readPr', { answer: { kind: 'merged', head: HEAD, mergeCommit: 'abc1234' } });
+            await actions.reconcile(NOW + 1);
+            fx.prs.set(PR_KEY, later);
+
+            // Inside the grace period the contradiction is not reported yet.
+            await actions.reconcile(LATER - 1);
+            expect(fx.count('createEscalation')).toBe(0);
+
+            const escalationId = `escalation:${REPO}#${PR}@${HEAD}:merge-state-contradictory:1`;
+            for (const now of [LATER, LATER + 1, LATER + 2]) {
+                wake();
+                expect(await actions.reconcile(now)).toEqual({ pending: [MERGE_ID], unrecognised: [], held: [REPO] });
+            }
+            expect(fx.writes().slice(1)).toEqual([
+                {
+                    effect: 'createEscalation',
+                    request: {
+                        actionId: escalationId,
+                        repo: REPO,
+                        pr: PR,
+                        head: HEAD,
+                        reason: 'merge-state-contradictory',
+                        to: 'owner',
+                        body: expect.stringMatching(
+                            new RegExp(`^Merge intent ${MERGE_ID.replace(/[#@]/g, '.')}, pinned to head ${HEAD}: an earlier read said .* was merged; it now reads ${wording}\\.`),
+                        ),
+                    },
+                },
+            ]);
+            expect(statesInFile()).not.toContain('rolled-back');
+
+            // An owner approval of that escalation is not read and releases nothing.
+            fx.approvals.set(state.receipt(escalationId) ?? '', 'approved');
+            expect(await actions.reconcile(LATER + 3)).toEqual({ pending: [MERGE_ID], unrecognised: [], held: [REPO] });
+            expect(fx.count('readApproval')).toBe(0);
+            expect(stateOf(MERGE_ID)).toBe('pending');
+        },
+    );
+
     test('merge(): a PR that reads merged before the call closes the intent unsent, not rolled back', async () => {
         fx.prs.set(PR_KEY, { kind: 'merged', head: HEAD, mergeCommit: sha('e') });
         expect(await actions.merge(TARGET, TASK, NOW)).toEqual({ kind: 'dropped' });

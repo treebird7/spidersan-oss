@@ -24,6 +24,7 @@ export const RECONCILE_ESCALATIONS = [
     'merged-at-unexpected-head',
     'registry-abandoned-with-pr',
     'unrecognised-intent-row',
+    'merge-state-contradictory',
 ] as const;
 export type ReconcileEscalation = (typeof RECONCILE_ESCALATIONS)[number];
 
@@ -323,8 +324,31 @@ export class Actions {
                 return;
             case 'open':
             case 'closed': {
-                // An earlier read said merged and this one does not: nothing can be concluded.
-                if (intent.seenMerged) return;
+                if (intent.seenMerged) {
+                    // An earlier read said merged and this one does not: nothing can be
+                    // concluded, so the intent stays pending and the repo held. Past the grace
+                    // period the owner is told, once. Nothing here releases this hold, and an
+                    // approval of the escalation is not read: release is a manual owner repair
+                    // of the state file.
+                    if (!(now - intent.updatedAt >= this.#mergeGraceMs)) return;
+                    const reads = pr.kind === 'open' ? `open at head ${String(pr.head)}` : 'closed without merging';
+                    await this.escalate(
+                        {
+                            repo: intent.repo,
+                            pr: intent.pr,
+                            head: intent.head,
+                            reason: 'merge-state-contradictory',
+                            to: 'owner',
+                            body:
+                                `Merge intent ${intent.id}, pinned to head ${intent.head}: an earlier read said ` +
+                                `${intent.repo}#${intent.pr} was merged; it now reads ${reads}. The coordinator ` +
+                                `cannot tell whether its merge landed. ${intent.repo} is held until the intent ` +
+                                'is repaired by hand; approving this task does not release it.',
+                        },
+                        now,
+                    );
+                    return;
+                }
                 if (pr.kind === 'open' && !isFullSha(pr.head)) return;
                 // Open at another head: a merge pinned to the intent's head cannot have landed.
                 const movedOn = pr.kind === 'open' && pr.head !== intent.head;
