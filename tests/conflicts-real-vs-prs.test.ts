@@ -341,4 +341,23 @@ describe('conflicts --real --vs-prs (sp-a1l3)', () => {
         expect(await run(['--pr', '', '--vs-prs'])).toBe(2); // empty is still --pr, not "current branch"
         expect(getPRDetails).not.toHaveBeenCalled();
     });
+
+    it('composed: an unexpected throw in the overlap half exits 2 and adds no second document (sp-poga)', async () => {
+        const storage = mockRegistry();
+        storage.get.mockRejectedValue(new Error('boom: registry unreadable'));
+        (analyzeRealConflicts as Mock).mockResolvedValue(makeReport());
+
+        const code = await run(['--real', '--vs-prs', '--json', '--exit-code']);
+
+        expect(code).toBe(2);
+        expect(JSON.parse(logged()).status).toBe('clean'); // exactly one document: the real half's
+        expect(errored()).toContain('did NOT complete');
+    });
+
+    it('plain overlap path: an unexpected throw is not swallowed or renumbered (sp-poga)', async () => {
+        const storage = mockRegistry();
+        storage.get.mockRejectedValue(new Error('boom: registry unreadable'));
+
+        await expect(run(['--vs-prs'])).rejects.toThrow('boom: registry unreadable');
+    });
 });

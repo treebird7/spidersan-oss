@@ -508,6 +508,85 @@ describe('conflicts --real', () => {
             expect(analyzeRealConflicts).not.toHaveBeenCalled();
         });
 
+        // A throw anywhere on the real path used to reach the global handler:
+        // no JSON, exit 1 — the "conflict" code. Each must be one error document, exit 2.
+        const expectOneErrorDoc = (code: number) => {
+            expect(code).toBe(2);
+            expect(exitSpy).toHaveBeenCalledWith(2);
+            expect(logSpy.mock.calls.filter((c) => String(c[0]).includes('"status"'))).toHaveLength(1);
+            expect(doc()).toMatchObject({ status: 'error', results: [], errors: [{ stage: 'analysis' }] });
+        };
+
+        it('getCurrentBranch throwing (not a git repository) → one error document, exit 2', async () => {
+            (execFileSync as Mock).mockImplementation((_cmd: string, args?: string[]) => {
+                if (Array.isArray(args) && args.includes('--abbrev-ref')) throw new Error('fatal: not a git repository');
+                return '';
+            });
+
+            expectOneErrorDoc(await run(['--real', '--json', '--exit-code']));
+            expect(analyzeRealConflicts).not.toHaveBeenCalled();
+        });
+
+        it('trunk detection throwing → one error document with base null, exit 2', async () => {
+            (getTrunkBranch as Mock).mockImplementation(() => { throw new Error('boom: trunk'); });
+
+            expectOneErrorDoc(await run(['--real', '--json']));
+            expect(doc().base).toBeNull();
+        });
+
+        it('an arbitrary Error thrown mid-analysis → one error document, exit 2', async () => {
+            (analyzeRealConflicts as Mock).mockRejectedValue(new Error('boom: analyzer'));
+
+            expectOneErrorDoc(await run(['--pr', '81', '--json', '--exit-code']));
+            expect(doc()).toMatchObject({ pr: 81, errors: [{ message: 'boom: analyzer' }] });
+        });
+
+        it('--all: storage.list() throwing → one error document, exit 2', async () => {
+            (getStorage as Mock).mockResolvedValue({
+                isInitialized: vi.fn().mockResolvedValue(true),
+                list: vi.fn().mockRejectedValue(new Error('boom: registry unreadable')),
+            });
+
+            expectOneErrorDoc(await run(['--real', '--all', '--json', '--exit-code']));
+        });
+
+        it('--all: getStorage() itself throwing → one error document, exit 2', async () => {
+            (getStorage as Mock).mockRejectedValue(new Error('boom: no storage'));
+
+            expectOneErrorDoc(await run(['--real', '--all', '--json']));
+        });
+
+        it('--gate: the label lookup throwing → one error document, exit 2', async () => {
+            (analyzeRealConflicts as Mock).mockResolvedValue(makeReport());
+            (getPRLabels as Mock).mockRejectedValue(new Error('boom: gh'));
+
+            expectOneErrorDoc(await run(['--pr', '80', '--gate', '--json', '--exit-code']));
+        });
+
+        it('a commander parse error (unknown option, --pr with no value) exits 2 with an error document', async () => {
+            const argv = process.argv;
+            const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+            process.argv = [...argv, '--json']; // the override reads the raw argv: options are not parsed yet
+            try {
+                expect(await run(['--real', '--json', '--bogus'])).toBe(2);
+                expect(doc()).toMatchObject({ status: 'error', results: [], errors: [{ stage: 'usage' }] });
+                logSpy.mockClear();
+                expect(await run(['--real', '--json', '--exit-code', '--pr'])).toBe(2);
+                expect(doc().status).toBe('error');
+            } finally {
+                process.argv = argv;
+                stderr.mockRestore();
+            }
+            expect(analyzeRealConflicts).not.toHaveBeenCalled();
+        });
+
+        it('a throw without --json still exits 2 and prints no JSON', async () => {
+            (analyzeRealConflicts as Mock).mockRejectedValue(new Error('boom'));
+
+            expect(await run(['--real'])).toBe(2);
+            expect(logged()).not.toContain('"status"');
+        });
+
         it('a legacy-method result the analyzer could not verify is status error, never clean', async () => {
             (analyzeRealConflicts as Mock).mockResolvedValue(makeReport({
                 method: 'legacy', clean: false,

@@ -35,6 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and could report `clean` for a branch nobody asked about. An empty `--pr`, `--branch` or
   `--base`, and `--gate` or `--carries` without `--pr`, are now usage errors on the `--real`
   path (`status: "error"`, exit 2).
+- **No failure on the `--real` path exits 1 any more.** Run outside a git repository,
+  `conflicts --real --json --exit-code` threw past the command into the global handler: no
+  JSON and exit 1, the "conflict" code. The whole real path now runs inside one catch, so
+  anything thrown (git, the registry, `gh`, the analyzer) ends as one `status: "error"`
+  document and exit 2. On `--real --vs-prs` an unexpected throw in the overlap pass exits 2
+  as well. Commander's own parse errors for `conflicts` (unknown option, `--pr` with no
+  value) move from 1 to 2 and print the error document under `--json`.
 - **`conflicts --real` on git older than 2.38 never reports `clean`.** The legacy
   `git merge-tree` form does no rename detection and prints modify/delete with no conflict
   marker, so "no conflict found" proved nothing and was reported as clean. A conflict it finds

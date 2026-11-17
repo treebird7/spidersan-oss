@@ -105,7 +105,9 @@ document. With `--pr`, it exits 0 only when `status` is `clean`:
 
 A bad or empty `--pr` (`42junk` is not PR 42), an empty `--branch` or `--base`, `--gate`
 without `--pr`, a failed fetch, or `--all` with no registry exits 2
-with or without the flag. `clean` needs git 2.38 or newer: the older `git merge-tree` cannot
+with or without the flag. So does anything else that stops the check (not a git repository,
+an unreadable registry, an unknown option): on the `--real` path exit 1 is only ever a
+conflict or an unmet gate. `clean` needs git 2.38 or newer: the older `git merge-tree` cannot
 verify modify/delete or rename conflicts, so there a merge with no conflict found is `error`. Add `--vs-prs` for a person to read, not for a script: it prints a second JSON
 document (the overlap pass, with a `skipped` list of open PRs it could not compare).
 

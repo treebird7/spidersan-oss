@@ -363,22 +363,29 @@ async function runRealConflicts(options: {
     carries?: boolean;
     gate?: boolean;
 }): Promise<number> {
-    // `|| resolveRealBase(...)` short-circuits: an explicit --base skips trunk
-    // detection entirely, as it always has.
-    let base = options.base || resolveRealBase(getTrunkBranch());
-
-    // Determine target branches.
-    let targets: string[];
+    let base = options.base ?? '';
     let prNumber: number | undefined;
+    let emitted = false; // --json prints exactly one document, whatever happens
     // Nothing was analysed: say so in the JSON too, and exit 2 (never 1 = conflict).
     const abort = (stage: RealError['stage'], message: string): number => {
-        if (options.json) {
+        if (options.json && !emitted) {
+            emitted = true;
             console.log(JSON.stringify({
-                status: 'error', pr: prNumber ?? null, repo: originRepo(), base, results: [], errors: [{ stage, message }],
+                status: 'error', pr: prNumber ?? null, repo: originRepo(), base: base || null, results: [], errors: [{ stage, message }],
             }, null, 2));
         }
         return 2;
     };
+    // Everything below runs inside this try: a throw from anywhere (not a git
+    // repository, the registry, gh, an analyzer bug) must end as status "error" /
+    // exit 2, never as the global handler's exit 1, which means "conflict".
+    try {
+    // `|| resolveRealBase(...)` short-circuits: an explicit --base skips trunk
+    // detection entirely, as it always has.
+    base = options.base || resolveRealBase(getTrunkBranch());
+
+    // Determine target branches.
+    let targets: string[];
     // An option given but unusable must not fall through to "check the current
     // checkout": presence is tested, never truthiness (`--pr ""` is still --pr).
     const usage = options.base === '' ? '--base is empty'
@@ -481,7 +488,9 @@ async function runRealConflicts(options: {
         : 'clean';
 
     if (options.json) {
-        console.log(JSON.stringify({ status, pr: prNumber ?? null, repo: originRepo(), base, results, errors, carries, gate }, null, 2));
+        const doc = JSON.stringify({ status, pr: prNumber ?? null, repo: originRepo(), base, results, errors, carries, gate }, null, 2);
+        emitted = true;
+        console.log(doc);
     } else {
         if (results.length === 0) {
             console.log(`🕷️ No active branches to check vs ${base}.`);
@@ -497,6 +506,11 @@ async function runRealConflicts(options: {
     // instead of silently ignoring it (real conflicts are always tier-blocking).
     if (!(options.exitCode || options.strict)) return 0;
     return status === 'error' ? 2 : status === 'conflict' || status === 'blocked' ? 1 : 0;
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`❌ ${msg}`);
+        return abort('analysis', msg);
+    }
 }
 
 export const conflictsCommand = new Command('conflicts')
@@ -517,6 +531,18 @@ export const conflictsCommand = new Command('conflicts')
     .option('--exit-code', 'With --real: exit 1 on a real conflict, 2 on an analysis error (no verdict)')
     .option('--carries', 'With --pr: show carries() provenance (own vs inherited commits)')
     .option('--gate', 'With --pr: check precondition() needs-* labels; --exit-code blocks if unmet')
+    // Commander's own parse errors (unknown option, `--pr` with no value) exit 1
+    // before the action runs — the "conflict" code. Make them 2, with the same
+    // error document under --json. Help and version (exit 0) are untouched.
+    .exitOverride((err) => {
+        if (err.exitCode === 0) process.exit(0);
+        if (process.argv.includes('--json')) {
+            console.log(JSON.stringify({
+                status: 'error', pr: null, repo: null, base: null, results: [], errors: [{ stage: 'usage', message: err.message }],
+            }, null, 2));
+        }
+        process.exit(2);
+    })
     .action(async (options) => {
         // ── Real (git merge-tree) conflicts ──────────────────────────────────
         // Runs BEFORE the storage-init guard: a single-target real check is pure
@@ -553,10 +579,16 @@ export const conflictsCommand = new Command('conflicts')
          * On the composed path a non-zero code from EITHER half must survive;
          * on the plain overlap path realExitCode is 0, so behaviour is unchanged.
          */
+        let finished = false;
         const finish = (overlapCode: number): void => {
+            finished = true;
             const code = Math.max(realExitCode, overlapCode);
             if (code !== 0) process.exit(code);
         };
+
+        // The overlap pass is a closure so the composed --real --vs-prs path can
+        // catch what it throws (see the call at the end of this action).
+        const runOverlap = async (): Promise<void> => {
 
         // ── Ecosystem shortcut ───────────────────────────────────────────────
         if (options.ecosystem) {
@@ -921,4 +953,18 @@ export const conflictsCommand = new Command('conflicts')
             console.log('❌ Strict mode: Exiting with error due to TIER 2+ conflicts.');
         }
         finish(shouldBlock ? 1 : 0);
+        };
+
+        try {
+            await runOverlap();
+        } catch (err) {
+            // Plain overlap path: unchanged. `finished` means finish() already
+            // chose the exit code (process.exit only "throws" when a test stubs it).
+            if (!composeRealAndOverlap || finished) throw err;
+            // Composed with --real: an unexpected throw is "could not check" —
+            // exit 2, never the global handler's 1, and no further stdout.
+            console.error(`❌ Overlap/cross-PR check failed: ${err instanceof Error ? err.message : String(err)}`);
+            console.error('   The --real merge-tree result above stands on its own; the --vs-prs half did NOT complete.');
+            process.exit(2);
+        }
     });
