@@ -75,6 +75,8 @@ export interface ReviewContext {
     /** `owner/name` of the PR's repo. */
     repo: string;
     pr: number;
+    /** The PR's head right now, full sha. A rejected file that names it is filed against it. */
+    head: string;
     /**
      * The header's `model:` value (the full provider/id prsan ran) → model
      * family. A model that is not an own key here is not a member of any set.
@@ -196,8 +198,10 @@ function readSchema(body: readonly string[]): { verdict: Verdict | null; finding
  * and why. A file is a run only when its provenance header is well-formed,
  * names a full head sha, a known variant and a model with a known family, and
  * the file's name is exactly the name prsan builds from those fields for this
- * repo and PR. Anything else is rejected, not emitted: it has no trusted sha
- * to file it under.
+ * repo and PR. Anything else is rejected. A rejected file whose name is this
+ * PR's at `context.head` (or at no readable sha) is also emitted as a
+ * schema-invalid run at the head with no findings, so the set cannot read as
+ * clean past it; one named for another head or another PR is only listed.
  *
  * `schemaValid` runs that fail the schema are still emitted (`verdict: null`),
  * with whatever findings they hold. Finding ids are `<runId>:<n>`. Duplicate
@@ -211,11 +215,34 @@ export function readReviewFiles(
     const rejected: RejectedReviewFile[] = [];
     if (!Array.isArray(files)) return { runs, rejected: [{ name: '', reason: 'file list is not an array' }] };
     const contextOk =
-        isRecord(context) && isRepoSlug(context.repo) && isPrNumber(context.pr) && isRecord(context.families);
+        isRecord(context) &&
+        isRepoSlug(context.repo) &&
+        isPrNumber(context.pr) &&
+        isFullSha(context.head) &&
+        isRecord(context.families);
+    // prsan's file name starts `<owner>_<name>-<pr>-<sha7>-`. A file that names this PR at this
+    // head (or at no readable head) and is rejected may hold findings nobody can file: it becomes
+    // a schema-invalid run at the head, which `decide` never passes as clean.
+    const mine = contextOk ? `${context.repo.replace(/\//g, '_')}-${context.pr}-` : '';
+    const atHead = (name: string): boolean => {
+        if (!contextOk || !name.startsWith(mine)) return false;
+        const sha7 = name.slice(mine.length, mine.length + 8);
+        return !/^[0-9a-f]{7}-$/.test(sha7) || sha7 === `${context.head.slice(0, 7)}-`;
+    };
     for (const file of files as readonly unknown[]) {
         const name = isRecord(file) && typeof file.name === 'string' ? file.name : '';
         const reject = (reason: string): void => {
             rejected.push({ name, reason });
+            if (!atHead(name)) return;
+            runs.push({
+                runId: `rejected:${name}`,
+                headSha: context.head,
+                family: 'rejected',
+                variant: 'plain',
+                schemaValid: false,
+                verdict: null,
+                blocking: [],
+            });
         };
         if (!contextOk) {
             reject('repo, pr or family map is malformed');

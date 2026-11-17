@@ -83,6 +83,7 @@ const HAIKU = 'claude/claude-haiku-5-5';
 const CTX: ReviewContext = {
     repo: 'treebird7/toak',
     pr: 512,
+    head: HEAD,
     families: { [SOL]: 'sol', [LUNA]: 'luna', [HAIKU]: 'haiku' },
 };
 const RUN1 = 'r20261117T101500Zp4242';
@@ -125,6 +126,11 @@ const fileName = (runId = RUN1, model = 'gpt-6.1-sol', variant = '', head7 = SHA
     `treebird7_toak-512-${head7}-${runId}-${model}${variant}.md`;
 
 const one = (name: string, text: string, ctx: ReviewContext = CTX) => readReviewFiles([{ name, text }], ctx);
+/** What a rejected file yields: nothing, or (named for this PR at its head) one schema-invalid run there. */
+const heldAtHead = (name: string) =>
+    name.startsWith('treebird7_toak-512-') && !name.startsWith('treebird7_toak-512-ccccccc-')
+        ? [{ runId: `rejected:${name}`, headSha: HEAD, family: 'rejected', variant: 'plain', schemaValid: false, verdict: null, blocking: [] }]
+        : [];
 
 describe('review files → ReviewRun[]', () => {
     test('a complete review: provenance from the header, verdict from the Verdict section', () => {
@@ -207,9 +213,26 @@ describe('review files → ReviewRun[]', () => {
         ['a FAILED- diagnostics name', 'FAILED-' + fileName(), header() + body()],
     ])('%s is not a valid member', (_label, name, text) => {
         const { runs, rejected } = one(name, text);
-        expect(runs).toEqual([]);
+        expect(runs).toEqual(heldAtHead(name));
         expect(rejected).toHaveLength(1);
         expect(rejected[0]?.name).toBe(name);
+    });
+
+    test('a rejected file that names this PR at its head blocks: a clean sibling does not pass', () => {
+        const crlf = (header() + body({ blocking: '### 1. Guard fails open' })).replace(/\n/g, '\r\n');
+        const bad = fileName(RUN2);
+        const { runs } = readReviewFiles(
+            [
+                { name: fileName(), text: header() + body() },
+                { name: bad, text: crlf },
+            ],
+            CTX,
+        );
+        expect(runs).toHaveLength(2);
+        expect(runs[1]).toEqual(heldAtHead(bad)[0]!);
+        // The same name at another head is history: listed as rejected, not held.
+        const old = fileName(RUN2, 'gpt-6.1-sol', '', OTHER.slice(0, 7));
+        expect(one(old, crlf).runs).toEqual([]);
     });
 
     test('header text imitated in the body is not read as provenance', () => {
@@ -219,7 +242,7 @@ describe('review files → ReviewRun[]', () => {
         expect(runs).toHaveLength(1);
         expect(runs[0]).toMatchObject({ runId: RUN1, headSha: HEAD, variant: 'plain' });
         // With no real header, an imitation lower down gives no run at all.
-        expect(one(fileName(), 'Review follows.\n' + header() + body()).runs).toEqual([]);
+        expect(one(fileName(), 'Review follows.\n' + header() + body()).runs).toEqual(heldAtHead(fileName()));
     });
 
     // Valid provenance, invalid schema: emitted with schemaValid false and no verdict.
@@ -308,7 +331,8 @@ describe('review files → ReviewRun[]', () => {
         ['null', null],
     ])('a file entry with %s is rejected', (_label, entry) => {
         const { runs, rejected } = readReviewFiles([entry], CTX);
-        expect(runs).toEqual([]);
+        const name = typeof (entry as { name?: unknown } | null)?.name === 'string' ? fileName() : '';
+        expect(runs).toEqual(heldAtHead(name));
         expect(rejected).toHaveLength(1);
     });
 
