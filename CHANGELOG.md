@@ -19,7 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unresolved ref or a failed merge-tree exited 0, the same as a clean merge. They now exit 2,
   and an error outranks a conflict. Unreadable `--gate` labels move from 1 to 2. A bad `--pr`,
   a failed PR fetch and `--real --all` with no registry move from 1 to 2, with or without a
-  flag, so 1 only ever means a conflict or an unmet gate. Without a flag, an error the analyzer
+  flag, so on `--real` without `--vs-prs` 1 only ever means a conflict or an unmet gate (the
+  overlap pass keeps its own exit 1 for a missing `gh` or registry). Without a flag, an error the analyzer
   returns still exits 0 (the MCP server reads the JSON instead).
 - `conflicts --vs-prs --json` adds `skipped`: open PRs whose changed-file list could not be
   read, or all of them when `gh` is unavailable. They were dropped from the comparison silently.

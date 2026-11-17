@@ -78,7 +78,7 @@ Found conflicts exit 0 so the report is never mistaken for a crash. To gate a sc
 exit 1). Either flag also exits 2 when the merge-tree check could not reach a verdict.
 
 For a script, `spidersan conflicts --pr 42 --real --json --exit-code` prints one JSON
-document and exits 0 only when `status` is `clean`:
+document. With `--pr`, it exits 0 only when `status` is `clean`:
 
 ```json
 {
