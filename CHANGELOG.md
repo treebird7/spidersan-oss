@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and could report `clean` for a branch nobody asked about. An empty `--pr`, `--branch` or
   `--base`, and `--gate` or `--carries` without `--pr`, are now usage errors on the `--real`
   path (`status: "error"`, exit 2).
+- **`--gate` is no longer ignored without the merge-tree check.**
+  `conflicts --pr <N> --vs-prs --gate --exit-code` (no `--real`) ran only the overlap pass,
+  which never read the gate, and exited 0. On an overlap-only run, the options only the
+  merge-tree check reads (`--gate`, `--carries`, `--base`, `--all`, `--exit-code`) and an empty
+  `--branch` are now usage errors: exit 2, with the error document under `--json`. Add `--real`.
+  `--pr <N> --gate` without `--vs-prs` already ran the merge-tree check and is unchanged.
 - **No failure on the `--real` path exits 1 any more.** Run outside a git repository,
   `conflicts --real --json --exit-code` threw past the command into the global handler: no
   JSON and exit 1, the "conflict" code. The whole real path now runs inside one catch, so

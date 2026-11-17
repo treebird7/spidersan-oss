@@ -20,7 +20,7 @@ import { conflictsCommand } from '../src/commands/conflicts';
 import { analyzeRealConflicts } from '../src/lib/git-merge-analyzer';
 import { getTrunkBranch } from '../src/lib/trunk';
 import { getStorage } from '../src/storage/index';
-import { listOpenPRs, getPRChangedFiles, getPRDetails, isGhAvailable } from '../src/lib/github';
+import { listOpenPRs, getPRChangedFiles, getPRDetails, getPRLabels, isGhAvailable } from '../src/lib/github';
 import { execFileSync } from 'child_process';
 import type { RealConflictReport } from '../src/lib/git-merge-analyzer';
 
@@ -359,5 +359,53 @@ describe('conflicts --real --vs-prs (sp-a1l3)', () => {
         storage.get.mockRejectedValue(new Error('boom: registry unreadable'));
 
         await expect(run(['--vs-prs'])).rejects.toThrow('boom: registry unreadable');
+    });
+
+    // Reviewer finding: without --real, `--pr N --vs-prs` runs only the overlap pass,
+    // which never read --gate: the command exited 0 with the gate unchecked.
+    it.each([
+        ['--gate', ['--pr', '81', '--vs-prs', '--gate', '--exit-code']],
+        ['--carries', ['--pr', '81', '--vs-prs', '--carries', '--exit-code']],
+        ['--base', ['--vs-prs', '--base', 'develop']],
+        ['--all', ['--vs-prs', '--all']],
+        ['--exit-code', ['--vs-prs', '--exit-code']],
+        ['an empty --branch', ['--vs-prs', '--branch', '']],
+    ])('overlap-only: %s is a usage error (exit 2, one error document), not ignored (sp-poga)', async (_name, args) => {
+        mockRegistry();
+
+        const code = await run([...args, '--json']);
+
+        expect(code).toBe(2);
+        expect(JSON.parse(logged())).toMatchObject({ status: 'error', results: [], errors: [{ stage: 'usage' }] });
+        expect(getPRLabels).not.toHaveBeenCalled();
+        expect(getPRDetails).not.toHaveBeenCalled(); // rejected before the overlap pass starts
+        expect(listOpenPRs).not.toHaveBeenCalled();
+    });
+
+    it('plain `conflicts --gate` (no --pr, no --real) is rejected too', async () => {
+        mockRegistry();
+
+        expect(await run(['--gate'])).toBe(2);
+        expect(errored()).toContain('--gate only works with the merge-tree check');
+    });
+
+    it('--pr N --gate (no --real, no --vs-prs) still routes to the real path and reads the gate', async () => {
+        (analyzeRealConflicts as Mock).mockResolvedValue(makeReport({ branch: 'refs/spidersan/pr-81' }));
+        (getPRLabels as Mock).mockResolvedValue(['needs-grant:x']);
+
+        const code = await run(['--pr', '81', '--gate', '--json', '--exit-code']);
+
+        expect(code).toBe(1);
+        expect(getPRLabels).toHaveBeenCalledWith(81);
+        expect(JSON.parse(logged())).toMatchObject({ status: 'blocked', gate: { unmet: true } });
+    });
+
+    it('--pr N --real --vs-prs --gate still reads the gate on the composed path', async () => {
+        mockRegistry();
+        (analyzeRealConflicts as Mock).mockResolvedValue(makeReport({ branch: 'refs/spidersan/pr-81' }));
+        (getPRLabels as Mock).mockResolvedValue(['needs-grant:x']);
+
+        expect(await run(['--pr', '81', '--real', '--vs-prs', '--gate', '--exit-code'])).toBe(1);
+        expect(getPRLabels).toHaveBeenCalledWith(81);
     });
 });

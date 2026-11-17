@@ -108,7 +108,11 @@ without `--pr`, a failed fetch, or `--all` with no registry exits 2
 with or without the flag. So does anything else that stops the check (not a git repository,
 an unreadable registry, an unknown option): on the `--real` path exit 1 is only ever a
 conflict or an unmet gate. `clean` needs git 2.38 or newer: the older `git merge-tree` cannot
-verify modify/delete or rename conflicts, so there a merge with no conflict found is `error`. Add `--vs-prs` for a person to read, not for a script: it prints a second JSON
+verify modify/delete or rename conflicts, so there a merge with no conflict found is `error`. `--gate`, `--carries`, `--base`, `--all` and `--exit-code` belong to the merge-tree check.
+On a run that does not include it (no `--real`, and either no `--pr` or `--pr` with
+`--vs-prs`) they are rejected with exit 2 instead of being ignored.
+
+Add `--vs-prs` for a person to read, not for a script: it prints a second JSON
 document (the overlap pass, with a `skipped` list of open PRs it could not compare).
 
 ## Claude Code plugin

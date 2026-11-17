@@ -352,6 +352,14 @@ function originRepo(): string | null {
     }
 }
 
+/** The --json document for a usage error raised before the merge-tree check starts. */
+function usageErrorDoc(message: string): string {
+    return JSON.stringify({ status: 'error', pr: null, repo: null, base: null, results: [], errors: [{ stage: 'usage', message }] }, null, 2);
+}
+
+/** Options only runRealConflicts() reads: [commander key, flag]. */
+const REAL_ONLY_OPTIONS = [['gate', '--gate'], ['carries', '--carries'], ['base', '--base'], ['all', '--all'], ['exitCode', '--exit-code']] as const;
+
 async function runRealConflicts(options: {
     base?: string;
     branch?: string;
@@ -526,21 +534,17 @@ export const conflictsCommand = new Command('conflicts')
     .option('--ecosystem', 'Scan all ecosystem repos and aggregate conflict tiers')
     .option('--repos <paths>', 'Comma-separated repo paths for --ecosystem scan')
     .option('--real', 'Compute TRUE merge conflicts via git merge-tree (vs registry overlap)')
-    .option('--base <ref>', 'Base/trunk ref to merge into for --real (default: detected trunk)')
+    .option('--base <ref>', 'With --real: base/trunk ref to merge into (default: detected trunk)')
     .option('--all', 'With --real: check every active registered branch')
     .option('--exit-code', 'With --real: exit 1 on a real conflict, 2 on an analysis error (no verdict)')
-    .option('--carries', 'With --pr: show carries() provenance (own vs inherited commits)')
-    .option('--gate', 'With --pr: check precondition() needs-* labels; --exit-code blocks if unmet')
+    .option('--carries', 'With --pr (merge-tree check, not --vs-prs alone): show carries() provenance (own vs inherited commits)')
+    .option('--gate', 'With --pr (merge-tree check, not --vs-prs alone): check precondition() needs-* labels; --exit-code blocks if unmet')
     // Commander's own parse errors (unknown option, `--pr` with no value) exit 1
     // before the action runs — the "conflict" code. Make them 2, with the same
     // error document under --json. Help and version (exit 0) are untouched.
     .exitOverride((err) => {
         if (err.exitCode === 0) process.exit(0);
-        if (process.argv.includes('--json')) {
-            console.log(JSON.stringify({
-                status: 'error', pr: null, repo: null, base: null, results: [], errors: [{ stage: 'usage', message: err.message }],
-            }, null, 2));
-        }
+        if (process.argv.includes('--json')) console.log(usageErrorDoc(err.message));
         process.exit(2);
     })
     .action(async (options) => {
@@ -564,8 +568,23 @@ export const conflictsCommand = new Command('conflicts')
         // are tier-blocking, overlap is advisory (only --strict makes it block), so
         // the process code is max(real, overlap).
         const composeRealAndOverlap = !!(options.real && options.vsPrs);
+        const runsReal = !!(options.real || (options.pr !== undefined && !options.vsPrs));
+        if (!runsReal) {
+            // Overlap-only run: these options are read by the merge-tree check
+            // alone. Accepting them here would ignore them and still exit 0 —
+            // `--pr N --vs-prs --gate --exit-code` never read the gate.
+            const ignored = REAL_ONLY_OPTIONS.filter(([key]) => options[key] !== undefined).map(([, flag]) => flag);
+            const usage = ignored.length > 0 ? `${ignored.join(', ')} only work${ignored.length === 1 ? 's' : ''} with the merge-tree check: add --real`
+                : options.branch === '' ? '--branch is empty'
+                : null;
+            if (usage) {
+                console.error(`❌ ${usage}`);
+                if (options.json) console.log(usageErrorDoc(usage));
+                process.exit(2);
+            }
+        }
         let realExitCode = 0;
-        if (options.real || (options.pr !== undefined && !options.vsPrs)) {
+        if (runsReal) {
             realExitCode = await runRealConflicts(options);
             if (!composeRealAndOverlap) {
                 if (realExitCode !== 0) process.exit(realExitCode);

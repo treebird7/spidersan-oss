@@ -24,7 +24,9 @@ either flag an analysis error (unresolved ref, merge-tree failure, unreadable `-
 labels) exits 2, never 0 or 1. A script should run `conflicts --pr <N> --real --json
 --exit-code` (no `--vs-prs`: that prints a second JSON document) and pass only on
 `status: "clean"`; the document names the `headSha` and `baseSha` it tested and lists
-failures in `errors`. README.md has the shape.
+failures in `errors`. README.md has the shape. `--gate`, `--carries`, `--base`, `--all` and
+`--exit-code` are rejected (exit 2) on a run without the merge-tree check, such as
+`--pr <N> --vs-prs --gate` with no `--real`.
 
 ## Commands by group
 
