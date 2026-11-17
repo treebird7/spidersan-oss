@@ -204,6 +204,9 @@ export type MergeConflictKind = 'content' | 'add/add' | 'delete/modify' | 'renam
 export interface MergeConflictResult {
     base: string;
     branch: string;
+    /** Full commit shas handed to merge-tree; null when that ref did not resolve. */
+    baseSha: string | null;
+    headSha: string | null;
     mergeBase: string | null;
     conflicts: { file: string; kind: MergeConflictKind }[];
     clean: boolean; // conflicts.length === 0 && !error
@@ -334,9 +337,13 @@ function parseWriteTreeConflicts(output: string): { file: string; kind: MergeCon
  *
  * KNOWN LIMITATION (legacy/git<2.38 only — modern --write-tree path is preferred and
  * always taken on git>=2.38): marker-less conflict classes (modify/delete, rename/*)
- * emit no `<<<<<<<` and are under-reported here. Tracked in STATE.json known-issues;
- * not fixed because legacy git is effectively absent in this fleet (CI/dev on 2.50).
+ * emit no `<<<<<<<` and are not reported here. The legacy form does no rename
+ * detection, so they cannot be told apart from a clean delete or add. A conflict
+ * this parser finds is real; an empty list proves nothing, so getMergeConflicts()
+ * returns LEGACY_UNVERIFIED as an error instead of `clean`.
  */
+const LEGACY_UNVERIFIED = 'legacy merge-tree found no conflict but cannot verify modify/delete or rename; needs git >= 2.38';
+
 function parseLegacyConflicts(output: string): { file: string; kind: MergeConflictKind }[] {
     const conflicts = new Map<string, MergeConflictKind>();
     const lines = output.split('\n');
@@ -393,13 +400,16 @@ function parseLegacyConflicts(output: string): { file: string; kind: MergeConfli
 
 /**
  * Real conflicts merging `branch` into `base`. Prefers `--write-tree` (git ≥2.38),
- * falls back to the legacy 3-arg form. NEVER throws for "they conflict" — only sets
+ * falls back to the legacy 3-arg form, which can report a conflict but never `clean`
+ * (see LEGACY_UNVERIFIED). NEVER throws for "they conflict" — only sets
  * `error` for environmental failures (bad ref / not a repo / unsupported tooling).
  */
 export function getMergeConflicts(base: string, branch: string): MergeConflictResult {
     const baseResult: MergeConflictResult = {
         base,
         branch,
+        baseSha: null,
+        headSha: null,
         mergeBase: null,
         conflicts: [],
         clean: false,
@@ -421,6 +431,7 @@ export function getMergeConflicts(base: string, branch: string): MergeConflictRe
     if (baseSha === null) {
         return { ...baseResult, error: `ref not found: ${base}` };
     }
+    baseResult.baseSha = baseSha;
     try {
         branchSha = resolveRefToSha(branch);
     } catch (error) {
@@ -432,6 +443,7 @@ export function getMergeConflicts(base: string, branch: string): MergeConflictRe
     if (branchSha === null) {
         return { ...baseResult, error: `ref not found: ${branch}` };
     }
+    baseResult.headSha = branchSha;
 
     // Compute merge-base (best-effort; not fatal if unrelated histories).
     let mergeBase: string | null;
@@ -518,23 +530,25 @@ export function getMergeConflicts(base: string, branch: string): MergeConflictRe
             ...baseResult,
             mergeBase,
             conflicts,
-            clean: conflicts.length === 0,
+            clean: false,
             method: 'legacy',
             rawOutput: output,
+            ...(conflicts.length === 0 ? { error: LEGACY_UNVERIFIED } : {}),
         };
     } catch (error) {
         if (isNotRepoError(error)) {
             return { ...baseResult, mergeBase, method: 'legacy', error: 'Not in a git repository' };
         }
         // Legacy form may still produce output on a thrown error in some gits.
+        // A failed merge-tree with no parseable conflict is an error, never "clean".
         const stdout = getThrownStdout(error);
-        if (stdout) {
-            const conflicts = parseLegacyConflicts(stdout);
+        const conflicts = stdout ? parseLegacyConflicts(stdout) : [];
+        if (conflicts.length > 0) {
             return {
                 ...baseResult,
                 mergeBase,
                 conflicts,
-                clean: conflicts.length === 0,
+                clean: false,
                 method: 'legacy',
                 rawOutput: stdout,
             };

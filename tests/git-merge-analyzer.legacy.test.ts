@@ -69,6 +69,19 @@ const LEGACY_DISJOINT_CLEAN = `added in remote
 +world
 `;
 
+// Ours modified the file (our oid != base oid), theirs deleted it: a real
+// modify/delete conflict that the legacy form prints with no `<<<<<<<` marker.
+const LEGACY_MODIFY_DELETE = `removed in remote
+  base   100644 b3c5a95f929a50feb06c275ac567cdb1b441d1e2 a file.txt
+  our    100644 69d705b2183057916928feb0d42492bfa41dee47 a file.txt
+@@ -1,5 +0,0 @@
+-X1
+-line2
+-line3
+-line4
+-line5
+`;
+
 function unknownOptionError(): Error {
     const err = new Error("error: unknown option `write-tree'") as Error & { stdout?: string; stderr?: string };
     err.stderr = "error: unknown option `write-tree'\nusage: git merge-tree";
@@ -121,22 +134,31 @@ describe('getMergeConflicts — legacy fallback parser (mocked, recorded fixture
         expect(result.conflicts).toEqual([{ file: 'new file.txt', kind: 'add/add' }]);
     });
 
-    it('same file DIFFERENT region (changed-in-both, no markers) → CLEAN', () => {
+    // The legacy form cannot prove a merge clean (no rename detection, marker-less
+    // modify/delete), so "no conflict found" is an error, never clean (sp-poga).
+    it('same file DIFFERENT region (changed-in-both, no markers) → no conflict, unverified', () => {
         wireLegacy(LEGACY_DIFFERENT_REGION_CLEAN);
         const result = getMergeConflicts('bx', 'bz');
-        expect(result.error).toBeUndefined();
         expect(result.method).toBe('legacy');
-        expect(result.clean).toBe(true);
         expect(result.conflicts).toEqual([]);
+        expect(result.clean).toBe(false);
+        expect(result.error).toMatch(/needs git >= 2\.38/);
     });
 
-    it('disjoint files → clean', () => {
+    it('disjoint files → no conflict, unverified', () => {
         wireLegacy(LEGACY_DISJOINT_CLEAN);
         const result = getMergeConflicts('dj1', 'dj2');
-        expect(result.error).toBeUndefined();
         expect(result.method).toBe('legacy');
-        expect(result.clean).toBe(true);
         expect(result.conflicts).toEqual([]);
+        expect(result.clean).toBe(false);
+        expect(result.error).toMatch(/needs git >= 2\.38/);
+    });
+
+    it('modify/delete (marker-less `removed in remote`) is never clean', () => {
+        wireLegacy(LEGACY_MODIFY_DELETE);
+        const result = getMergeConflicts('mod', 'del');
+        expect(result.clean).toBe(false);
+        expect(result.error).toMatch(/cannot verify modify\/delete or rename/);
     });
 
     it('handles a conflicted path containing spaces', () => {
@@ -158,5 +180,42 @@ describe('getMergeConflicts — legacy fallback parser (mocked, recorded fixture
         expect(result.error).toMatch(/ref not found/);
         expect(result.clean).toBe(false);
         expect(result.conflicts).toEqual([]);
+    });
+
+    it('reports the shas it passed to merge-tree (sp-poga)', () => {
+        const baseSha = 'b'.repeat(40);
+        const headSha = 'a'.repeat(40);
+        mockExecFileSync.mockImplementation(((_cmd: string, args: readonly string[]) => {
+            const a = args as string[];
+            if (a[0] === 'rev-parse') return a[2].startsWith('bx') ? `${baseSha}\n` : `${headSha}\n`;
+            if (a[0] === 'merge-tree' && a.includes('--write-tree')) throw unknownOptionError();
+            if (a[0] === 'merge-base') return 'cafebabecafebabecafebabecafebabecafebabe\n';
+            return LEGACY_CONTENT_CONFLICT;
+        }) as unknown as typeof ExecFileSync);
+
+        const result = getMergeConflicts('bx', 'by');
+
+        expect(result).toMatchObject({ baseSha, headSha, clean: false });
+        expect(result.error).toBeUndefined();
+        expect(mockExecFileSync).toHaveBeenCalledWith(
+            'git', ['merge-tree', 'cafebabecafebabecafebabecafebabecafebabe', baseSha, headSha], expect.anything(),
+        );
+    });
+
+    it('a failed legacy merge-tree with no parseable conflict is an error, not clean (sp-poga)', () => {
+        mockExecFileSync.mockImplementation(((_cmd: string, args: readonly string[]) => {
+            const a = args as string[];
+            if (a[0] === 'rev-parse') return 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n';
+            if (a[0] === 'merge-tree' && a.includes('--write-tree')) throw unknownOptionError();
+            if (a[0] === 'merge-base') return 'cafebabecafebabecafebabecafebabecafebabe\n';
+            const err = new Error('Command failed: git merge-tree') as Error & { stdout?: string };
+            err.stdout = 'fatal: unable to read tree\n';
+            throw err;
+        }) as unknown as typeof ExecFileSync);
+
+        const result = getMergeConflicts('bx', 'by');
+
+        expect(result.clean).toBe(false);
+        expect(result.error).toBeDefined();
     });
 });

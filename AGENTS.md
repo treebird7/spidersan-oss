@@ -18,8 +18,15 @@ spidersan merged --pr <N>                             # after the merge lands
 `conflicts --pr <N> --real --vs-prs` runs a real `git merge-tree` against trunk
 **and** the overlap pass against other open PRs; the exit code is the worse of
 the two. `--pr <N>` alone runs only the merge-tree half. Found conflicts (even
-TIER 3) exit 0 by default; only errors exit 1. Read the report, or add `--exit-code` (real conflicts → exit 1) or
-`--strict` (real conflicts or TIER 2+ overlap → exit 1) when gating a script.
+TIER 3) exit 0 by default; only errors exit non-zero. Read the report, or add `--exit-code` (real conflicts → exit 1) or
+`--strict` (real conflicts or TIER 2+ overlap → exit 1) when gating a script. Under
+either flag an analysis error (unresolved ref, merge-tree failure, unreadable `--gate`
+labels) exits 2, never 0 or 1. A script should run `conflicts --pr <N> --real --json
+--exit-code` (no `--vs-prs`: that prints a second JSON document) and pass only on
+`status: "clean"`; the document names the `headSha` and `baseSha` it tested and lists
+failures in `errors`. README.md has the shape. `--gate`, `--carries`, `--base`, `--all` and
+`--exit-code` are rejected (exit 2) on a run without the merge-tree check, such as
+`--pr <N> --vs-prs --gate` with no `--real`.
 
 ## Commands by group
 

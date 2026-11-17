@@ -24,6 +24,9 @@ export interface RealConflict {
 export interface RealConflictReport {
     base: string;
     branch: string;
+    /** Full commit shas handed to merge-tree; null when that ref did not resolve. */
+    baseSha: string | null;
+    headSha: string | null;
     mergeBase: string | null;
     conflicts: RealConflict[]; // empty = clean
     clean: boolean;
@@ -46,6 +49,8 @@ export async function analyzeRealConflicts(base: string, branch: string): Promis
     return {
         base: result.base,
         branch: result.branch,
+        baseSha: result.baseSha,
+        headSha: result.headSha,
         mergeBase: result.mergeBase,
         conflicts: result.conflicts.map(({ file, kind }) => ({ file, kind })),
         clean: result.error ? false : result.conflicts.length === 0,

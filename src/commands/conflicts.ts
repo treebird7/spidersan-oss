@@ -16,10 +16,10 @@ import { getStorage } from '../storage/index.js';
 import type { Branch } from '../storage/adapter.js';
 import type { MachineRegistryView } from '../types/cloud.js';
 import { loadMachineIdentity } from '../lib/machine.js';
-import { getRepoName, registryRepoNames, resolveBranchRef } from '../lib/git.js';
+import { execGit, getRepoName, registryRepoNames, resolveBranchRef } from '../lib/git.js';
 import { ASTParser, SymbolConflict } from '../lib/ast.js';
 import { analyzeSemantic, resolveBranchTip, resolveCrossMachineRef } from '../lib/semantic-analysis.js';
-import { getCLIPath } from '../lib/security.js';
+import { getCLIPath, validatePRNumber } from '../lib/security.js';
 import { isExcludedPath } from './register.js';
 import { loadConfig } from '../lib/config.js';
 import { ECOSYSTEM_UNCONFIGURED_HINT, resolveEcosystemRepos } from '../lib/ecosystem-env.js';
@@ -265,7 +265,20 @@ function renderRealReport(report: RealConflictReport): void {
  * Only `--all` (which enumerates registered branches) requires an initialized
  * registry, and that path is gated here.
  *
- * @returns the process exit code (0 always, unless `--exit-code` + conflicts → 1).
+ * `--json` always prints exactly one document, including on a failure before
+ * the analysis (bad --pr, fetch failed, no registry for --all). `status` is the
+ * verdict a script gates on — anything but `clean` is not a pass:
+ *   clean      every target analysed, no conflict, tested shas known
+ *   conflict   a real conflict                       → exit 1 under --exit-code/--strict
+ *   blocked    merges cleanly, a --gate label is set → exit 1 under --exit-code/--strict
+ *   incomplete nothing was analysed (--all, no active branches) → exit 0
+ *   error      listed in `errors`; no verdict        → exit 2
+ * A failure before the analysis exits 2 with or without a flag. An error the
+ * analyzer returns (unresolved ref, merge-tree failure) or an unreadable gate
+ * exits 2 only under --exit-code/--strict: unflagged it stays 0, which the MCP
+ * server's `conflicts --real --json` call relies on. Error outranks conflict.
+ *
+ * @returns the process exit code.
  */
 /**
  * The ref `--real` merges INTO: the remote-tracking trunk when it exists,
@@ -316,6 +329,37 @@ function renderCarries(report: CarriesReport): void {
     }
 }
 
+/** `--pr` as a positive integer, or null — "42junk" and "42.5" are not PR 42. */
+function parsePrOption(raw: unknown): number | null {
+    try {
+        return validatePRNumber(String(raw));
+    } catch {
+        return null;
+    }
+}
+
+type RealStatus = 'clean' | 'conflict' | 'blocked' | 'incomplete' | 'error';
+interface RealError { stage: 'usage' | 'fetch' | 'registry' | 'analysis' | 'gate'; message: string; ref?: string }
+
+/** `owner/name` from the origin URL, or null — pure git, like the rest of --real. */
+function originRepo(): string | null {
+    try {
+        const m = execGit(['remote', 'get-url', 'origin'], { stdio: ['pipe', 'pipe', 'ignore'] })
+            .trim().match(/[/:]([^/:]+\/[^/]+?)(?:\.git)?$/);
+        return m ? m[1] : null;
+    } catch {
+        return null;
+    }
+}
+
+/** The --json document for a usage error raised before the merge-tree check starts. */
+function usageErrorDoc(message: string): string {
+    return JSON.stringify({ status: 'error', pr: null, repo: null, base: null, results: [], errors: [{ stage: 'usage', message }] }, null, 2);
+}
+
+/** Options only runRealConflicts() reads: [commander key, flag]. */
+const REAL_ONLY_OPTIONS = [['gate', '--gate'], ['carries', '--carries'], ['base', '--base'], ['all', '--all'], ['exitCode', '--exit-code']] as const;
+
 async function runRealConflicts(options: {
     base?: string;
     branch?: string;
@@ -327,21 +371,47 @@ async function runRealConflicts(options: {
     carries?: boolean;
     gate?: boolean;
 }): Promise<number> {
+    let base = options.base ?? '';
+    let prNumber: number | undefined;
+    let emitted = false; // --json prints exactly one document, whatever happens
+    // Nothing was analysed: say so in the JSON too, and exit 2 (never 1 = conflict).
+    const abort = (stage: RealError['stage'], message: string): number => {
+        if (options.json && !emitted) {
+            emitted = true;
+            console.log(JSON.stringify({
+                status: 'error', pr: prNumber ?? null, repo: originRepo(), base: base || null, results: [], errors: [{ stage, message }],
+            }, null, 2));
+        }
+        return 2;
+    };
+    // Everything below runs inside this try: a throw from anywhere (not a git
+    // repository, the registry, gh, an analyzer bug) must end as status "error" /
+    // exit 2, never as the global handler's exit 1, which means "conflict".
+    try {
     // `|| resolveRealBase(...)` short-circuits: an explicit --base skips trunk
     // detection entirely, as it always has.
-    let base = options.base || resolveRealBase(getTrunkBranch());
+    base = options.base || resolveRealBase(getTrunkBranch());
 
     // Determine target branches.
     let targets: string[];
-    let prNumber: number | undefined;
-    if (options.pr) {
+    // An option given but unusable must not fall through to "check the current
+    // checkout": presence is tested, never truthiness (`--pr ""` is still --pr).
+    const usage = options.base === '' ? '--base is empty'
+        : options.branch === '' ? '--branch is empty'
+        : (options.gate || options.carries) && options.pr === undefined ? '--gate and --carries need --pr <N>'
+        : null;
+    if (usage) {
+        console.error(`❌ ${usage}`);
+        return abort('usage', usage);
+    }
+    if (options.pr !== undefined) {
         // --pr in real mode: the PR head isn't a local ref, so fetch it. Without
         // this, --real fell through to getCurrentBranch() and silently checked
         // trunk-vs-trunk → a false "clean" (tb-57fr).
-        prNumber = parseInt(options.pr, 10);
-        if (isNaN(prNumber) || prNumber <= 0) {
+        prNumber = parsePrOption(options.pr) ?? undefined;
+        if (prNumber === undefined) {
             console.error('❌ Invalid PR number. Provide a positive integer, e.g. --pr 42');
-            return 1;
+            return abort('usage', 'invalid PR number');
         }
         const ref = `refs/spidersan/pr-${prNumber}`;
         try {
@@ -362,7 +432,7 @@ async function runRealConflicts(options: {
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             console.error(`❌ Could not fetch PR #${prNumber} head: ${msg}`);
-            return 1;
+            return abort('fetch', `could not fetch PR #${prNumber} head or trunk: ${msg}`);
         }
         targets = [ref];
     } else if (options.all) {
@@ -371,7 +441,7 @@ async function runRealConflicts(options: {
         if (!(await storage.isInitialized())) {
             console.error('❌ Spidersan not initialized. Run: spidersan init');
             console.error('   (--real --all needs the registry; --real alone does not)');
-            return 1;
+            return abort('registry', 'spidersan not initialized (--real --all needs the registry)');
         }
         // Reconcile-on-read: fold git truth over stale `active` status so a
         // branch already merged into trunk isn't checked for conflicts (tb-8sa.1).
@@ -386,6 +456,12 @@ async function runRealConflicts(options: {
     }
 
     const anyConflicts = results.some((r) => !r.error && !r.clean);
+    const errors: RealError[] = [];
+    for (const r of results) {
+        if (r.error) errors.push({ stage: 'analysis', ref: r.branch, message: r.error });
+        // A verdict with no named commits can't be pinned to what was tested.
+        else if (!r.baseSha || !r.headSha) errors.push({ stage: 'analysis', ref: r.branch, message: 'analyzer did not report the shas it tested' });
+    }
 
     // --pr extras: precondition() gate + carries() provenance (opt-in, compose).
     let gate: { labels: string[]; unmet: boolean; unknown?: boolean } | undefined;
@@ -398,6 +474,7 @@ async function runRealConflicts(options: {
             const labels = isGhAvailable() ? await getPRLabels(prNumber) : null;
             if (labels === null) {
                 gate = { labels: [], unmet: true, unknown: true };
+                errors.push({ stage: 'gate', message: 'could not read PR labels (gh missing or unauthenticated)' });
             } else {
                 const needs = preconditionLabels(labels);
                 gate = { labels: needs, unmet: needs.length > 0 };
@@ -412,8 +489,16 @@ async function runRealConflicts(options: {
         }
     }
 
+    const status: RealStatus = errors.length > 0 ? 'error'
+        : anyConflicts ? 'conflict'
+        : gate?.unmet ? 'blocked'
+        : results.length === 0 ? 'incomplete'
+        : 'clean';
+
     if (options.json) {
-        console.log(JSON.stringify({ base, results, carries, gate }, null, 2));
+        const doc = JSON.stringify({ status, pr: prNumber ?? null, repo: originRepo(), base, results, errors, carries, gate }, null, 2);
+        emitted = true;
+        console.log(doc);
     } else {
         if (results.length === 0) {
             console.log(`🕷️ No active branches to check vs ${base}.`);
@@ -427,7 +512,13 @@ async function runRealConflicts(options: {
 
     // --strict is the advertised CI flag on the legacy path; honour it here too
     // instead of silently ignoring it (real conflicts are always tier-blocking).
-    return (options.exitCode || options.strict) && (anyConflicts || gate?.unmet === true) ? 1 : 0;
+    if (!(options.exitCode || options.strict)) return 0;
+    return status === 'error' ? 2 : status === 'conflict' || status === 'blocked' ? 1 : 0;
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`❌ ${msg}`);
+        return abort('analysis', msg);
+    }
 }
 
 export const conflictsCommand = new Command('conflicts')
@@ -443,11 +534,19 @@ export const conflictsCommand = new Command('conflicts')
     .option('--ecosystem', 'Scan all ecosystem repos and aggregate conflict tiers')
     .option('--repos <paths>', 'Comma-separated repo paths for --ecosystem scan')
     .option('--real', 'Compute TRUE merge conflicts via git merge-tree (vs registry overlap)')
-    .option('--base <ref>', 'Base/trunk ref to merge into for --real (default: detected trunk)')
+    .option('--base <ref>', 'With --real: base/trunk ref to merge into (default: detected trunk)')
     .option('--all', 'With --real: check every active registered branch')
-    .option('--exit-code', 'With --real: exit 1 if any real conflicts found (like git diff)')
-    .option('--carries', 'With --pr: show carries() provenance (own vs inherited commits)')
-    .option('--gate', 'With --pr: check precondition() needs-* labels; --exit-code blocks if unmet')
+    .option('--exit-code', 'With --real: exit 1 on a real conflict, 2 on an analysis error (no verdict)')
+    .option('--carries', 'With --pr (merge-tree check, not --vs-prs alone): show carries() provenance (own vs inherited commits)')
+    .option('--gate', 'With --pr (merge-tree check, not --vs-prs alone): check precondition() needs-* labels; --exit-code blocks if unmet')
+    // Commander's own parse errors (unknown option, `--pr` with no value) exit 1
+    // before the action runs — the "conflict" code. Make them 2, with the same
+    // error document under --json. Help and version (exit 0) are untouched.
+    .exitOverride((err) => {
+        if (err.exitCode === 0) process.exit(0);
+        if (process.argv.includes('--json')) console.log(usageErrorDoc(err.message));
+        process.exit(2);
+    })
     .action(async (options) => {
         // ── Real (git merge-tree) conflicts ──────────────────────────────────
         // Runs BEFORE the storage-init guard: a single-target real check is pure
@@ -469,8 +568,23 @@ export const conflictsCommand = new Command('conflicts')
         // are tier-blocking, overlap is advisory (only --strict makes it block), so
         // the process code is max(real, overlap).
         const composeRealAndOverlap = !!(options.real && options.vsPrs);
+        const runsReal = !!(options.real || (options.pr !== undefined && !options.vsPrs));
+        if (!runsReal) {
+            // Overlap-only run: these options are read by the merge-tree check
+            // alone. Accepting them here would ignore them and still exit 0 —
+            // `--pr N --vs-prs --gate --exit-code` never read the gate.
+            const ignored = REAL_ONLY_OPTIONS.filter(([key]) => options[key] !== undefined).map(([, flag]) => flag);
+            const usage = ignored.length > 0 ? `${ignored.join(', ')} only work${ignored.length === 1 ? 's' : ''} with the merge-tree check: add --real`
+                : options.branch === '' ? '--branch is empty'
+                : null;
+            if (usage) {
+                console.error(`❌ ${usage}`);
+                if (options.json) console.log(usageErrorDoc(usage));
+                process.exit(2);
+            }
+        }
         let realExitCode = 0;
-        if (options.real || (options.pr && !options.vsPrs)) {
+        if (runsReal) {
             realExitCode = await runRealConflicts(options);
             if (!composeRealAndOverlap) {
                 if (realExitCode !== 0) process.exit(realExitCode);
@@ -484,10 +598,16 @@ export const conflictsCommand = new Command('conflicts')
          * On the composed path a non-zero code from EITHER half must survive;
          * on the plain overlap path realExitCode is 0, so behaviour is unchanged.
          */
+        let finished = false;
         const finish = (overlapCode: number): void => {
+            finished = true;
             const code = Math.max(realExitCode, overlapCode);
             if (code !== 0) process.exit(code);
         };
+
+        // The overlap pass is a closure so the composed --real --vs-prs path can
+        // catch what it throws (see the call at the end of this action).
+        const runOverlap = async (): Promise<void> => {
 
         // ── Ecosystem shortcut ───────────────────────────────────────────────
         if (options.ecosystem) {
@@ -534,17 +654,21 @@ export const conflictsCommand = new Command('conflicts')
         let targetPrNumber: number | undefined;
         const prNumberByLabel = new Map<string, number>(); // display label -> PR number (labels are NOT git refs)
 
-        if (options.pr) {
+        if (options.pr !== undefined) {
             // --pr mode: fetch PR head branch + changed files from GitHub
-            const prNumber = parseInt(options.pr, 10);
-            if (isNaN(prNumber) || prNumber <= 0) {
+            // These three are "could not check", not a conflict: exit 2, and through
+            // finish() so a 2 from the --real half is never lowered.
+            const prNumber = parsePrOption(options.pr);
+            if (prNumber === null) {
                 console.error('❌ Invalid PR number. Provide a positive integer, e.g. --pr 42');
-                process.exit(1);
+                finish(2);
+                return;
             }
             if (!isGhAvailable()) {
                 console.error('❌ GitHub CLI (gh) is not available or not authenticated.');
                 console.error('   Install: https://cli.github.com  →  gh auth login');
-                process.exit(1);
+                finish(2);
+                return;
             }
             let prDetails;
             try {
@@ -552,7 +676,8 @@ export const conflictsCommand = new Command('conflicts')
             } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
                 console.error(`❌ Failed to fetch PR #${prNumber}: ${msg}`);
-                process.exit(1);
+                finish(2);
+                return;
             }
             targetBranch = prDetails.headBranch;
             targetFiles = prDetails.files;
@@ -593,9 +718,11 @@ export const conflictsCommand = new Command('conflicts')
         // ponytail: 1 + N gh calls (list + per-PR diff); fine for typical open-PR counts,
         // parallelise if a repo ever carries hundreds of open PRs.
         const prHeadBranches: string[] = [];
+        const vsPrsSkipped: string[] = []; // --vs-prs coverage that did not run, for --json
         if (options.vsPrs) {
             if (!isGhAvailable()) {
                 console.error('⚠️  --vs-prs needs gh (unavailable/unauthenticated); checking registered branches only.');
+                vsPrsSkipped.push('open PRs: gh unavailable or unauthenticated');
             } else {
                 const openPRs = (await listOpenPRs()).filter(pr => pr.headBranch !== targetBranch);
                 prHeadBranches.push(...openPRs.map(pr => pr.headBranch));
@@ -608,6 +735,8 @@ export const conflictsCommand = new Command('conflicts')
                     description: pr.title,
                 })));
                 allBranches.push(...prBranches.filter(b => b.files.length > 0));
+                // getPRChangedFiles returns [] when gh fails, so an empty list is "not compared".
+                vsPrsSkipped.push(...prBranches.filter(b => b.files.length === 0).map(b => `${b.name}: no changed-file list`));
             }
         }
 
@@ -747,6 +876,7 @@ export const conflictsCommand = new Command('conflicts')
                 branch: targetBranch,
                 conflicts,
                 crossMachine: cross.status,
+                ...(options.vsPrs ? { skipped: vsPrsSkipped } : {}),
                 summary: {
                     tier3: tier3Count,
                     tier2: tier2Count,
@@ -842,4 +972,18 @@ export const conflictsCommand = new Command('conflicts')
             console.log('❌ Strict mode: Exiting with error due to TIER 2+ conflicts.');
         }
         finish(shouldBlock ? 1 : 0);
+        };
+
+        try {
+            await runOverlap();
+        } catch (err) {
+            // Plain overlap path: unchanged. `finished` means finish() already
+            // chose the exit code (process.exit only "throws" when a test stubs it).
+            if (!composeRealAndOverlap || finished) throw err;
+            // Composed with --real: an unexpected throw is "could not check" —
+            // exit 2, never the global handler's 1, and no further stdout.
+            console.error(`❌ Overlap/cross-PR check failed: ${err instanceof Error ? err.message : String(err)}`);
+            console.error('   The --real merge-tree result above stands on its own; the --vs-prs half did NOT complete.');
+            process.exit(2);
+        }
     });

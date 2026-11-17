@@ -75,7 +75,45 @@ spidersan conflicts --pr 42 --real --vs-prs
 
 Found conflicts exit 0 so the report is never mistaken for a crash. To gate a script, add
 `--exit-code` (real conflicts exit 1) or `--strict` (real conflicts or tier 2+ overlap
-exit 1).
+exit 1). Either flag also exits 2 when the merge-tree check could not reach a verdict.
+
+For a script, `spidersan conflicts --pr 42 --real --json --exit-code` prints one JSON
+document. With `--pr`, it exits 0 only when `status` is `clean`:
+
+```json
+{
+  "status": "clean",
+  "pr": 42,
+  "repo": "owner/name",
+  "base": "origin/main",
+  "results": [{
+    "base": "origin/main", "branch": "refs/spidersan/pr-42",
+    "baseSha": "<40-char sha>", "headSha": "<40-char sha>", "mergeBase": "<sha>",
+    "conflicts": [], "clean": true, "method": "write-tree"
+  }],
+  "errors": []
+}
+```
+
+| `status` | Meaning | Exit with `--exit-code` |
+|---|---|---|
+| `clean` | `headSha` merges into `baseSha` with no conflict | 0 |
+| `conflict` | Real conflicts, listed in `results[].conflicts` | 1 |
+| `blocked` | Merges cleanly, but `--gate` found a `needs-*` label | 1 |
+| `incomplete` | Nothing was analysed (`--all` with no active branches) | 0 |
+| `error` | No verdict. `errors[]` says why: `{stage, message, ref?}`, stage `usage`, `fetch`, `registry`, `analysis` or `gate` | 2 |
+
+A bad or empty `--pr` (`42junk` is not PR 42), an empty `--branch` or `--base`, `--gate`
+without `--pr`, a failed fetch, or `--all` with no registry exits 2
+with or without the flag. So does anything else that stops the check (not a git repository,
+an unreadable registry, an unknown option): on the `--real` path exit 1 is only ever a
+conflict or an unmet gate. `clean` needs git 2.38 or newer: the older `git merge-tree` cannot
+verify modify/delete or rename conflicts, so there a merge with no conflict found is `error`. `--gate`, `--carries`, `--base`, `--all` and `--exit-code` belong to the merge-tree check.
+On a run that does not include it (no `--real`, and either no `--pr` or `--pr` with
+`--vs-prs`) they are rejected with exit 2 instead of being ignored.
+
+Add `--vs-prs` for a person to read, not for a script: it prints a second JSON
+document (the overlap pass, with a `skipped` list of open PRs it could not compare).
 
 ## Claude Code plugin
 

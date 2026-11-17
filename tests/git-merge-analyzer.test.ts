@@ -58,6 +58,10 @@ describe('analyzeRealConflicts (real git repos)', () => {
 
         const report = await analyzeRealConflicts('bx', 'by');
 
+        // Branch names in, the full shas that merge-tree was given out (sp-poga).
+        expect(report.baseSha).toBe(git('rev-parse', 'bx').trim());
+        expect(report.headSha).toBe(git('rev-parse', 'by').trim());
+        expect(report.headSha).toMatch(/^[0-9a-f]{40}$/);
         expect(report.error).toBeUndefined();
         expect(report.clean).toBe(false);
         expect(report.conflicts).toHaveLength(1);
@@ -109,6 +113,8 @@ describe('analyzeRealConflicts (real git repos)', () => {
 
         const report = await analyzeRealConflicts('bx', 'no-such-branch');
 
+        expect(report.baseSha).toBe(git('rev-parse', 'bx').trim());
+        expect(report.headSha).toBeNull(); // unresolved ref: no sha is invented
         expect(report.error).toBeDefined();
         expect(report.error).toMatch(/ref not found: no-such-branch/);
         expect(report.clean).toBe(false);
@@ -125,6 +131,8 @@ describe('analyzeRealConflicts (real git repos)', () => {
         const report = await analyzeRealConflicts(bxSha, bySha);
 
         expect(report.error).toBeUndefined();
+        expect(report.baseSha).toBe(bxSha);
+        expect(report.headSha).toBe(bySha);
         expect(report.conflicts).toHaveLength(1);
         expect(report.conflicts[0].file).toBe('a file.txt');
     });

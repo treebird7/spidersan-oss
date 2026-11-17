@@ -9,7 +9,8 @@
  *   - --exit-code → exit 1 when conflicts, 0 when clean
  *   - --json → { base, results } shape
  *   - --all → iterates active registered branches (storage.list())
- *   - error report → printed, does not throw, exit 0
+ *   - error report → printed, does not throw; exit 0 unflagged, 2 under --exit-code
+ *   - --json → one document with status / errors / tested shas (sp-poga)
  *   - --base override is passed through to the analyzer
  *   - --real runs even when the registry is NOT initialized (single target)
  */
@@ -61,10 +62,15 @@ function logged(): string {
     return logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
 }
 
+const BASE_SHA = 'b'.repeat(40);
+const HEAD_SHA = 'a'.repeat(40);
+
 function makeReport(over: Partial<RealConflictReport> = {}): RealConflictReport {
     return {
         base: 'main',
         branch: 'feat/x',
+        baseSha: BASE_SHA,
+        headSha: HEAD_SHA,
         mergeBase: 'abc123',
         conflicts: [],
         clean: true,
@@ -267,7 +273,7 @@ describe('conflicts --real', () => {
 
     it('--pr rejects a non-numeric PR (no fetch, no analysis)', async () => {
         const code = await run(['--real', '--pr', 'abc']);
-        expect(code).toBe(1);
+        expect(code).toBe(2); // nothing analysed: never the "conflict" code
         // Base resolution runs first and reads local refs; what must NOT happen
         // is a fetch or an analysis.
         expect(execFileSync).not.toHaveBeenCalledWith(
@@ -337,8 +343,8 @@ describe('conflicts --real', () => {
 
         const code = await run(['--real', '--all']);
 
-        expect(code).toBe(1);
-        expect(exitSpy).toHaveBeenCalledWith(1);
+        expect(code).toBe(2);
+        expect(exitSpy).toHaveBeenCalledWith(2);
         expect(analyzeRealConflicts).not.toHaveBeenCalled();
     });
 
@@ -363,15 +369,13 @@ describe('conflicts --real', () => {
         expect(logged()).toContain('❌ feat/current: ref not found: main');
     });
 
-    it('--exit-code does NOT trip on an env error alone (no real conflicts)', async () => {
+    it('--exit-code exits 2 on an analysis error — not 0, and not the conflict code (sp-poga)', async () => {
         (analyzeRealConflicts as Mock).mockResolvedValue(
             makeReport({ branch: 'feat/current', clean: false, error: 'not a git repository' }),
         );
 
-        const code = await run(['--real', '--exit-code']);
-
-        expect(code).toBe(0);
-        expect(exitSpy).not.toHaveBeenCalled();
+        expect(await run(['--real', '--exit-code'])).toBe(2);
+        expect(await run(['--real', '--strict'])).toBe(2);
     });
 
     it('legacy-method reports render the method line', async () => {
@@ -387,5 +391,265 @@ describe('conflicts --real', () => {
         await run(['--real']);
 
         expect(logged()).toContain('method: legacy');
+    });
+
+    // ── sp-poga: --json is a contract a script can fail closed on ────────────
+    describe('--json contract (sp-poga)', () => {
+        /** The single JSON document on stdout. JSON.parse throws if there is more than one. */
+        const doc = () => JSON.parse(logged());
+        const originUrl = (url: string) => {
+            (execFileSync as Mock).mockImplementation((_cmd: string, args?: string[]) => {
+                if (Array.isArray(args) && args.includes('get-url')) return `${url}\n`;
+                if (Array.isArray(args) && args.includes('--verify')) return '';
+                return 'feat/current\n';
+            });
+        };
+
+        it('clean PR → status clean, full head/base shas, pr and repo; exit 0', async () => {
+            originUrl('git@github.com:acme/widgets.git');
+            (analyzeRealConflicts as Mock).mockResolvedValue(makeReport({ base: 'origin/main', branch: 'refs/spidersan/pr-81' }));
+
+            const code = await run(['--pr', '81', '--real', '--json', '--exit-code']);
+
+            expect(code).toBe(0);
+            const out = doc();
+            expect(out).toMatchObject({ status: 'clean', pr: 81, repo: 'acme/widgets', base: 'origin/main', errors: [] });
+            expect(out.results).toHaveLength(1);
+            expect(out.results[0].headSha).toBe(HEAD_SHA);
+            expect(out.results[0].baseSha).toBe(BASE_SHA);
+            expect(out.results[0].headSha).toMatch(/^[0-9a-f]{40}$/);
+            expect(out.results[0].clean).toBe(true); // pre-existing field kept
+        });
+
+        it('repo is parsed from an https origin too, and is null when there is none', async () => {
+            originUrl('https://github.com/acme/widgets');
+            (analyzeRealConflicts as Mock).mockResolvedValue(makeReport());
+            await run(['--real', '--json']);
+            expect(doc().repo).toBe('acme/widgets');
+
+            logSpy.mockClear();
+            originUrl('');
+            await run(['--real', '--json']);
+            expect(doc()).toMatchObject({ repo: null, pr: null, status: 'clean' });
+        });
+
+        it('conflict → status conflict, exit 1 under --exit-code', async () => {
+            (analyzeRealConflicts as Mock).mockResolvedValue(
+                makeReport({ clean: false, conflicts: [{ file: 'src/a.ts', kind: 'content' }] }),
+            );
+
+            const code = await run(['--pr', '81', '--json', '--exit-code']);
+
+            expect(code).toBe(1);
+            expect(doc()).toMatchObject({ status: 'conflict', errors: [] });
+            expect(doc().results[0].conflicts).toEqual([{ file: 'src/a.ts', kind: 'content' }]);
+        });
+
+        it('analyzer error → status error, listed in errors, exit 2 under --exit-code', async () => {
+            (analyzeRealConflicts as Mock).mockResolvedValue(
+                makeReport({ branch: 'refs/spidersan/pr-81', clean: false, headSha: null, error: 'ref not found: refs/spidersan/pr-81' }),
+            );
+
+            const code = await run(['--pr', '81', '--json', '--exit-code']);
+
+            expect(code).toBe(2);
+            const out = doc();
+            expect(out.status).toBe('error');
+            expect(out.errors).toEqual([{ stage: 'analysis', ref: 'refs/spidersan/pr-81', message: 'ref not found: refs/spidersan/pr-81' }]);
+        });
+
+        it('analyzer error without --exit-code keeps exit 0 but the JSON still says error', async () => {
+            // The MCP server calls `conflicts --real --json` unflagged and reads the document.
+            (analyzeRealConflicts as Mock).mockResolvedValue(makeReport({ clean: false, error: 'merge-tree failed' }));
+
+            const code = await run(['--real', '--json']);
+
+            expect(code).toBe(0);
+            expect(doc().status).toBe('error');
+        });
+
+        it('fetch failure → still one JSON document with status error; exit 2 even unflagged', async () => {
+            (execFileSync as Mock).mockImplementation((_cmd: string, args?: string[]) => {
+                if (Array.isArray(args) && args.includes('fetch')) throw new Error("couldn't find remote ref pull/999/head");
+                return '';
+            });
+
+            const code = await run(['--pr', '999', '--json']);
+
+            expect(code).toBe(2);
+            expect(analyzeRealConflicts).not.toHaveBeenCalled();
+            const out = doc();
+            expect(out).toMatchObject({ status: 'error', pr: 999, results: [] });
+            expect(out.errors[0].stage).toBe('fetch');
+            expect(out.errors[0].message).toContain('pull/999/head');
+        });
+
+        it.each(['', '42junk', '42.5', '0', '-3'])('--pr "%s" is not a PR number: status error, exit 2, nothing fetched', async (raw) => {
+            const code = await run(['--pr', raw, '--real', '--json', '--exit-code']);
+
+            expect(code).toBe(2);
+            expect(doc()).toMatchObject({ status: 'error', pr: null, results: [], errors: [{ stage: 'usage' }] });
+            expect(execFileSync).not.toHaveBeenCalledWith('git', expect.arrayContaining(['fetch']), expect.anything());
+            expect(analyzeRealConflicts).not.toHaveBeenCalled();
+        });
+
+        it.each([
+            ['--gate without --pr', ['--real', '--gate']],
+            ['--carries without --pr', ['--real', '--carries']],
+            ['an empty --branch', ['--real', '--branch', '']],
+            ['an empty --base', ['--real', '--base', '']],
+        ])('%s is a usage error, not a check of the current checkout', async (_name, args) => {
+            (analyzeRealConflicts as Mock).mockResolvedValue(makeReport());
+
+            const code = await run([...args, '--json', '--exit-code']);
+
+            expect(code).toBe(2);
+            expect(doc()).toMatchObject({ status: 'error', results: [], errors: [{ stage: 'usage' }] });
+            expect(analyzeRealConflicts).not.toHaveBeenCalled();
+        });
+
+        // A throw anywhere on the real path used to reach the global handler:
+        // no JSON, exit 1 — the "conflict" code. Each must be one error document, exit 2.
+        const expectOneErrorDoc = (code: number) => {
+            expect(code).toBe(2);
+            expect(exitSpy).toHaveBeenCalledWith(2);
+            expect(logSpy.mock.calls.filter((c) => String(c[0]).includes('"status"'))).toHaveLength(1);
+            expect(doc()).toMatchObject({ status: 'error', results: [], errors: [{ stage: 'analysis' }] });
+        };
+
+        it('getCurrentBranch throwing (not a git repository) → one error document, exit 2', async () => {
+            (execFileSync as Mock).mockImplementation((_cmd: string, args?: string[]) => {
+                if (Array.isArray(args) && args.includes('--abbrev-ref')) throw new Error('fatal: not a git repository');
+                return '';
+            });
+
+            expectOneErrorDoc(await run(['--real', '--json', '--exit-code']));
+            expect(analyzeRealConflicts).not.toHaveBeenCalled();
+        });
+
+        it('trunk detection throwing → one error document with base null, exit 2', async () => {
+            (getTrunkBranch as Mock).mockImplementation(() => { throw new Error('boom: trunk'); });
+
+            expectOneErrorDoc(await run(['--real', '--json']));
+            expect(doc().base).toBeNull();
+        });
+
+        it('an arbitrary Error thrown mid-analysis → one error document, exit 2', async () => {
+            (analyzeRealConflicts as Mock).mockRejectedValue(new Error('boom: analyzer'));
+
+            expectOneErrorDoc(await run(['--pr', '81', '--json', '--exit-code']));
+            expect(doc()).toMatchObject({ pr: 81, errors: [{ message: 'boom: analyzer' }] });
+        });
+
+        it('--all: storage.list() throwing → one error document, exit 2', async () => {
+            (getStorage as Mock).mockResolvedValue({
+                isInitialized: vi.fn().mockResolvedValue(true),
+                list: vi.fn().mockRejectedValue(new Error('boom: registry unreadable')),
+            });
+
+            expectOneErrorDoc(await run(['--real', '--all', '--json', '--exit-code']));
+        });
+
+        it('--all: getStorage() itself throwing → one error document, exit 2', async () => {
+            (getStorage as Mock).mockRejectedValue(new Error('boom: no storage'));
+
+            expectOneErrorDoc(await run(['--real', '--all', '--json']));
+        });
+
+        it('--gate: the label lookup throwing → one error document, exit 2', async () => {
+            (analyzeRealConflicts as Mock).mockResolvedValue(makeReport());
+            (getPRLabels as Mock).mockRejectedValue(new Error('boom: gh'));
+
+            expectOneErrorDoc(await run(['--pr', '80', '--gate', '--json', '--exit-code']));
+        });
+
+        it('a commander parse error (unknown option, --pr with no value) exits 2 with an error document', async () => {
+            const argv = process.argv;
+            const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+            process.argv = [...argv, '--json']; // the override reads the raw argv: options are not parsed yet
+            try {
+                expect(await run(['--real', '--json', '--bogus'])).toBe(2);
+                expect(doc()).toMatchObject({ status: 'error', results: [], errors: [{ stage: 'usage' }] });
+                logSpy.mockClear();
+                expect(await run(['--real', '--json', '--exit-code', '--pr'])).toBe(2);
+                expect(doc().status).toBe('error');
+            } finally {
+                process.argv = argv;
+                stderr.mockRestore();
+            }
+            expect(analyzeRealConflicts).not.toHaveBeenCalled();
+        });
+
+        it('a throw without --json still exits 2 and prints no JSON', async () => {
+            (analyzeRealConflicts as Mock).mockRejectedValue(new Error('boom'));
+
+            expect(await run(['--real'])).toBe(2);
+            expect(logged()).not.toContain('"status"');
+        });
+
+        it('a legacy-method result the analyzer could not verify is status error, never clean', async () => {
+            (analyzeRealConflicts as Mock).mockResolvedValue(makeReport({
+                method: 'legacy', clean: false,
+                error: 'legacy merge-tree found no conflict but cannot verify modify/delete or rename; needs git >= 2.38',
+            }));
+
+            const code = await run(['--pr', '81', '--json', '--exit-code']);
+
+            expect(code).toBe(2);
+            expect(doc().status).not.toBe('clean');
+            expect(doc().status).toBe('error');
+        });
+
+        it('a "clean" report that names no shas is an error, not clean', async () => {
+            (analyzeRealConflicts as Mock).mockResolvedValue(makeReport({ headSha: null }));
+
+            const code = await run(['--real', '--json', '--exit-code']);
+
+            expect(code).toBe(2);
+            expect(doc().status).toBe('error');
+        });
+
+        it('an error outranks a conflict (--all): status error, exit 2', async () => {
+            (getStorage as Mock).mockResolvedValue({
+                isInitialized: vi.fn().mockResolvedValue(true),
+                list: vi.fn().mockResolvedValue([
+                    { name: 'feat/a', status: 'active', files: [] },
+                    { name: 'feat/b', status: 'active', files: [] },
+                ]),
+            });
+            (analyzeRealConflicts as Mock).mockImplementation(async (_base: string, branch: string) =>
+                branch === 'feat/a'
+                    ? makeReport({ branch, clean: false, conflicts: [{ file: 'x', kind: 'content' }] })
+                    : makeReport({ branch, clean: false, error: 'ref not found: feat/b' }));
+
+            const code = await run(['--real', '--all', '--json', '--exit-code']);
+
+            expect(code).toBe(2);
+            expect(doc().status).toBe('error');
+        });
+
+        it('--all with nothing to analyse → status incomplete, never clean', async () => {
+            (getStorage as Mock).mockResolvedValue({
+                isInitialized: vi.fn().mockResolvedValue(true),
+                list: vi.fn().mockResolvedValue([]),
+            });
+
+            const code = await run(['--real', '--all', '--json', '--exit-code']);
+
+            expect(code).toBe(0);
+            expect(doc()).toMatchObject({ status: 'incomplete', results: [] });
+        });
+
+        it('--gate: an unmet label is blocked (exit 1); unreadable labels are an error (exit 2)', async () => {
+            (analyzeRealConflicts as Mock).mockResolvedValue(makeReport());
+            (getPRLabels as Mock).mockResolvedValue(['needs-grant:x']);
+            expect(await run(['--pr', '80', '--gate', '--json', '--exit-code'])).toBe(1);
+            expect(doc().status).toBe('blocked');
+
+            logSpy.mockClear();
+            (getPRLabels as Mock).mockResolvedValue(null);
+            expect(await run(['--pr', '80', '--gate', '--json', '--exit-code'])).toBe(2);
+            expect(doc()).toMatchObject({ status: 'error', errors: [{ stage: 'gate' }] });
+        });
     });
 });

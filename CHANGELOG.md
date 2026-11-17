@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`conflicts --real --json` is safe to gate a script on** (sp-poga). The document gains a
+  top-level `status` (`clean` | `conflict` | `blocked` | `incomplete` | `error`), `pr`, `repo`
+  and an `errors` list; each result gains `baseSha` and `headSha`, the full commit shas handed
+  to `git merge-tree`. `base`, `results`, `carries` and `gate` are unchanged. A failure before
+  the analysis (bad `--pr`, fetch failed, `--all` with no registry) used to print nothing on
+  stdout; it now prints the same document with `status: "error"`.
+- **Exit code 2 means "no verdict"**. `--exit-code` and `--strict` ignored analysis errors: an
+  unresolved ref or a failed merge-tree exited 0, the same as a clean merge. They now exit 2,
+  and an error outranks a conflict. Unreadable `--gate` labels move from 1 to 2. A bad `--pr`,
+  a failed PR fetch and `--real --all` with no registry move from 1 to 2, with or without a
+  flag. The `--pr` failures in the `--vs-prs` overlap pass (bad number, `gh` unavailable, PR
+  lookup failed) also move from 1 to 2 and no longer lower a 2 from the `--real` half. With
+  `--pr`, 1 now only ever means a conflict, an unmet gate, or `--strict` overlap. Without a flag, an error the analyzer
+  returns still exits 0 (the MCP server reads the JSON instead).
+- `conflicts --vs-prs --json` adds `skipped`: open PRs whose changed-file list could not be
+  read, or all of them when `gh` is unavailable. They were dropped from the comparison silently.
+
+### Fixed
+
+- **`--pr 42junk` and `--pr 42.5` were read as PR 42.** `parseInt` accepts a numeric prefix.
+  `validatePRNumber` now requires the whole string to be a positive integer, and both `--pr`
+  paths in `conflicts` use it.
+- **An empty `--pr ""` no longer checks the current checkout.** It was treated as "no `--pr`"
+  and could report `clean` for a branch nobody asked about. An empty `--pr`, `--branch` or
+  `--base`, and `--gate` or `--carries` without `--pr`, are now usage errors on the `--real`
+  path (`status: "error"`, exit 2).
+- **`--gate` is no longer ignored without the merge-tree check.**
+  `conflicts --pr <N> --vs-prs --gate --exit-code` (no `--real`) ran only the overlap pass,
+  which never read the gate, and exited 0. On an overlap-only run, the options only the
+  merge-tree check reads (`--gate`, `--carries`, `--base`, `--all`, `--exit-code`) and an empty
+  `--branch` are now usage errors: exit 2, with the error document under `--json`. Add `--real`.
+  `--pr <N> --gate` without `--vs-prs` already ran the merge-tree check and is unchanged.
+- **No failure on the `--real` path exits 1 any more.** Run outside a git repository,
+  `conflicts --real --json --exit-code` threw past the command into the global handler: no
+  JSON and exit 1, the "conflict" code. The whole real path now runs inside one catch, so
+  anything thrown (git, the registry, `gh`, the analyzer) ends as one `status: "error"`
+  document and exit 2. On `--real --vs-prs` an unexpected throw in the overlap pass exits 2
+  as well. Commander's own parse errors for `conflicts` (unknown option, `--pr` with no
+  value) move from 1 to 2 and print the error document under `--json`.
+- **`conflicts --real` on git older than 2.38 never reports `clean`.** The legacy
+  `git merge-tree` form does no rename detection and prints modify/delete with no conflict
+  marker, so "no conflict found" proved nothing and was reported as clean. A conflict it finds
+  is still reported; finding none is now an error (`needs git >= 2.38`, `status: "error"`,
+  exit 2 under `--exit-code`). A legacy merge-tree that exits non-zero with no parseable
+  conflict is an error too, where it used to read as clean.
+
 ### Added
 
 - **`/spidersan` skill: `review` workflow** — a read-only branch health check (registry vs
