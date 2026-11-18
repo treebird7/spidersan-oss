@@ -232,3 +232,40 @@ describe('createEscalation', () => {
         expect(calls).toEqual([]);
     });
 });
+
+describe('task', () => {
+    const task = (over: Record<string, unknown> = {}) =>
+        ok({ task: { id: TASK, legacyId: null, status: 'in_progress', claimedBy: 'mycsan', ...over }, comments: [] });
+
+    test('a task imported under a legacy id is that task too', async () => {
+        expect(await scripted(task({ id: 'u-1', legacyId: TASK })).invoak.task(TASK)).not.toBeNull();
+    });
+
+    test('status and claimant of the task shown under that id (shape of a real `show`, 2026-11-19)', async () => {
+        const { invoak, calls } = scripted(task());
+        expect(await invoak.task(TASK)).toEqual({ status: 'in_progress', claimedBy: 'mycsan' });
+        expect(calls).toEqual([['invoak', 'show', TASK, '--json']]);
+    });
+
+    test('an unclaimed task has no claimant', async () => {
+        expect(await scripted(task({ claimedBy: null })).invoak.task(TASK)).toEqual({
+            status: 'in_progress',
+            claimedBy: null,
+        });
+    });
+
+    test.each([
+        ['another task answers', task({ id: 'sp-other' })],
+        ['no status', task({ status: undefined })],
+        ['NOT_FOUND', failed('NOT_FOUND')],
+        ['any other failure', failed('NO_CREDENTIAL')],
+    ])('null when %s', async (_name, answer) => {
+        expect(await scripted(answer).invoak.task(TASK)).toBeNull();
+    });
+
+    test('an id that is not a task id is never asked about', async () => {
+        const { invoak, calls } = scripted(task());
+        expect(await invoak.task('--help')).toBeNull();
+        expect(calls).toEqual([]);
+    });
+});

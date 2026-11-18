@@ -73,7 +73,7 @@ export interface EscalationSpec {
     repo: string;
     pr: number;
     head: string;
-    reason: ReasonOf<'escalate'> | ReconcileEscalation;
+    reason: ReasonOf<'escalate'> | ReconcileEscalation | 'no-note-target';
     to: string;
     body: string;
 }

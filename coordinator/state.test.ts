@@ -389,3 +389,18 @@ describe('held repos', () => {
         expect(() => state.queue(note(), NOW)).toThrow();
     });
 });
+
+describe('triage', () => {
+    test('what triage printed is kept per head; the first answer stands', () => {
+        expect(state.triageFor(REPO, 7, HEAD)).toBeNull();
+        state.saveTriage({ repo: REPO, pr: 7, head: HEAD }, 'luna high small\n', NOW);
+        state.saveTriage({ repo: REPO, pr: 7, head: HEAD }, 'sol xhigh other\n', NOW + 1);
+        expect(state.triageFor(REPO, 7, HEAD)).toBe('luna high small\n');
+        expect(state.triageFor(REPO, 7, OTHER)).toBeNull();
+        expect(state.triageFor(REPO, 8, HEAD)).toBeNull();
+    });
+
+    test('a record for no full head is refused', () => {
+        expect(() => state.saveTriage({ repo: REPO, pr: 7, head: 'abc' }, 'x', NOW)).toThrow();
+    });
+});

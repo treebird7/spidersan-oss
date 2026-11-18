@@ -45,8 +45,8 @@ describe('parseInventory', () => {
         expect(parseInventory(json([listed(), listed({ number: 8, draft: true })]), REPO)).toEqual({
             complete: true,
             prs: [
-                { number: 7, draft: false, fork: false, head: HEAD, baseRef: 'main' },
-                { number: 8, draft: true, fork: false, head: HEAD, baseRef: 'main' },
+                { number: 7, draft: false, fork: false, head: HEAD, baseRef: 'main', title: '' },
+                { number: 8, draft: true, fork: false, head: HEAD, baseRef: 'main', title: '' },
             ],
         });
     });
@@ -391,5 +391,28 @@ describe('GitHub', () => {
     test('files: a PR that is not open has none', async () => {
         const { github } = scripted({ 'repos/owner/name/pulls/7': json(pull({ state: 'closed' })) });
         expect(await github.files(ref)).toBeNull();
+    });
+
+    test('inventory: the title is carried as given', async () => {
+        const { github } = scripted({
+            'repos/owner/name/pulls?state=open&per_page=100': json([listed({ title: 'feat (sp-abcd)' })]),
+        });
+        expect((await github.inventory(REPO)).prs[0]?.title).toBe('feat (sp-abcd)');
+    });
+
+    test('diff: asks for the diff media type and gives the text, or undefined', async () => {
+        const calls: string[][] = [];
+        let answer: CommandResult = { exitCode: 0, stdout: 'diff --git a/x b/x\n' };
+        const github = new GitHub((command, argv) => {
+            calls.push([command, ...argv]);
+            return answer;
+        });
+        expect(await github.diff(ref)).toBe('diff --git a/x b/x\n');
+        expect(calls).toEqual([['gh', 'api', '-H', 'Accept: application/vnd.github.diff', 'repos/owner/name/pulls/7']]);
+        answer = { exitCode: 1, stdout: 'diff --git a/x b/x\n' };
+        expect(await github.diff(ref)).toBeUndefined();
+        answer = { exitCode: 0, stdout: '' };
+        expect(await github.diff(ref)).toBeUndefined();
+        expect(await github.diff({ repo: 'nope', pr: 7 })).toBeUndefined();
     });
 });

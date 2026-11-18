@@ -48,6 +48,8 @@ export interface InventoryPr {
     fork: boolean;
     head: string;
     baseRef: string;
+    /** Author-controlled text. '' when the payload has none. */
+    title: string;
 }
 
 export interface Inventory {
@@ -85,6 +87,7 @@ export function parseInventory(stdout: unknown, repo: string): Inventory {
             fork: repoName(head) !== repo,
             head: head.sha,
             baseRef: base.ref,
+            title: typeof entry.title === 'string' ? entry.title : '',
         });
     }
     if (new Set(prs.map((pr) => pr.number)).size !== prs.length) return { complete: false, prs: [] };
@@ -226,9 +229,10 @@ export class GitHub {
         this.#run = run;
     }
 
-    async #get(path: string): Promise<unknown> {
+    async #get(path: string, accept?: string): Promise<unknown> {
         try {
-            const result: unknown = await this.#run('gh', ['api', path], { cwd: '/' });
+            const argv = accept === undefined ? ['api', path] : ['api', '-H', `Accept: ${accept}`, path];
+            const result: unknown = await this.#run('gh', argv, { cwd: '/' });
             return isRecord(result) && result.exitCode === 0 ? result.stdout : undefined;
         } catch {
             return undefined;
@@ -254,6 +258,13 @@ export class GitHub {
             detail.baseRef,
         );
         return base === null ? UNKNOWN : { kind: 'open', head: detail.head, base };
+    }
+
+    /** The PR's diff as text, for triage; undefined when it cannot be read. Which head it is for is the caller's to check. */
+    async diff(ref: PrRef): Promise<string | undefined> {
+        if (!isRecord(ref) || !isRepoSlug(ref.repo) || !isPrNumber(ref.pr)) return undefined;
+        const text = await this.#get(`repos/${ref.repo}/pulls/${ref.pr}`, 'application/vnd.github.diff');
+        return typeof text === 'string' && text !== '' ? text : undefined;
     }
 
     async ci(repo: string, head: string): Promise<Observations | null> {

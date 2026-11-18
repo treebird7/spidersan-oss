@@ -141,6 +141,14 @@ CREATE TABLE IF NOT EXISTS attempts (
     logged_cost REAL CHECK (logged_cost IS NULL OR logged_cost >= 0),
     created_at  INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS triage (
+    repo   TEXT NOT NULL,
+    pr     INTEGER NOT NULL,
+    head   TEXT NOT NULL CHECK (length(head) = 40),
+    stdout TEXT NOT NULL,
+    at     INTEGER NOT NULL,
+    PRIMARY KEY (repo, pr, head)
+);
 CREATE TABLE IF NOT EXISTS receipts (
     intent_id TEXT PRIMARY KEY REFERENCES intents (id),
     receipt   TEXT NOT NULL,
@@ -592,6 +600,31 @@ export class State {
                     'WHERE repo = ? AND pr = ? ORDER BY id',
             )
             .all(repo, pr) as Attempt[];
+    }
+
+    // ── Triage ─────────────────────────────────────────────────────────────
+
+    /**
+     * Keeps what `bin/triage` printed for one head, so a later pass does not pay
+     * for it again (or get another pick, orphaning the reviews already run).
+     * Raw stdout: `parseTriage` reads it every time. The first answer stands.
+     */
+    saveTriage(at: { repo: string; pr: number; head: string }, stdout: string, now: number): void {
+        if (!isText(at.repo) || !isCount(at.pr) || at.pr < 1 || !isFullSha(at.head) || !isCount(now)) {
+            throw new TypeError('coordinator state: invalid triage record');
+        }
+        if (typeof stdout !== 'string') throw new TypeError('coordinator state: invalid triage record');
+        this.#db
+            .query('INSERT INTO triage (repo, pr, head, stdout, at) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING')
+            .run(at.repo, at.pr, at.head, stdout, now);
+    }
+
+    /** What triage printed for exactly this head; null when it has not run there. */
+    triageFor(repo: string, pr: number, head: string): string | null {
+        const row = this.#db
+            .query('SELECT stdout FROM triage WHERE repo = ? AND pr = ? AND head = ?')
+            .get(repo, pr, head);
+        return isRecord(row) && typeof row.stdout === 'string' ? row.stdout : null;
     }
 
     /**

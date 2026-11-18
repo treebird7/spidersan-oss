@@ -94,6 +94,20 @@ export class Invoak {
         return isRecord(answer.doc.error) && answer.doc.error.code === 'NOT_FOUND' ? 'absent' : undefined;
     }
 
+    /**
+     * `show <id>`: the task's status and claimant. Null unless the answer is
+     * that very task (its `id`, or its `legacyId` when it has one), read whole.
+     */
+    async task(id: string): Promise<{ status: string; claimedBy: string | null } | null> {
+        if (typeof id !== 'string' || !TASK_ID.test(id)) return null;
+        const shown = await this.#show(id);
+        if (shown === undefined || shown === 'absent') return null;
+        const task = shown.task;
+        if (!isRecord(task) || (task.id !== id && task.legacyId !== id) || typeof task.status !== 'string') return null;
+        const claimedBy = typeof task.claimedBy === 'string' && PRINCIPAL.test(task.claimedBy) ? task.claimedBy : null;
+        return { status: task.status, claimedBy };
+    }
+
     async findDelivery(query: { taskId: string; actionId: string }): Promise<Lookup> {
         if (!isRecord(query) || !TASK_ID.test(String(query.taskId)) || !isArgText(query.actionId)) return UNKNOWN;
         const shown = await this.#show(query.taskId);
