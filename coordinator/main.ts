@@ -160,6 +160,8 @@ const REVIEWER_ENV = [
     'CLAUDE_CODE_OAUTH_TOKEN',
     'GH_TOKEN',
     'PI_AUTH_FILE',
+    'PI_CODING_AGENT_DIR',
+    'XDG_CACHE_HOME',
 ] as const;
 
 /** The environment of one run: the coordinator's own for `gh` and `invoak`, the short list above for a run with `env`. */

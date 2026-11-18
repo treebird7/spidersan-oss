@@ -18,7 +18,7 @@ const LOOP = {
         home: '/nonexistent/prsan',
         timeoutMs: 1000,
         models: { luna: 'luna', terra: 'terra', sol: 'sol' },
-        families: {},
+        families: { 'a/luna': 'luna', 'a/terra': 'terra', 'a/sol': 'sol' },
     },
     repos: {},
 };

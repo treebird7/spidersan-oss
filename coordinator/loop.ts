@@ -147,6 +147,44 @@ export async function noteTarget(
 
 // ── Paid runs ──────────────────────────────────────────────────────────────
 
+/**
+ * Can a reviewer run start at all? Null, or why not. Asked once per pass,
+ * before the first reservation: a triage that never reached a model prints
+ * the same line as one whose model failed, and a prsan with no pin exits
+ * before it reviews, so without this a set-up fault is charged as a run on
+ * every PR, every wake, up to the ceiling. All three probes run through the
+ * same runner and environment as the runs themselves, and call no model.
+ */
+export async function reviewerFault(world: Pick<World, 'run'>, config: LoopConfig): Promise<string | null> {
+    const { home } = config.prsan;
+    const probe = async (command: string, argv: string[]): Promise<string | null> => {
+        try {
+            const result: unknown = await world.run(command, argv, { cwd: home, env: PRSAN_ENV });
+            return isRecord(result) && result.exitCode === 0 && typeof result.stdout === 'string'
+                ? result.stdout
+                : null;
+        } catch {
+            return null;
+        }
+    };
+    if ((await probe(join(home, 'bin', 'isolated-run'), ['--check']))?.trim() !== 'sandbox-exec') {
+        return 'no reviewer sandbox on this host';
+    }
+    if (((await probe(join(home, 'bin', 'trusted-inputs'), [])) ?? '').trim() === '') {
+        return 'no usable prsan pin (bin/trusted-inputs)';
+    }
+    if ((await probe('/bin/sh', ['-c', '[ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]'])) === null) {
+        return 'CLAUDE_CODE_OAUTH_TOKEN is not set for reviewer runs';
+    }
+    return null;
+}
+
+interface PassBudget {
+    reviewsLeft: number;
+    /** `reviewerFault`, once it has been asked. */
+    fault?: string | null;
+}
+
 /** Runs triage at the snapshot's head and keeps its pick. Budget is reserved before the run and stays charged. */
 async function runTriage(world: World, config: LoopConfig, s: PrSnapshot, reservation: number): Promise<string> {
     const ref = { repo: s.repo, pr: s.pr.number };
@@ -268,7 +306,7 @@ async function handle(
     repo: string,
     repoConfig: RepoConfig,
     listed: InventoryPr,
-    budget: { reviewsLeft: number },
+    budget: PassBudget,
 ): Promise<PrReport> {
     const report: PrReport = { repo, pr: listed.number, head: listed.head, decision: 'none', did: [] };
     const paid = new Set<Decision['kind']>();
@@ -282,14 +320,20 @@ async function handle(
         const d = decide(s, repoConfig.policy, world.now());
         report.decision = `${d.kind}:${d.reason}`;
         const spec = { repo, pr: s.pr.number, head: s.pr.head };
+        if (d.kind === 'run-triage' || d.kind === 'run-reviews') {
+            if (paid.has(d.kind)) return report;
+            budget.fault ??= await reviewerFault(world, config);
+            if (budget.fault !== null) {
+                report.did.push(`nothing run, nothing charged: ${budget.fault}`);
+                return report;
+            }
+        }
         switch (d.kind) {
             case 'run-triage':
-                if (paid.has(d.kind)) return report;
                 paid.add(d.kind);
                 report.did.push(await runTriage(world, config, s, d.reservation));
                 continue;
             case 'run-reviews': {
-                if (paid.has(d.kind)) return report;
                 paid.add(d.kind);
                 const ran = await runReviews(world, config, s, d.members, budget.reviewsLeft);
                 budget.reviewsLeft -= ran.started;
@@ -348,7 +392,7 @@ async function handle(
 /** One pass over every configured repo. A PR that throws is reported and the pass goes on. */
 export async function pass(world: World, config: LoopConfig): Promise<PrReport[]> {
     const reports: PrReport[] = [];
-    const budget = { reviewsLeft: config.maxReviewsPerPass };
+    const budget: PassBudget = { reviewsLeft: config.maxReviewsPerPass };
     for (const [repo, repoConfig] of Object.entries(config.repos)) {
         const inventory = await world.github.inventory(repo);
         // An incomplete listing may be missing PRs. Nothing here concludes anything from a PR's absence.

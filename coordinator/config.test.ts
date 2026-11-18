@@ -27,7 +27,7 @@ function config(edit: (c: any) => void = () => {}): string {
             home: '/x/prsan',
             timeoutMs: 1000,
             models: { luna: 'luna', terra: 'terra', sol: 'sol', claude: 'claude/claude-opus-5-5' },
-            families: { 'openai-codex/gpt-5.6-luna': 'luna' },
+            families: { 'a/luna': 'luna', 'a/terra': 'terra', 'a/sol': 'sol', 'claude/claude-opus-5-5': 'claude' },
         },
         repos: {
             'owner/name': {
@@ -62,6 +62,8 @@ describe('parseLoopConfig', () => {
         ['a model that reads as a flag', (c) => (c.prsan.models.luna = '--diff-file')],
         ['a model with a space', (c) => (c.prsan.models.luna = 'luna x')],
         ['no families', (c) => delete c.prsan.families],
+        ['a triage family no header maps to', (c) => delete c.prsan.families['a/sol']],
+        ['a second family no header maps to', (c) => delete c.prsan.families['claude/claude-opus-5-5']],
         ['a relative prsan home', (c) => (c.prsan.home = 'prsan')],
         ['no timeout', (c) => delete c.prsan.timeoutMs],
         ['no protected paths', (c) => (c.repos['owner/name'].touches.protectedPaths = [])],

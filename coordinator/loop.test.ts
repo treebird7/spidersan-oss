@@ -30,7 +30,7 @@ function loopConfig(edit: (c: any) => void = () => {}): LoopConfig {
             home: '/x/prsan',
             timeoutMs: 1000,
             models: { luna: 'luna', terra: 'terra', sol: 'sol', claude: 'claude/opus' },
-            families: { [LUNA]: 'luna', [SOL]: 'sol', 'claude/opus': 'claude' },
+            families: { [LUNA]: 'luna', [SOL]: 'sol', 'a/terra': 'terra', 'claude/opus': 'claude' },
         },
         repos: {
             [REPO]: {
@@ -88,6 +88,8 @@ let w: {
     /** What each prsan run saves; shifted per run. */
     reviews: (ReviewFile | null)[];
     saved: ReviewFile[];
+    /** The reviewer set-up probes, by command. Not recorded in `commands`. */
+    probes: Record<string, CommandResult>;
     commands: { command: string; argv: readonly string[]; options: unknown }[];
     reads: string[];
     clock: number;
@@ -117,6 +119,11 @@ beforeEach(() => {
         triage: { exitCode: 0, stdout: 'luna high a small change\n' },
         reviews: [reviewFile(1, LUNA, '')],
         saved: [],
+        probes: {
+            '/x/prsan/bin/isolated-run': { exitCode: 0, stdout: 'sandbox-exec\n' },
+            '/x/prsan/bin/trusted-inputs': { exitCode: 0, stdout: '/cache/snap\n' },
+            '/bin/sh': { exitCode: 0, stdout: '' },
+        },
         commands: [],
         reads: [],
         clock: T0,
@@ -136,6 +143,8 @@ beforeEach(() => {
         },
         tasks: { task: async () => w.task },
         run: (command, argv, options) => {
+            const probe = w.probes[command];
+            if (probe !== undefined) return probe;
             w.commands.push({ command, argv, options });
             if (command.endsWith('/triage')) {
                 if (w.triage instanceof Error) throw w.triage;
@@ -306,6 +315,25 @@ describe('paid runs that give nothing', () => {
         expect(report?.decision).toBe('escalate:budget-ceiling-reached');
         expect(ran('prsan')).toHaveLength(1);
         expect((effects.writes()[0]?.request as { to: string }).to).toBe('treebird');
+    });
+});
+
+describe('a reviewer that cannot start', () => {
+    test.each<[string, string, CommandResult]>([
+        ['no sandbox', '/x/prsan/bin/isolated-run', { exitCode: 0, stdout: 'none\n' }],
+        ['a sandbox check that fails', '/x/prsan/bin/isolated-run', { exitCode: 12, stdout: 'sandbox-exec\n' }],
+        ['no pin', '/x/prsan/bin/trusted-inputs', { exitCode: 1, stdout: '' }],
+        ['a pin check that prints nothing', '/x/prsan/bin/trusted-inputs', { exitCode: 0, stdout: '\n' }],
+        ['no claude token', '/bin/sh', { exitCode: 1, stdout: '' }],
+    ])('%s: nothing is run, charged or escalated, on any PR', async (_name, command, answer) => {
+        w.probes[command] = answer;
+        w.prs = [listed(), listed({ number: 8 })];
+        const reports = await pass(world, loopConfig());
+        expect(reports.map((r) => r.decision)).toEqual(['run-triage:triage-missing', 'run-triage:triage-missing']);
+        expect(reports[0]?.did[0]).toStartWith('nothing run, nothing charged: ');
+        expect(w.commands).toHaveLength(0);
+        expect(charged()).toEqual([]);
+        expect(effects.calls).toHaveLength(0);
     });
 });
 

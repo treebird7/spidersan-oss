@@ -37,7 +37,7 @@ export interface PrsanConfig {
     timeoutMs: number;
     /** Model family → what `prsan -m` is given. Holds luna, terra, sol and every repo's `secondFamily`. */
     models: Readonly<Record<string, string>>;
-    /** A review file's `model:` header value → model family. */
+    /** A review file's `model:` header value → model family. Every family that can be run is the value of at least one entry. */
     families: Readonly<Record<string, string>>;
 }
 
@@ -69,7 +69,7 @@ function isPaths(value: unknown): value is string[] {
     return Array.isArray(value) && value.every((path) => typeof path === 'string' && path !== '');
 }
 
-function parseRepo(raw: unknown, models: Record<string, string>): RepoConfig | null {
+function parseRepo(raw: unknown, models: Record<string, string>, read: ReadonlySet<string>): RepoConfig | null {
     if (!isRecord(raw)) return null;
     const { taskProjects, policy, touches } = raw;
     if (!Array.isArray(taskProjects) || taskProjects.length === 0) return null;
@@ -77,6 +77,7 @@ function parseRepo(raw: unknown, models: Record<string, string>): RepoConfig | n
     if (validatePolicy(policy) !== null) return null;
     const checked = policy as Policy;
     if (checked.mode === 'live' || !Object.hasOwn(models, checked.secondFamily)) return null;
+    if (!read.has(checked.secondFamily)) return null;
     if (!isRecord(touches) || !isPaths(touches.protectedPaths) || !isPaths(touches.mergeEffects)) return null;
     if (touches.protectedPaths.length === 0) return null;
     return {
@@ -105,12 +106,14 @@ export function parseLoopConfig(text: string): LoopConfig | null {
     if (!Number.isSafeInteger(prsan.timeoutMs) || (prsan.timeoutMs as number) < 1) return null;
     const { models, families } = prsan;
     if (!isTextMap(models) || !isTextMap(families)) return null;
-    if (!TRIAGE_MODELS.every((family) => Object.hasOwn(models, family))) return null;
+    // A family no header maps to can be run but never read back: its review would be paid for on every pass.
+    const read = new Set(Object.values(families));
+    if (!TRIAGE_MODELS.every((family) => Object.hasOwn(models, family) && read.has(family))) return null;
 
     if (!isRecord(repos)) return null;
     const parsed: Record<string, RepoConfig> = {};
     for (const [slug, entry] of Object.entries(repos)) {
-        const repo = isRepoSlug(slug) ? parseRepo(entry, models) : null;
+        const repo = isRepoSlug(slug) ? parseRepo(entry, models, read) : null;
         if (repo === null) return null;
         parsed[slug] = repo;
     }
