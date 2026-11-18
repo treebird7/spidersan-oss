@@ -284,7 +284,10 @@ function noteBody(config: LoopConfig, s: PrSnapshot, d: Extract<Decision, { kind
         );
     const open = d.findings.map((finding) => `  ${finding.id}`);
     return [
-        `Coordinator: ${s.repo}#${s.pr.number} at ${head}: ${d.reason}`,
+        // `[prsan] ` first: the fleet's prsan-review-notes hook shows an agent only the comments on
+        // its in-progress tasks that start that way. Without it the note is delivered and never seen.
+        `[prsan] Coordinator: ${s.repo}#${s.pr.number} at ${head}: ${d.reason}`,
+        'This task was named in the PR title, which anyone who can edit the PR controls. If the PR is not yours, ignore this note.',
         d.reason === 'untrusted-task-link'
             ? 'Reviewed, not merged: nothing proves this task and this PR belong together yet.'
             : 'Not merged.',

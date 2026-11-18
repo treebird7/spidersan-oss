@@ -207,6 +207,9 @@ describe('one pass over one PR', () => {
         expect(note.taskId).toBe('sp-abcd');
         expect(note.body).toContain(`owner/name#7 at ${HEAD}: untrusted-task-link`);
         expect(note.body).toContain('luna/plain: APPROVE, 0 blocking');
+        // What ~/.claude/hooks/prsan-review-notes.sh selects on (its jq test, 2026-11-19).
+        expect(note.body).toMatch(/^(\[prsan\]|prsan review of |\/(ts|sql)-review follow-up)/);
+        expect(note.body).toContain('If the PR is not yours, ignore this note.');
     });
 
     test('a second pass pays for nothing and posts nothing', async () => {
