@@ -3,7 +3,7 @@ import { Database } from 'bun:sqlite';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DryRunEffects, READ_EFFECTS, WRITE_EFFECTS } from './effects';
+import { DryRunEffects, NotifyingDryRunEffects, READ_EFFECTS, WRITE_EFFECTS } from './effects';
 import type { RegistryRead } from './effects';
 import { EFFECT_NAMES, FakeEffects } from './fake-effects';
 import type { Fault } from './fake-effects';
@@ -1200,5 +1200,39 @@ describe('reconcile is idempotent', () => {
         expect(fx.calls.length).toBe(calls);
         expect(fx.count('merge')).toBe(1);
         expect(fx.posted).toHaveLength(3); // blocking note, escalation, landed note
+    });
+});
+
+describe('notifying dry-run adapter', () => {
+    test('delivers the note and the escalation for real; records the merge and the gate reset and performs neither', async () => {
+        const dry = new NotifyingDryRunEffects(fx, fx);
+        actions = new Actions(state, dry);
+
+        expect(await actions.merge(TARGET, TASK, NOW)).toEqual({ kind: 'dry-run' });
+        expect(await actions.note(NOTE, NOW)).toMatchObject({ kind: 'delivered' });
+        expect(await actions.escalate(ESCALATION, NOW)).toMatchObject({ kind: 'delivered' });
+        state.queue(
+            { kind: 'gate-reset', repo: REPO, pr: PR, head: HEAD, base: null, reason: '', taskId: null, addressee: null, body: null },
+            NOW,
+        );
+        fx.gates.set(GATE, 'success');
+        await actions.reconcile(NOW + 1);
+
+        expect(dry.recorded.map((r) => r.effect)).toEqual(['merge', 'resetGate']);
+        expect(fx.writes().map((w) => w.effect)).toEqual(['deliverNote', 'createEscalation']);
+        expect(fx.prs.get(PR_KEY)).toEqual({ kind: 'open', head: HEAD, base: BASE });
+        expect(fx.gates.get(GATE)).toBe('success');
+        expect([MERGE_ID, NOTE_ID, ESCALATION_ID].map(stateOf)).toEqual(['dry-run', 'done', 'done']);
+        expect(state.receipt(NOTE_ID)).not.toBeNull();
+        expect(state.receipt(ESCALATION_ID)).not.toBeNull();
+    });
+
+    test('a second wake does not deliver the same note again', async () => {
+        actions = new Actions(state, new NotifyingDryRunEffects(fx, fx));
+        expect(await actions.note(NOTE, NOW)).toMatchObject({ kind: 'delivered' });
+        wake();
+        actions = new Actions(state, new NotifyingDryRunEffects(fx, fx));
+        expect(await actions.note(NOTE, NOW + 1)).toMatchObject({ kind: 'delivered' });
+        expect(fx.count('deliverNote')).toBe(1);
     });
 });
