@@ -10,17 +10,28 @@
  *      one host may run the coordinator);
  *   3. this process holds the lock on `<stateDb>.lock`.
  *
- * Any of the three failing is exit 78 with the database untouched. Then one
- * reconcile pass runs. This part has no adapter that talks to GitHub or
- * invoak: every read answers `unknown` and every write is recorded only, so
- * the pass resolves nothing and performs nothing. The PR loop is part 2.
+ * Any of the three failing, or a loop config that does not parse (`config.ts`),
+ * is exit 78 with the database untouched. Then one reconcile pass runs, and
+ * one pass of the PR loop (`loop.ts`).
+ *
+ * Reads go to GitHub and invoak. Notes and escalations are really delivered;
+ * a merge or a gate reset is recorded only (`NotifyingDryRunEffects`). Not
+ * read yet: the gate status, registry rows and approvals (invk-fosip).
  */
 
-import { execFileSync } from 'node:child_process';
-import { fstatSync, readFileSync, statSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
-import { DryRunEffects } from './effects';
+import { execFile, execFileSync } from 'node:child_process';
+import { fstatSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { isAbsolute, join } from 'node:path';
+import { parseLoopConfig } from './config';
+import type { LoopConfig } from './config';
+import { NotifyingDryRunEffects } from './effects';
 import type { EffectReader } from './effects';
+import { GitHub } from './github';
+import { Invoak } from './invoak';
+import { pass } from './loop';
+import type { Io } from './loop';
+import type { CommandRunner, ReviewFile } from './readers';
 import { Actions } from './reconcile';
 import { State } from './state';
 
@@ -126,16 +137,139 @@ export function start(
 }
 
 const UNKNOWN = { kind: 'unknown' } as const;
+const RUN_TIMEOUT_MS = 60_000;
+const MAX_OUTPUT = 64 * 1024 * 1024;
+/** A review file larger than this is not read, so its listing is short and the PR is held. */
+const MAX_REVIEW_FILE = 1024 * 1024;
 
-/** Part 1 has no real reader: nothing is known about the outside world. */
-const NO_READER: EffectReader = {
-    readPr: async () => UNKNOWN,
-    readGate: async () => UNKNOWN,
-    readRegistryRow: async () => UNKNOWN,
-    findDelivery: async () => UNKNOWN,
-    findEscalation: async () => UNKNOWN,
-    readApproval: async () => UNKNOWN,
-};
+/**
+ * What a run that names its own `env` inherits, and nothing else. Such a run
+ * reads a pull request (triage, prsan): it gets no vault or agent variable, and
+ * no `PRSAN_*` setting from whoever started the coordinator, which could
+ * switch its sandbox off.
+ */
+const REVIEWER_ENV = [
+    'PATH',
+    'HOME',
+    'USER',
+    'LOGNAME',
+    'SHELL',
+    'TMPDIR',
+    'LANG',
+    'LC_ALL',
+    'CLAUDE_CODE_OAUTH_TOKEN',
+    'GH_TOKEN',
+    'PI_AUTH_FILE',
+] as const;
+
+/** The environment of one run: the coordinator's own for `gh` and `invoak`, the short list above for a run with `env`. */
+export function childEnv(
+    own: Record<string, string | undefined>,
+    extra: Readonly<Record<string, string>> | undefined,
+): Record<string, string | undefined> {
+    if (extra === undefined) return { ...own };
+    const env: Record<string, string | undefined> = {};
+    for (const name of REVIEWER_ENV) if (own[name] !== undefined) env[name] = own[name];
+    return { ...env, ...extra };
+}
+
+/** Runs an argv (never a shell string) with stdin closed. A kill, a timeout or too much output is `exitCode: null`. */
+export const runCommand: CommandRunner = (command, argv, options) =>
+    new Promise((resolve) => {
+        const child = execFile(
+            command,
+            [...argv],
+            {
+                cwd: options.cwd,
+                env: childEnv(process.env, options.env),
+                timeout: options.timeoutMs ?? RUN_TIMEOUT_MS,
+                maxBuffer: MAX_OUTPUT,
+                encoding: 'utf8',
+            },
+            (error, stdout) => {
+                const code: unknown = error === null ? 0 : error.code;
+                resolve({ exitCode: typeof code === 'number' ? code : null, stdout });
+            },
+        );
+        child.stdin?.end();
+    });
+
+/**
+ * Is invoak going to act as `self`? With no label set it borrows whatever
+ * token `~/.invoak/.env` holds, and every note is another agent's.
+ * ponytail: compares the label, `self` or `self-<machine>`. Ask invoak who it
+ * is once it has a command for that.
+ */
+export function actsAs(self: string, label: string | undefined): boolean {
+    return label === self || (label !== undefined && label.startsWith(`${self}-`));
+}
+
+/** prsan's `reviews/` directory and a private temp file for a diff. */
+export function fileIo(reviewsDir: string): Io {
+    return {
+        reviewFiles(prefix) {
+            let names: string[];
+            try {
+                names = readdirSync(reviewsDir).filter((name) => name.startsWith(prefix) && name.endsWith('.md'));
+            } catch {
+                return { files: [], expectedCount: -1 };
+            }
+            const files: ReviewFile[] = [];
+            for (const name of names) {
+                try {
+                    const path = join(reviewsDir, name);
+                    if (statSync(path).size <= MAX_REVIEW_FILE) files.push({ name, text: readFileSync(path, 'utf8') });
+                } catch {
+                    // left out: the count no longer matches, and the reader holds the PR
+                }
+            }
+            return { files, expectedCount: names.length };
+        },
+        async withDiffFile(text, use) {
+            const dir = mkdtempSync(join(tmpdir(), 'coordinator-diff-'));
+            try {
+                const path = join(dir, 'pr.diff');
+                writeFileSync(path, text, { mode: 0o600 });
+                return await use(path);
+            } finally {
+                rmSync(dir, { recursive: true, force: true });
+            }
+        },
+    };
+}
+
+async function wake(config: Config, loop: LoopConfig): Promise<unknown> {
+    const github = new GitHub(runCommand);
+    const invoak = new Invoak(runCommand, { self: loop.self, project: loop.escalationProject, owner: loop.owner });
+    const reader: EffectReader = {
+        readPr: (ref) => github.readPr(ref),
+        readGate: async () => UNKNOWN,
+        readRegistryRow: async () => UNKNOWN,
+        findDelivery: (query) => invoak.findDelivery(query),
+        findEscalation: (query) => invoak.findEscalation(query),
+        readApproval: async () => ({ kind: 'unverified' }),
+    };
+    const state = new State(config.stateDb);
+    try {
+        const actions = new Actions(state, new NotifyingDryRunEffects(reader, invoak));
+        const reconcile = await actions.reconcile(Date.now());
+        const prs = await pass(
+            {
+                github,
+                tasks: invoak,
+                run: runCommand,
+                io: fileIo(join(loop.prsan.home, 'reviews')),
+                state,
+                actions,
+                now: Date.now,
+            },
+            loop,
+        );
+        return { reconcile, prs };
+    } finally {
+        state.close();
+    }
+}
 
 async function main(argv: string[]): Promise<number> {
     if (argv[0] === '--host-id') {
@@ -155,13 +289,18 @@ async function main(argv: string[]): Promise<number> {
         console.error(`coordinator: refusing to start: ${started.why}`);
         return EXIT_CONFIG;
     }
-    const state = new State(started.config.stateDb);
-    try {
-        const report = await new Actions(state, new DryRunEffects(NO_READER)).reconcile(Date.now());
-        console.log(JSON.stringify({ reconcile: report }));
-    } finally {
-        state.close();
+    const loop = text === null ? null : parseLoopConfig(text);
+    if (loop === null) {
+        console.error(
+            'coordinator: refusing to start: the loop config is missing or malformed (see coordinator/config.ts)',
+        );
+        return EXIT_CONFIG;
     }
+    if (!actsAs(loop.self, process.env.ENVOAK_AGENT_LABEL)) {
+        console.error(`coordinator: refusing to start: ENVOAK_AGENT_LABEL is not ${loop.self}'s label`);
+        return EXIT_CONFIG;
+    }
+    console.log(JSON.stringify(await wake(started.config, loop)));
     return 0;
 }
 
