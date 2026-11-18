@@ -96,8 +96,17 @@ export class Actions {
     readonly #writes: EffectWriter;
 
     readonly #mergeGraceMs: number;
+    /** Who reconcile's own escalations are addressed to. */
+    readonly #owner: string;
 
-    constructor(state: State, effects: Effects, mergeGraceMs: number = MERGE_GRACE_MS) {
+    /**
+     * `owner`: the owner's principal, as the adapter that creates escalations
+     * knows it. An adapter given any other name routes the task to an agent of
+     * that name, not to the owner's approval queue.
+     */
+    constructor(state: State, effects: Effects, owner: string, mergeGraceMs: number = MERGE_GRACE_MS) {
+        if (owner === '') throw new TypeError('coordinator: invalid owner');
+        this.#owner = owner;
         if (!Number.isFinite(mergeGraceMs) || mergeGraceMs < 0) throw new TypeError('coordinator: invalid merge grace');
         this.#mergeGraceMs = mergeGraceMs;
         this.#state = state;
@@ -264,7 +273,7 @@ export class Actions {
                         pr,
                         head,
                         reason: 'unrecognised-intent-row',
-                        to: 'owner',
+                        to: this.#owner,
                         body:
                             `The coordinator's state holds a row it cannot read: ${row.id}. ${row.repo} is held ` +
                             'and nothing merges there until the row is repaired by hand.',
@@ -298,7 +307,7 @@ export class Actions {
                             pr: intent.pr,
                             head: intent.head,
                             reason: 'merged-at-unexpected-head',
-                            to: 'owner',
+                            to: this.#owner,
                             body:
                                 `${intent.repo}#${intent.pr} is merged at ${pr.head} as ${pr.mergeCommit}, but the ` +
                                 `coordinator's merge was pinned to ${intent.head}. ${intent.repo} is held ` +
@@ -338,7 +347,7 @@ export class Actions {
                             pr: intent.pr,
                             head: intent.head,
                             reason: 'merge-state-contradictory',
-                            to: 'owner',
+                            to: this.#owner,
                             body:
                                 `Merge intent ${intent.id}, pinned to head ${intent.head}: an earlier read said ` +
                                 `${intent.repo}#${intent.pr} was merged; it now reads ${reads}. The coordinator ` +
@@ -403,7 +412,7 @@ export class Actions {
                         pr: intent.pr,
                         head: intent.head,
                         reason: 'registry-abandoned-with-pr',
-                        to: 'owner',
+                        to: this.#owner,
                         body:
                             `${intent.repo}#${intent.pr} is merged, but its registry row reads abandoned while ` +
                             `carrying PR ${String(row.prNumber)}. The row needs an owner repair; the landed note waits.`,

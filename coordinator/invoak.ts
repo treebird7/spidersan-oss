@@ -20,7 +20,7 @@
  * Not here (invk-fosip, unanswered): who approved a task, and registry rows.
  */
 
-import { createHash } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 import type { EscalationRequest, Lookup, NoteRequest, SendOutcome } from './effects';
 import type { CommandRunner } from './readers';
 
@@ -48,9 +48,27 @@ function carries(body: string, actionId: string): boolean {
     return body.split('\n').some((line) => line.trimEnd() === `action-id: ${actionId}`);
 }
 
-/** The legacy id of the escalation task for one action: the same action always gives the same id. */
-export function escalationId(project: string, actionId: string): string {
-    return `${project}-esc-${createHash('sha256').update(actionId).digest('hex').slice(0, 32)}`;
+/**
+ * The legacy id of the escalation task for one action: the same action and
+ * secret always give the same id. Action ids are predictable, and a task found
+ * under this id is taken as the delivered escalation, so the id is keyed with
+ * a secret only this coordinator holds: nobody else can create a task there first.
+ */
+export function escalationId(project: string, actionId: string, secret: string): string {
+    return `${project}-esc-${createHmac('sha256', secret).update(actionId).digest('hex').slice(0, 32)}`;
+}
+
+/** The principal invoak acts as with the credential it resolves right now (`invoak whoami`), or null. */
+export async function invoakPrincipal(run: CommandRunner): Promise<string | null> {
+    try {
+        const result: unknown = await run('invoak', ['whoami', '--json'], { cwd: '/' });
+        if (!isRecord(result) || result.exitCode !== 0 || typeof result.stdout !== 'string') return null;
+        const doc: unknown = JSON.parse(result.stdout);
+        const who = isRecord(doc) ? doc.whoami : null;
+        return isRecord(who) && typeof who.principal === 'string' && PRINCIPAL.test(who.principal) ? who.principal : null;
+    } catch {
+        return null;
+    }
 }
 
 export interface InvoakOptions {
@@ -60,6 +78,8 @@ export interface InvoakOptions {
     project: string;
     /** The owner principal. An escalation to the owner waits for human dispatch and is addressed to nobody. */
     owner: string;
+    /** Keys the escalation task ids (`State.secret`). At least 32 characters. */
+    secret: string;
 }
 
 export class Invoak {
@@ -68,6 +88,9 @@ export class Invoak {
 
     constructor(run: CommandRunner, options: InvoakOptions) {
         if (!PRINCIPAL.test(options.self) || !PRINCIPAL.test(options.owner) || !PROJECT.test(options.project)) {
+            throw new TypeError('coordinator: invalid invoak options');
+        }
+        if (typeof options.secret !== 'string' || options.secret.length < 32) {
             throw new TypeError('coordinator: invalid invoak options');
         }
         this.#run = run;
@@ -136,7 +159,7 @@ export class Invoak {
 
     async findEscalation(query: { actionId: string }): Promise<Lookup> {
         if (!isRecord(query) || !isArgText(query.actionId)) return UNKNOWN;
-        const legacy = escalationId(this.#options.project, query.actionId);
+        const legacy = escalationId(this.#options.project, query.actionId, this.#options.secret);
         const shown = await this.#show(legacy);
         if (shown === undefined) return UNKNOWN;
         if (shown === 'absent') return ABSENT;
@@ -151,8 +174,8 @@ export class Invoak {
         if (!carries(request.body, request.actionId)) return UNKNOWN;
         if (!isArgText(request.reason) || !Number.isSafeInteger(request.pr) || !isArgText(request.repo)) return UNKNOWN;
         if (typeof request.to !== 'string' || !PRINCIPAL.test(request.to)) return UNKNOWN;
-        const { project, owner } = this.#options;
-        const legacy = escalationId(project, request.actionId);
+        const { project, owner, secret } = this.#options;
+        const legacy = escalationId(project, request.actionId, secret);
         const summary = `Coordinator escalation: ${request.repo}#${request.pr} ${request.reason}`;
         const route = request.to === owner ? ['--needs-approval'] : ['--for', `@${request.to}`];
         const answer = await this.#invoak([

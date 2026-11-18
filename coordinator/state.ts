@@ -29,6 +29,7 @@
  * clock is passed in (`now`, epoch ms); nothing here reads one.
  */
 
+import { randomBytes } from 'node:crypto';
 import { Database } from 'bun:sqlite';
 import { isFullSha } from './decide';
 import type { Attempt, BlockingNote } from './types';
@@ -600,6 +601,21 @@ export class State {
                     'WHERE repo = ? AND pr = ? ORDER BY id',
             )
             .all(repo, pr) as Attempt[];
+    }
+
+    /**
+     * A random value made once per database and never shown. Escalation task
+     * ids are derived from it, so nobody else can work one out in advance.
+     */
+    secret(): string {
+        this.#db
+            .query('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING')
+            .run('secret', randomBytes(32).toString('hex'));
+        const row = this.#db.query('SELECT value FROM meta WHERE key = ?').get('secret');
+        if (!isRecord(row) || typeof row.value !== 'string' || row.value.length < 64) {
+            throw new Error('coordinator state: no usable secret');
+        }
+        return row.value;
     }
 
     // ── Triage ─────────────────────────────────────────────────────────────

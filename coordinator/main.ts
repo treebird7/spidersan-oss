@@ -28,7 +28,7 @@ import type { LoopConfig } from './config';
 import { NotifyingDryRunEffects } from './effects';
 import type { EffectReader } from './effects';
 import { GitHub } from './github';
-import { Invoak } from './invoak';
+import { Invoak, invoakPrincipal } from './invoak';
 import { pass } from './loop';
 import type { Io } from './loop';
 import type { CommandRunner, ReviewFile } from './readers';
@@ -196,16 +196,6 @@ export const runCommand: CommandRunner = (command, argv, options) =>
         child.stdin?.end();
     });
 
-/**
- * Is invoak going to act as `self`? With no label set it borrows whatever
- * token `~/.invoak/.env` holds, and every note is another agent's.
- * ponytail: compares the label, `self` or `self-<machine>`. Ask invoak who it
- * is once it has a command for that.
- */
-export function actsAs(self: string, label: string | undefined): boolean {
-    return label === self || (label !== undefined && label.startsWith(`${self}-`));
-}
-
 /** prsan's `reviews/` directory and a private temp file for a diff. */
 export function fileIo(reviewsDir: string): Io {
     return {
@@ -220,7 +210,10 @@ export function fileIo(reviewsDir: string): Io {
             for (const name of names) {
                 try {
                     const path = join(reviewsDir, name);
-                    if (statSync(path).size <= MAX_REVIEW_FILE) files.push({ name, text: readFileSync(path, 'utf8') });
+                    // A regular file only: reading a FIFO of that name would block with the lock held.
+                    const stat = statSync(path);
+                    if (stat.isFile() && stat.size <= MAX_REVIEW_FILE)
+                        files.push({ name, text: readFileSync(path, 'utf8') });
                 } catch {
                     // left out: the count no longer matches, and the reader holds the PR
                 }
@@ -242,18 +235,23 @@ export function fileIo(reviewsDir: string): Io {
 
 async function wake(config: Config, loop: LoopConfig): Promise<unknown> {
     const github = new GitHub(runCommand);
-    const invoak = new Invoak(runCommand, { self: loop.self, project: loop.escalationProject, owner: loop.owner });
-    const reader: EffectReader = {
-        readPr: (ref) => github.readPr(ref),
-        readGate: async () => UNKNOWN,
-        readRegistryRow: async () => UNKNOWN,
-        findDelivery: (query) => invoak.findDelivery(query),
-        findEscalation: (query) => invoak.findEscalation(query),
-        readApproval: async () => ({ kind: 'unverified' }),
-    };
     const state = new State(config.stateDb);
     try {
-        const actions = new Actions(state, new NotifyingDryRunEffects(reader, invoak));
+        const invoak = new Invoak(runCommand, {
+            self: loop.self,
+            project: loop.escalationProject,
+            owner: loop.owner,
+            secret: state.secret(),
+        });
+        const reader: EffectReader = {
+            readPr: (ref) => github.readPr(ref),
+            readGate: async () => UNKNOWN,
+            readRegistryRow: async () => UNKNOWN,
+            findDelivery: (query) => invoak.findDelivery(query),
+            findEscalation: (query) => invoak.findEscalation(query),
+            readApproval: async () => ({ kind: 'unverified' }),
+        };
+        const actions = new Actions(state, new NotifyingDryRunEffects(reader, invoak), loop.owner);
         const reconcile = await actions.reconcile(Date.now());
         const prs = await pass(
             {
@@ -267,7 +265,7 @@ async function wake(config: Config, loop: LoopConfig): Promise<unknown> {
             },
             loop,
         );
-        return { reconcile, prs };
+        return { reconcile, ...prs };
     } finally {
         state.close();
     }
@@ -298,8 +296,10 @@ async function main(argv: string[]): Promise<number> {
         );
         return EXIT_CONFIG;
     }
-    if (!actsAs(loop.self, process.env.ENVOAK_AGENT_LABEL)) {
-        console.error(`coordinator: refusing to start: ENVOAK_AGENT_LABEL is not ${loop.self}'s label`);
+    // Asked of invoak itself, with the credential the writes will use. A label proves nothing:
+    // with none set, invoak borrows whatever token ~/.invoak/.env holds.
+    if ((await invoakPrincipal(runCommand)) !== loop.self) {
+        console.error(`coordinator: refusing to start: invoak does not act as ${loop.self} (invoak whoami)`);
         return EXIT_CONFIG;
     }
     console.log(JSON.stringify(await wake(started.config, loop)));

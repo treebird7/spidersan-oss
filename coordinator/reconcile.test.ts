@@ -48,7 +48,7 @@ beforeEach(() => {
     path = join(dir, 'state.db');
     state = new State(path);
     fx = new FakeEffects();
-    actions = new Actions(state, fx);
+    actions = new Actions(state, fx, 'owner');
     // PR 42 is open at HEAD on BASE, with no gate status on HEAD.
     fx.prs.set(PR_KEY, { kind: 'open', head: HEAD, base: BASE });
     fx.gates.set(GATE, 'clear');
@@ -63,7 +63,7 @@ afterEach(() => {
 function wake(): void {
     state.close();
     state = new State(path);
-    actions = new Actions(state, fx);
+    actions = new Actions(state, fx, 'owner');
 }
 
 /** Runs one statement on a second connection to the same file. */
@@ -477,11 +477,11 @@ describe('reconcile: a PR that does not read as merged after a merge call', () =
 
     test('the grace period can be passed in; a value that is not a finite amount ≥ 0 is refused', async () => {
         await mergeNeverLanded();
-        actions = new Actions(state, fx, 5);
+        actions = new Actions(state, fx, 'owner', 5);
         expect((await actions.reconcile(NOW + 4)).held).toEqual([REPO]);
         expect((await actions.reconcile(NOW + 5)).held).toEqual([]);
         for (const bad of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
-            expect(() => new Actions(state, fx, bad)).toThrow(TypeError);
+            expect(() => new Actions(state, fx, 'owner', bad)).toThrow(TypeError);
         }
     });
 });
@@ -964,7 +964,7 @@ describe('registry rule (mycsan, invoak #188)', () => {
 describe('dry-run adapter', () => {
     test('records every write, performs none, and nothing recorded counts as done or lifts a hold', async () => {
         const dry = new DryRunEffects(fx);
-        actions = new Actions(state, dry);
+        actions = new Actions(state, dry, 'owner');
 
         expect(await actions.merge(TARGET, TASK, NOW)).toEqual({ kind: 'dry-run' });
         expect(await actions.note(NOTE, NOW)).toEqual({ kind: 'dry-run' });
@@ -1004,7 +1004,7 @@ describe('dry-run adapter', () => {
         };
         for (let n = 0; n < 3; n++) {
             wake();
-            actions = new Actions(state, new DryRunEffects(fx));
+            actions = new Actions(state, new DryRunEffects(fx), 'owner');
             expect(await ask()).toEqual({ kind: 'dry-run' });
             expect(await actions.reconcile(NOW)).toEqual({ pending: [], unrecognised: [], held: [] });
             expect(rows()).toEqual([{ id, state: 'dry-run' }]);
@@ -1030,7 +1030,7 @@ describe('dry-run adapter', () => {
             wake();
 
             const dry = new DryRunEffects(fx);
-            actions = new Actions(state, dry);
+            actions = new Actions(state, dry, 'owner');
             expect((await actions.reconcile(NOW + 1)).pending).toEqual([id]);
             expect((await actions.reconcile(NOW + 2)).pending).toEqual([id]);
             expect(dry.recorded.map((r) => r.effect)).toEqual([send, send]);
@@ -1049,7 +1049,7 @@ describe('dry-run adapter', () => {
         test('is not closed when a dry-run wake asks for it again', async () => {
             fx.failNext(send, 'lost-request');
             await ask();
-            actions = new Actions(state, new DryRunEffects(fx));
+            actions = new Actions(state, new DryRunEffects(fx), 'owner');
             expect(await ask()).toEqual({ kind: 'pending' });
             expect(stateOf(id)).toBe('pending');
         });
@@ -1058,7 +1058,7 @@ describe('dry-run adapter', () => {
     test('a live pending merge is not touched by a dry-run wake: no merge recorded, nothing closed', async () => {
         await crashAfterMerge();
         const dry = new DryRunEffects(fx);
-        actions = new Actions(state, dry);
+        actions = new Actions(state, dry, 'owner');
         fx.failNext('readPr', { answer: { kind: 'unknown' } });
         expect(await actions.reconcile(NOW + 1)).toEqual({ pending: [MERGE_ID], unrecognised: [], held: [REPO] });
         expect(await actions.merge(TARGET, TASK, NOW + 1)).toEqual({ kind: 'held' });
@@ -1079,7 +1079,7 @@ describe('dry-run adapter', () => {
         wake();
 
         const dry = new DryRunEffects(fx);
-        actions = new Actions(state, dry);
+        actions = new Actions(state, dry, 'owner');
         expect(await actions.reconcile(NOW + 2)).toMatchObject({ held: [REPO] });
         expect(dry.recorded.map((r) => r.effect)).toEqual(['resetGate']);
         expect(stateOf(GATE_ID)).toBe('pending');
@@ -1094,7 +1094,7 @@ describe('dry-run adapter', () => {
         await actions.merge(TARGET, TASK, NOW); // live
         fx.registry.set(PR_KEY, { kind: 'row', status: 'merged', prNumber: PR });
         const dry = new DryRunEffects(fx);
-        actions = new Actions(state, dry);
+        actions = new Actions(state, dry, 'owner');
 
         expect((await actions.reconcile(NOW + 1)).pending).toEqual([LANDED_ID]);
         expect((await actions.reconcile(NOW + 2)).pending).toEqual([LANDED_ID]);
@@ -1102,7 +1102,7 @@ describe('dry-run adapter', () => {
         expect(fx.posted).toEqual([]);
         expect(state.receipt(LANDED_ID)).toBeNull();
 
-        actions = new Actions(state, fx);
+        actions = new Actions(state, fx, 'owner');
         await actions.reconcile(NOW + 3);
         await actions.reconcile(NOW + 4);
         expect(fx.posted).toHaveLength(1);
@@ -1113,6 +1113,18 @@ describe('dry-run adapter', () => {
 // ── Rows this code does not recognise ──────────────────────────────────────
 
 describe('unrecognised rows', () => {
+    test("reconcile's own escalations are addressed to the owner the coordinator was given", async () => {
+        fx.failNext('deliverNote', 'lost-request');
+        await actions.note(NOTE, NOW);
+        raw('UPDATE intents SET state = ? WHERE id = ?', 'sending', NOTE_ID);
+        // An adapter routes by principal: "owner" is nobody's, and would go to an agent of that name.
+        actions = new Actions(state, fx, 'treebird');
+        await actions.reconcile(NOW + 1);
+        const sent = fx.writes().filter((call) => call.effect === 'createEscalation');
+        expect(sent.map((call) => (call.request as { to: string }).to)).toEqual(['treebird']);
+        expect(() => new Actions(state, fx, '')).toThrow();
+    });
+
     test.each([
         ['a merge in an unknown state', MERGE_ID, 'UPDATE intents SET state = ? WHERE id = ?', 'merging'],
         ['a pending row of an unknown kind', MERGE_ID, 'UPDATE intents SET kind = ? WHERE id = ?', 'release'],
@@ -1206,7 +1218,7 @@ describe('reconcile is idempotent', () => {
 describe('notifying dry-run adapter', () => {
     test('delivers the note and the escalation for real; records the merge and the gate reset and performs neither', async () => {
         const dry = new NotifyingDryRunEffects(fx, fx);
-        actions = new Actions(state, dry);
+        actions = new Actions(state, dry, 'owner');
 
         expect(await actions.merge(TARGET, TASK, NOW)).toEqual({ kind: 'dry-run' });
         expect(await actions.note(NOTE, NOW)).toMatchObject({ kind: 'delivered' });
@@ -1228,10 +1240,10 @@ describe('notifying dry-run adapter', () => {
     });
 
     test('a second wake does not deliver the same note again', async () => {
-        actions = new Actions(state, new NotifyingDryRunEffects(fx, fx));
+        actions = new Actions(state, new NotifyingDryRunEffects(fx, fx), 'owner');
         expect(await actions.note(NOTE, NOW)).toMatchObject({ kind: 'delivered' });
         wake();
-        actions = new Actions(state, new NotifyingDryRunEffects(fx, fx));
+        actions = new Actions(state, new NotifyingDryRunEffects(fx, fx), 'owner');
         expect(await actions.note(NOTE, NOW + 1)).toMatchObject({ kind: 'delivered' });
         expect(fx.count('deliverNote')).toBe(1);
     });

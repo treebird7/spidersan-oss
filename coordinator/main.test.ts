@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { EXIT_CONFIG, actsAs, childEnv, fileIo, parseConfig, readHostId, runCommand, start } from './main';
+import { EXIT_CONFIG, childEnv, fileIo, parseConfig, readHostId, runCommand, start } from './main';
 
 const LAUNCHER = resolve(import.meta.dir, 'spidersan-coordinator');
 const MAIN = resolve(import.meta.dir, 'main.ts');
@@ -27,13 +28,18 @@ let dir: string;
 let db: string;
 let config: string;
 
+/** An `invoak` first on PATH that answers every command with `stdout`. */
+function fakeInvoak(stdout: string): void {
+    writeFileSync(join(dir, 'bin', 'invoak'), `#!/bin/sh\nprintf '%s' '${stdout}'\n`, { mode: 0o755 });
+}
+
 function writeConfig(value: unknown): void {
     writeFileSync(config, JSON.stringify(value));
 }
 
 function run(command: string[], env: Record<string, string> = {}) {
     const done = Bun.spawnSync(command, {
-        env: { ...process.env, ENVOAK_AGENT_LABEL: 'spidersan', ...env },
+        env: { ...process.env, PATH: `${dir}/bin:${process.env.PATH}`, ...env },
         stdout: 'pipe',
         stderr: 'pipe',
     });
@@ -49,6 +55,8 @@ beforeEach(() => {
     db = join(dir, 'state.db');
     config = join(dir, 'config.json');
     writeConfig({ hostId: HOST, stateDb: db, ...LOOP });
+    mkdirSync(join(dir, 'bin'));
+    fakeInvoak('{"whoami":{"principal":"spidersan"}}');
 });
 
 afterEach(() => {
@@ -118,6 +126,7 @@ describe('launcher and entrypoint', () => {
         expect(JSON.parse(done.out)).toEqual({
             reconcile: { pending: [], unrecognised: [], held: [] },
             prs: [],
+            unread: [],
         });
         expect(existsSync(db)).toBe(true);
     });
@@ -147,6 +156,7 @@ describe('launcher and entrypoint', () => {
                 stdio: ['ignore', 'pipe', 'pipe', other],
             });
             expect(done.exitCode).toBe(EXIT_CONFIG);
+            expect(done.stderr.toString()).toContain('lock');
             expect(existsSync(db)).toBe(false);
         } finally {
             holder.kill('SIGKILL');
@@ -164,6 +174,7 @@ describe('launcher and entrypoint', () => {
                 stdio: ['ignore', 'pipe', 'pipe', second],
             });
             expect(done.exitCode).toBe(EXIT_CONFIG);
+            expect(done.stderr.toString()).toContain('lock');
             expect(existsSync(db)).toBe(false);
         } finally {
             holder.kill('SIGKILL');
@@ -234,23 +245,20 @@ describe('launcher and entrypoint', () => {
 });
 
 describe('whose invoak token', () => {
-    test('the label is the coordinator, or the coordinator on a machine', () => {
-        expect(actsAs('spidersan', 'spidersan')).toBe(true);
-        expect(actsAs('spidersan', 'spidersan-m5')).toBe(true);
-        expect(actsAs('spidersan', undefined)).toBe(false);
-        expect(actsAs('spidersan', '')).toBe(false);
-        expect(actsAs('spidersan', 'mycsan')).toBe(false);
-        expect(actsAs('spidersan', 'spidersanx')).toBe(false);
+    test.each([
+        ['another agent', '{"whoami":{"principal":"mycsan"}}'],
+        ['nobody it can name', '{"error":{"code":"NO_CREDENTIAL"}}'],
+    ])('invoak acts as %s: exit 78, database not created', (_name, answer) => {
+        fakeInvoak(answer);
+        const done = run([LAUNCHER, config]);
+        expect(done.exit).toBe(EXIT_CONFIG);
+        expect(done.err).toContain('invoak whoami');
+        expect(existsSync(db)).toBe(false);
     });
 
-    test.each([
-        ['no label', ''],
-        ["another agent's label", 'mycsan'],
-    ])('%s: exit 78, database not created', (_name, label) => {
-        const done = run([LAUNCHER, config], { ENVOAK_AGENT_LABEL: label });
-        expect(done.exit).toBe(EXIT_CONFIG);
-        expect(done.err).toContain('ENVOAK_AGENT_LABEL');
-        expect(existsSync(db)).toBe(false);
+    test('a label is not asked for: only what invoak answers counts', () => {
+        const done = run([LAUNCHER, config], { ENVOAK_AGENT_LABEL: 'mycsan' });
+        expect(done.exit).toBe(0);
     });
 });
 
@@ -317,6 +325,12 @@ describe('fileIo', () => {
 
     test('a file too large to read leaves the listing short', () => {
         writeFileSync(join(dir, 'owner_name-7-aaaaaaa-r1-luna.md'), 'x'.repeat(1024 * 1024 + 1));
+        expect(fileIo(dir).reviewFiles('owner_name-7-')).toEqual({ files: [], expectedCount: 1 });
+    });
+
+    test('a FIFO with a review file name is not opened: the listing is short', () => {
+        // Reading it would block for good, with the coordinator's lock held.
+        execFileSync('/usr/bin/mkfifo', [join(dir, 'owner_name-7-aaaaaaa-r1-luna.md')]);
         expect(fileIo(dir).reviewFiles('owner_name-7-')).toEqual({ files: [], expectedCount: 1 });
     });
 

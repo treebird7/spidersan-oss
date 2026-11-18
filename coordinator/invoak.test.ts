@@ -1,14 +1,15 @@
 import { describe, expect, test } from 'bun:test';
-import { Invoak, escalationId } from './invoak';
+import { Invoak, escalationId, invoakPrincipal } from './invoak';
 import type { CommandResult } from './readers';
 
 // Answer shapes are invoak's own (`show`, `comment`, `create` with --json, 2026-11-18).
 const SELF = 'spidersan';
-const OPTIONS = { self: SELF, project: 'sp', owner: 'treebird' };
+const SECRET = 'f'.repeat(64);
+const OPTIONS = { self: SELF, project: 'sp', owner: 'treebird', secret: SECRET };
 const ACTION = 'note:owner/name#7:' + 'a'.repeat(40) + ':1';
 const BODY = `Two blocking findings.\n\naction-id: ${ACTION}`;
 const TASK = 'sp-abcd';
-const LEGACY = escalationId('sp', ACTION);
+const LEGACY = escalationId('sp', ACTION, SECRET);
 
 const json = (value: unknown): string => JSON.stringify(value);
 const ok = (value: unknown): CommandResult => ({ exitCode: 0, stdout: json(value) });
@@ -39,8 +40,12 @@ function scripted(answer: CommandResult | (() => CommandResult)) {
 describe('escalationId', () => {
     test('the same action gives the same id, another action another', () => {
         expect(LEGACY).toMatch(/^sp-esc-[0-9a-f]{32}$/);
-        expect(escalationId('sp', ACTION)).toBe(LEGACY);
-        expect(escalationId('sp', `${ACTION}x`)).not.toBe(LEGACY);
+        expect(escalationId('sp', ACTION, SECRET)).toBe(LEGACY);
+        expect(escalationId('sp', `${ACTION}x`, SECRET)).not.toBe(LEGACY);
+    });
+
+    test('without the secret the id cannot be worked out from the action', () => {
+        expect(escalationId('sp', ACTION, 'e'.repeat(64))).not.toBe(LEGACY);
     });
 });
 
@@ -48,6 +53,7 @@ describe('constructor', () => {
     test.each([
         ['self', { ...OPTIONS, self: '--json' }],
         ['owner', { ...OPTIONS, owner: '' }],
+        ['a short secret', { ...OPTIONS, secret: 'abc' }],
         ['project', { ...OPTIONS, project: 'sp;rm' }],
     ])('refuses a malformed %s', (_name, options) => {
         expect(() => new Invoak(() => ok({}), options)).toThrow(TypeError);
@@ -267,5 +273,39 @@ describe('task', () => {
         const { invoak, calls } = scripted(task());
         expect(await invoak.task('--help')).toBeNull();
         expect(calls).toEqual([]);
+    });
+});
+
+describe('invoakPrincipal', () => {
+    const who = (stdout: string, exitCode = 0) => invoakPrincipal(() => ({ exitCode, stdout }));
+
+    test('the principal invoak says it is (shape of a real `whoami`, 2026-11-19)', async () => {
+        const calls: string[][] = [];
+        const principal = await invoakPrincipal((command, argv) => {
+            calls.push([command, ...argv]);
+            return {
+                exitCode: 0,
+                stdout: json({ whoami: { tier: 'agent', principal: 'spidersan', via: 'agent-session' } }),
+            };
+        });
+        expect(principal).toBe('spidersan');
+        expect(calls).toEqual([['invoak', 'whoami', '--json']]);
+    });
+
+    test.each([
+        ['a failed command', json({ whoami: { principal: 'spidersan' } }), 1],
+        ['no principal', json({ whoami: {} }), 0],
+        ['a principal that is not one', json({ whoami: { principal: '--for' } }), 0],
+        ['not JSON', 'spidersan', 0],
+    ])('null on %s', async (_name, stdout, exit) => {
+        expect(await who(stdout, exit)).toBeNull();
+    });
+
+    test('null when the runner throws', async () => {
+        expect(
+            await invoakPrincipal(() => {
+                throw new Error('no invoak');
+            }),
+        ).toBeNull();
     });
 });

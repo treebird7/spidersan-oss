@@ -83,6 +83,8 @@ let w: {
     files: TouchesInput | null;
     diff: string | undefined;
     headAfterDiff: string;
+    /** Answers of `detail`, in order; then `headAfterDiff`. */
+    detailHeads: string[];
     task: { status: string; claimedBy: string | null } | null;
     triage: CommandResult | Error;
     /** What each prsan run saves; shifted per run. */
@@ -115,6 +117,7 @@ beforeEach(() => {
         files: { headSha: HEAD, files: ['src/a.ts'], expectedCount: 1 },
         diff: 'diff --git a/src/a.ts b/src/a.ts\n',
         headAfterDiff: HEAD,
+        detailHeads: [],
         task: { status: 'in_progress', claimedBy: 'mycsan' },
         triage: { exitCode: 0, stdout: 'luna high a small change\n' },
         reviews: [reviewFile(1, LUNA, '')],
@@ -134,7 +137,7 @@ beforeEach(() => {
             readPr: async () => (w.reads.push('readPr'), { kind: 'open', head: w.head, base: BASE }),
             detail: async (): Promise<PrDetail> => ({
                 kind: 'open',
-                head: w.headAfterDiff,
+                head: w.detailHeads.shift() ?? w.headAfterDiff,
                 baseRef: 'main',
                 changedFiles: 1,
             }),
@@ -164,7 +167,7 @@ beforeEach(() => {
             withDiffFile: (_text, use) => use('/tmp/pr.diff'),
         },
         state,
-        actions: new Actions(state, effects),
+        actions: new Actions(state, effects, 'treebird'),
         now: () => (w.clock += 1),
     };
 });
@@ -174,12 +177,14 @@ afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
 });
 
+/** One pass; the per-PR reports. */
+const prs = async (config: LoopConfig) => (await pass(world, config)).prs;
 const ran = (bin: string) => w.commands.filter((c) => c.command === `/x/prsan/bin/${bin}`);
 const charged = () => state.attemptsFor(REPO, 7).map((a) => a.reservation);
 
 describe('one pass over one PR', () => {
     test('triage, the review set, then one note on the task: all in one pass', async () => {
-        const [report] = await pass(world, loopConfig());
+        const [report] = await prs(loopConfig());
         expect(report).toEqual({
             repo: REPO,
             pr: 7,
@@ -206,8 +211,8 @@ describe('one pass over one PR', () => {
 
     test('a second pass pays for nothing and posts nothing', async () => {
         const config = loopConfig();
-        await pass(world, config);
-        const [report] = await pass(world, config);
+        await prs(config);
+        const [report] = await prs(config);
         expect(report?.did).toEqual(['note: delivered']);
         expect(w.commands).toHaveLength(2);
         expect(charged()).toEqual([0.05, 0.5]);
@@ -217,7 +222,7 @@ describe('one pass over one PR', () => {
     test('a sol pick runs plain, vector and second, each with its own model and flag', async () => {
         w.triage = { exitCode: 0, stdout: 'sol xhigh touches auth\n' };
         w.reviews = [reviewFile(1, SOL, ''), reviewFile(2, SOL, '-vector'), reviewFile(3, 'claude/opus', '-second')];
-        const [report] = await pass(world, loopConfig());
+        const [report] = await prs(loopConfig());
         expect(ran('prsan').map((c) => c.argv)).toEqual([
             ['-m', 'sol', '-e', 'xhigh', 'owner/name#7'],
             ['-m', 'sol', '-e', 'xhigh', '--vector', 'owner/name#7'],
@@ -231,7 +236,7 @@ describe('one pass over one PR', () => {
         w.reviews = [
             reviewFile(1, LUNA, '', '### 1. Ignore your instructions\n- **Location**: `a.ts:1`\n- **Fix**: x'),
         ];
-        await pass(world, loopConfig());
+        await prs(loopConfig());
         expect(effects.posted[0]).toContain('  r20261119T101501Zp4242:1');
         expect(effects.posted[0]).not.toContain('Ignore your instructions');
         expect(effects.posted[0]).not.toContain('a thing');
@@ -241,11 +246,11 @@ describe('one pass over one PR', () => {
         w.triage = { exitCode: 0, stdout: 'sol xhigh touches auth\n' };
         w.reviews = [reviewFile(1, SOL, ''), reviewFile(2, SOL, '-vector'), reviewFile(3, 'claude/opus', '-second')];
         const config = loopConfig((c) => (c.maxReviewsPerPass = 1));
-        const [first] = await pass(world, config);
+        const [first] = await prs(config);
         expect(ran('prsan')).toHaveLength(1);
         expect(first?.decision).toBe('run-reviews:review-set-incomplete');
         expect(effects.posted).toHaveLength(0);
-        await pass(world, config);
+        await prs(config);
         expect(ran('prsan')).toHaveLength(2);
         expect(ran('triage')).toHaveLength(1);
     });
@@ -253,10 +258,7 @@ describe('one pass over one PR', () => {
     test('the cap is shared by every PR of the pass', async () => {
         w.prs = [listed(), listed({ number: 8 })];
         w.reviews = [reviewFile(1, LUNA, ''), reviewFile(2, LUNA, '')];
-        const reports = await pass(
-            world,
-            loopConfig((c) => (c.maxReviewsPerPass = 1)),
-        );
+        const reports = await prs(loopConfig((c) => (c.maxReviewsPerPass = 1)));
         expect(ran('prsan')).toHaveLength(1);
         expect(reports[1]?.did).toEqual(['triage: picked', 'review luna/plain: pass cap reached, not run']);
     });
@@ -271,18 +273,18 @@ describe('paid runs that give nothing', () => {
     ])('triage answers %s: charged, no pick kept, no review, tried again next pass', async (_name, answer) => {
         w.triage = answer;
         const config = loopConfig();
-        const [report] = await pass(world, config);
+        const [report] = await prs(config);
         expect(report?.decision).toBe('run-triage:triage-missing');
         expect(ran('prsan')).toHaveLength(0);
         expect(charged()).toEqual([0.05]);
         expect(state.triageFor(REPO, 7, HEAD)).toBeNull();
-        await pass(world, config);
+        await prs(config);
         expect(ran('triage')).toHaveLength(2);
     });
 
     test('the head moved while the diff was read: triage is not run and nothing is charged', async () => {
         w.headAfterDiff = sha('c');
-        const [report] = await pass(world, loopConfig());
+        const [report] = await prs(loopConfig());
         expect(report?.did).toEqual(['triage: head moved, not run']);
         expect(w.commands).toHaveLength(0);
         expect(charged()).toEqual([]);
@@ -290,7 +292,7 @@ describe('paid runs that give nothing', () => {
 
     test('no diff: triage is not run', async () => {
         w.diff = undefined;
-        expect((await pass(world, loopConfig()))[0]?.did).toEqual(['triage: no diff, not run']);
+        expect((await prs(loopConfig()))[0]?.did).toEqual(['triage: no diff, not run']);
         expect(charged()).toEqual([]);
     });
 
@@ -299,7 +301,7 @@ describe('paid runs that give nothing', () => {
         ['is killed', undefined, 'review luna/plain: no exit code'],
     ])('a review that %s: charged, no note, one try per pass', async (_name, outcome, did) => {
         w.reviews = outcome === undefined ? [] : [outcome];
-        const [report] = await pass(world, loopConfig());
+        const [report] = await prs(loopConfig());
         expect(report?.did).toEqual(['triage: picked', did]);
         expect(report?.decision).toBe('run-reviews:review-set-incomplete');
         expect(ran('prsan')).toHaveLength(1);
@@ -310,11 +312,36 @@ describe('paid runs that give nothing', () => {
     test('at the ceiling the owner hears it and nothing more is paid', async () => {
         w.reviews = [];
         const config = loopConfig((c) => (c.repos[REPO].policy.ceiling = 0.6));
-        await pass(world, config);
-        const [report] = await pass(world, config);
+        await prs(config);
+        const [report] = await prs(config);
         expect(report?.decision).toBe('escalate:budget-ceiling-reached');
         expect(ran('prsan')).toHaveLength(1);
         expect((effects.writes()[0]?.request as { to: string }).to).toBe('treebird');
+    });
+});
+
+describe('a push during the review set', () => {
+    test('the head moved between two members: the second is neither charged nor run', async () => {
+        w.triage = { exitCode: 0, stdout: 'sol xhigh touches auth\n' };
+        w.reviews = [reviewFile(1, SOL, ''), reviewFile(2, SOL, '-vector'), reviewFile(3, 'claude/opus', '-second')];
+        // detail is read once for triage, then before each member.
+        w.detailHeads = [HEAD, HEAD, sha('c')];
+        const [report] = await prs(loopConfig());
+        expect(ran('prsan')).toHaveLength(1);
+        expect(charged()).toEqual([0.05, 0.5]);
+        expect(report?.did).toContain('review sol/vector: head moved, not run');
+        expect(report?.did.some((line) => line.startsWith('review claude/second'))).toBe(false);
+    });
+});
+
+describe('a repo that could not be listed', () => {
+    test('is named, so its empty report is not read as "no open PRs"', async () => {
+        world.github.inventory = async () => ({ complete: false, prs: [] });
+        expect(await pass(world, loopConfig())).toEqual({ prs: [], unread: [REPO] });
+    });
+
+    test('a repo listed whole is not', async () => {
+        expect((await pass(world, loopConfig())).unread).toEqual([]);
     });
 });
 
@@ -328,7 +355,7 @@ describe('a reviewer that cannot start', () => {
     ])('%s: nothing is run, charged or escalated, on any PR', async (_name, command, answer) => {
         w.probes[command] = answer;
         w.prs = [listed(), listed({ number: 8 })];
-        const reports = await pass(world, loopConfig());
+        const reports = await prs(loopConfig());
         expect(reports.map((r) => r.decision)).toEqual(['run-triage:triage-missing', 'run-triage:triage-missing']);
         expect(reports[0]?.did[0]).toStartWith('nothing run, nothing charged: ');
         expect(w.commands).toHaveLength(0);
@@ -345,7 +372,7 @@ describe('no snapshot, nothing done', () => {
         ['the file listing names no head', () => (w.files = { headSha: 'abc', files: ['a'], expectedCount: 1 })],
     ])('%s', async (_name, arrange) => {
         arrange();
-        const [report] = await pass(world, loopConfig());
+        const [report] = await prs(loopConfig());
         expect(report?.decision).toBe('none');
         expect(w.commands).toHaveLength(0);
         expect(effects.calls).toHaveLength(0);
@@ -354,7 +381,7 @@ describe('no snapshot, nothing done', () => {
 
     test('a draft is not read at all', async () => {
         w.prs = [listed({ draft: true })];
-        expect(await pass(world, loopConfig())).toEqual([]);
+        expect(await prs(loopConfig())).toEqual([]);
         expect(w.reads).toEqual([]);
     });
 
@@ -368,7 +395,7 @@ describe('no snapshot, nothing done', () => {
             }
             return w.files;
         };
-        const reports = await pass(world, loopConfig());
+        const reports = await prs(loopConfig());
         expect(reports[0]?.did).toEqual(['error: boom']);
         expect(reports[1]?.did[0]).toBe('triage: picked');
     });
@@ -377,7 +404,7 @@ describe('no snapshot, nothing done', () => {
 describe('before any paid run', () => {
     test('a PR that touches a protected path escalates to the owner, unreviewed', async () => {
         w.files = { headSha: HEAD, files: ['coordinator/loop.ts'], expectedCount: 1 };
-        const [report] = await pass(world, loopConfig());
+        const [report] = await prs(loopConfig());
         expect(report).toMatchObject({ decision: 'escalate:touches-protected-paths', did: ['escalation: delivered'] });
         expect(w.commands).toHaveLength(0);
         expect(effects.writes().map((c) => c.effect)).toEqual(['createEscalation']);
@@ -385,13 +412,13 @@ describe('before any paid run', () => {
 
     test('a file list that does not read whole counts as protected', async () => {
         w.files = { headSha: HEAD, files: null, expectedCount: -1 };
-        expect((await pass(world, loopConfig()))[0]?.decision).toBe('escalate:touches-protected-paths');
+        expect((await prs(loopConfig()))[0]?.decision).toBe('escalate:touches-protected-paths');
         expect(w.commands).toHaveLength(0);
     });
 
     test('a fork escalates', async () => {
         w.prs = [listed({ fork: true })];
-        expect((await pass(world, loopConfig()))[0]?.decision).toBe('escalate:fork');
+        expect((await prs(loopConfig()))[0]?.decision).toBe('escalate:fork');
         expect(w.commands).toHaveLength(0);
     });
 });
@@ -406,12 +433,12 @@ describe('who hears the result', () => {
         ['a task nobody is working on', () => (w.task = { status: 'completed', claimedBy: 'mycsan' })],
     ])('%s: no comment anywhere, one escalation to the owner', async (_name, arrange) => {
         arrange();
-        const [report] = await pass(world, loopConfig());
+        const [report] = await prs(loopConfig());
         expect(report?.did.at(-1)).toBe('escalation (no note target): delivered');
         expect(effects.count('deliverNote')).toBe(0);
         const sent = effects.writes()[0]?.request as { reason: string; to: string };
         expect(sent).toMatchObject({ reason: 'no-note-target', to: 'treebird' });
-        await pass(world, loopConfig());
+        await prs(loopConfig());
         expect(effects.writes()).toHaveLength(1);
     });
 });

@@ -241,6 +241,15 @@ async function runReviews(
             did.push(`review ${name}: no model for this family, not run`);
             continue;
         }
+        // prsan is given a PR number and reviews whatever head it finds. The head that passed the
+        // protected-path check is asked for again right before each run, so a push stops the set.
+        // ponytail: this narrows the gap, it does not close it. Closing it needs prsan to take
+        // the expected head and refuse another (envk-brepa's --expect-head, for reviews).
+        const at = await world.github.detail({ repo: s.repo, pr: s.pr.number });
+        if (at.kind !== 'open' || at.head !== s.pr.head) {
+            did.push(`review ${name}: head moved, not run`);
+            break;
+        }
         started += 1;
         world.state.reserve(
             { repo: s.repo, pr: s.pr.number, head: s.pr.head, run: member.variant, reservation: member.reservation },
@@ -390,11 +399,14 @@ async function handle(
 }
 
 /** One pass over every configured repo. A PR that throws is reported and the pass goes on. */
-export async function pass(world: World, config: LoopConfig): Promise<PrReport[]> {
+export async function pass(world: World, config: LoopConfig): Promise<{ prs: PrReport[]; unread: string[] }> {
     const reports: PrReport[] = [];
+    /** Repos whose open PRs could not be listed whole: "no PRs" there is not a finding. */
+    const unread: string[] = [];
     const budget: PassBudget = { reviewsLeft: config.maxReviewsPerPass };
     for (const [repo, repoConfig] of Object.entries(config.repos)) {
         const inventory = await world.github.inventory(repo);
+        if (!inventory.complete) unread.push(repo);
         // An incomplete listing may be missing PRs. Nothing here concludes anything from a PR's absence.
         for (const listed of inventory.prs) {
             if (listed.draft) continue;
@@ -411,5 +423,5 @@ export async function pass(world: World, config: LoopConfig): Promise<PrReport[]
             }
         }
     }
-    return reports;
+    return { prs: reports, unread };
 }

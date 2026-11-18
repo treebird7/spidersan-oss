@@ -404,3 +404,17 @@ describe('triage', () => {
         expect(() => state.saveTriage({ repo: REPO, pr: 7, head: 'abc' }, 'x', NOW)).toThrow();
     });
 });
+
+describe('secret', () => {
+    test('made once, kept across opens, and not the same in another database', () => {
+        const first = state.secret();
+        expect(first).toMatch(/^[0-9a-f]{64}$/);
+        expect(state.secret()).toBe(first);
+        state.close();
+        state = new State(path);
+        expect(state.secret()).toBe(first);
+        const other = new State(join(dir, 'other.db'));
+        expect(other.secret()).not.toBe(first);
+        other.close();
+    });
+});
