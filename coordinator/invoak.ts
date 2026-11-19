@@ -65,7 +65,9 @@ export async function invoakPrincipal(run: CommandRunner): Promise<string | null
         if (!isRecord(result) || result.exitCode !== 0 || typeof result.stdout !== 'string') return null;
         const doc: unknown = JSON.parse(result.stdout);
         const who = isRecord(doc) ? doc.whoami : null;
-        return isRecord(who) && typeof who.principal === 'string' && PRINCIPAL.test(who.principal) ? who.principal : null;
+        return isRecord(who) && typeof who.principal === 'string' && PRINCIPAL.test(who.principal)
+            ? who.principal
+            : null;
     } catch {
         return null;
     }
