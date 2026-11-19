@@ -164,14 +164,39 @@ const REVIEWER_ENV = [
     'XDG_CACHE_HOME',
 ] as const;
 
-/** The environment of one run: the coordinator's own for `gh` and `invoak`, the short list above for a run with `env`. */
+/**
+ * What `gh` and `invoak` read (invoak's names from its binary, 2026-11-19). Not the reviewer
+ * token: under `envoak vault inject` the coordinator holds CLAUDE_CODE_OAUTH_TOKEN, and only
+ * triage and prsan need it (sp-sloro). Nor INVOAK_OWNER_SECRET: the coordinator acts as an agent.
+ */
+const CLI_ENV = [
+    'PATH',
+    'HOME',
+    'USER',
+    'LOGNAME',
+    'SHELL',
+    'TMPDIR',
+    'LANG',
+    'LC_ALL',
+    'XDG_CONFIG_HOME',
+    'GH_TOKEN',
+    'GITHUB_TOKEN',
+    'GH_HOST',
+    'GH_CONFIG_DIR',
+    'ENVOAK_AGENT_LABEL',
+    'ENVOAK_BROKER_SOCK',
+    'INVOAK_API_URL',
+    'INVOAK_TOKEN',
+] as const;
+
+/** The environment of one run: CLI_ENV for `gh` and `invoak`, REVIEWER_ENV plus `env` for a run that brings its own. */
 export function childEnv(
     own: Record<string, string | undefined>,
     extra: Readonly<Record<string, string>> | undefined,
 ): Record<string, string | undefined> {
-    if (extra === undefined) return { ...own };
     const env: Record<string, string | undefined> = {};
-    for (const name of REVIEWER_ENV) if (own[name] !== undefined) env[name] = own[name];
+    const names = extra === undefined ? CLI_ENV : REVIEWER_ENV;
+    for (const name of names) if (own[name] !== undefined) env[name] = own[name];
     return { ...env, ...extra };
 }
 
