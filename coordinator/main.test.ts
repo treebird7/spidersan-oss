@@ -269,16 +269,19 @@ describe('childEnv', () => {
         ENVOAK_AGENT_LABEL: 'spidersan',
         PRSAN_SANDBOX_EXEC: '/bin/true',
         VAULT_SESSION_TOKEN: 's',
+        CLAUDE_CODE_OAUTH_TOKEN: 't',
+        INVOAK_OWNER_SECRET: 'o',
     };
 
-    test("gh and invoak get the coordinator's environment", () => {
-        expect(childEnv(own, undefined)).toEqual(own);
+    test('gh and invoak get their short list: no reviewer token, no owner secret (sp-sloro)', () => {
+        expect(childEnv(own, undefined)).toEqual({ PATH: '/bin', HOME: '/h', ENVOAK_AGENT_LABEL: 'spidersan' });
     });
 
     test('a run with its own env gets the short list and that env, nothing else', () => {
         expect(childEnv(own, { PRSAN_ISOLATION: 'require' })).toEqual({
             PATH: '/bin',
             HOME: '/h',
+            CLAUDE_CODE_OAUTH_TOKEN: 't',
             PRSAN_ISOLATION: 'require',
         });
     });
