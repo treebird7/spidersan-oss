@@ -52,6 +52,16 @@ One JSON file. Nothing has a default: a missing field is exit 78.
 coordinator/spidersan-coordinator /path/to/config.json
 ```
 
+When the token comes from the Envoak vault, the agent label has to be put back
+inside the injected process: `envoak vault inject` does not pass it on, and
+without it invoak has no identity and the coordinator exits 78.
+
+```bash
+envoak vault inject --key @<agent> --only <service>/CLAUDE_CODE_OAUTH_TOKEN -- \
+  /usr/bin/env ENVOAK_AGENT_LABEL=<agent> \
+  coordinator/spidersan-coordinator /path/to/config.json
+```
+
 The launcher takes the lock and starts the pass. Exit 75: another coordinator
 holds the lock. Exit 78: the config, the host or the invoak identity is wrong.
 On exit 0 it prints one JSON line: what reconcile left pending, one entry per
