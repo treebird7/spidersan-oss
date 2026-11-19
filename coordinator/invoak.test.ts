@@ -66,7 +66,7 @@ describe('findDelivery', () => {
     test('found: this coordinator’s comment carrying the action id', async () => {
         const { invoak, calls } = scripted(shown([comment({ id: 'c-0', body: 'unrelated' }), comment()]));
         expect(await invoak.findDelivery(query)).toEqual({ kind: 'found', receipt: 'c-1' });
-        expect(calls).toEqual([['invoak', 'show', TASK, '--json']]);
+        expect(calls).toEqual([['invoak', 'show', '--json', TASK]]);
     });
 
     test('absent: the task read whole and no such comment', async () => {
@@ -131,7 +131,8 @@ describe('deliverNote', () => {
     test('sent: the body is one argv element and the receipt is the comment id', async () => {
         const { invoak, calls } = scripted(ok({ comment: comment() }));
         expect(await invoak.deliverNote(request)).toEqual({ kind: 'sent', receipt: 'c-1' });
-        expect(calls).toEqual([['invoak', 'comment', TASK, BODY, '--json']]);
+        // The body is the last token: `comment` posts everything after the task id, flags included.
+        expect(calls).toEqual([['invoak', 'comment', '--json', TASK, BODY]]);
     });
 
     test.each([
@@ -159,7 +160,7 @@ describe('findEscalation', () => {
     test('found: the task with this action’s legacy id', async () => {
         const { invoak, calls } = scripted(ok({ task: { id: 'sp-wxyz', legacyId: LEGACY }, comments: [] }));
         expect(await invoak.findEscalation({ actionId: ACTION })).toEqual({ kind: 'found', receipt: 'sp-wxyz' });
-        expect(calls).toEqual([['invoak', 'show', LEGACY, '--json']]);
+        expect(calls).toEqual([['invoak', 'show', '--json', LEGACY]]);
     });
 
     test('absent only on invoak’s NOT_FOUND', async () => {
@@ -197,6 +198,7 @@ describe('createEscalation', () => {
             [
                 'invoak',
                 'create',
+                '--json',
                 '--project',
                 'sp',
                 '--summary',
@@ -206,7 +208,6 @@ describe('createEscalation', () => {
                 '--legacy-id',
                 LEGACY,
                 '--needs-approval',
-                '--json',
             ],
         ]);
     });
@@ -214,7 +215,7 @@ describe('createEscalation', () => {
     test('to a claimant: addressed to that agent', async () => {
         const { invoak, calls } = scripted(created);
         await invoak.createEscalation({ ...request, to: 'mycsan' });
-        expect(calls[0]?.slice(-3)).toEqual(['--for', '@mycsan', '--json']);
+        expect(calls[0]?.slice(-2)).toEqual(['--for', '@mycsan']);
     });
 
     test.each([
@@ -250,7 +251,7 @@ describe('task', () => {
     test('status and claimant of the task shown under that id (shape of a real `show`, 2026-11-19)', async () => {
         const { invoak, calls } = scripted(task());
         expect(await invoak.task(TASK)).toEqual({ status: 'in_progress', claimedBy: 'mycsan' });
-        expect(calls).toEqual([['invoak', 'show', TASK, '--json']]);
+        expect(calls).toEqual([['invoak', 'show', '--json', TASK]]);
     });
 
     test('an unclaimed task has no claimant', async () => {

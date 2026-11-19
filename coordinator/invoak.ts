@@ -65,7 +65,9 @@ export async function invoakPrincipal(run: CommandRunner): Promise<string | null
         if (!isRecord(result) || result.exitCode !== 0 || typeof result.stdout !== 'string') return null;
         const doc: unknown = JSON.parse(result.stdout);
         const who = isRecord(doc) ? doc.whoami : null;
-        return isRecord(who) && typeof who.principal === 'string' && PRINCIPAL.test(who.principal) ? who.principal : null;
+        return isRecord(who) && typeof who.principal === 'string' && PRINCIPAL.test(who.principal)
+            ? who.principal
+            : null;
     } catch {
         return null;
     }
@@ -100,7 +102,11 @@ export class Invoak {
     /** The JSON document a command printed, with its exit code; undefined when there is none to read. */
     async #invoak(argv: readonly string[]): Promise<{ ok: boolean; doc: Record<string, unknown> } | undefined> {
         try {
-            const result: unknown = await this.#run('invoak', [...argv, '--json'], { cwd: '/' });
+            // `--json` goes right after the command, never last: `comment <id> <text...>` takes every
+            // token after the text begins as body, so a trailing flag was posted as part of the note.
+            const [command, ...rest] = argv;
+            if (command === undefined) return undefined;
+            const result: unknown = await this.#run('invoak', [command, '--json', ...rest], { cwd: '/' });
             if (!isRecord(result) || typeof result.stdout !== 'string') return undefined;
             const doc: unknown = JSON.parse(result.stdout);
             return isRecord(doc) ? { ok: result.exitCode === 0, doc } : undefined;
