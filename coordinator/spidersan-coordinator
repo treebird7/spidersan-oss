@@ -1,0 +1,50 @@
+#!/usr/bin/perl
+# PR coordinator launcher: take the process lock, then exec the coordinator.
+#
+#   spidersan-coordinator <config.json> [args...]
+#
+# The lock is flock(2) on "<stateDb>.lock" (stateDb read from the config), taken
+# BEFORE the coordinator opens its database. The kernel holds it on the open
+# file description, which the coordinator inherits across exec: it is released
+# when the coordinator exits, SIGKILL included, so there is nothing to clean up.
+#
+# Not covered: Bun.spawn does not pass the lock fd to a child (checked with
+# real processes by hand, 2026-11-18; no test). A child of a killed coordinator (a merge
+# call, say) can outlive the lock. The intent row written before that call is
+# what holds its repo for the next coordinator, not this lock.
+#
+# Exit 75: another coordinator holds the lock. Exit 78: unusable config.
+use strict;
+use warnings;
+use Fcntl qw(:flock);
+use Cwd qw(abs_path);
+use File::Basename qw(dirname);
+use JSON::PP;
+
+my $config = shift @ARGV;
+if (!defined $config) { print STDERR "usage: spidersan-coordinator <config.json> [args...]\n"; exit 78; }
+
+my $state_db = eval {
+    open(my $in, '<', $config) or die "$!\n";
+    local $/;
+    my $parsed = JSON::PP->new->decode(<$in>);
+    ref $parsed eq 'HASH' ? $parsed->{stateDb} : undef;
+};
+if (!defined $state_db || ref $state_db || $state_db !~ m{^/}) {
+    print STDERR "spidersan-coordinator: $config has no absolute \"stateDb\" path\n";
+    exit 78;
+}
+
+my $lock = "$state_db.lock";
+$^F = 255;    # keep the lock fd open across exec (perl closes fds above $^F)
+my $fh;
+if (!open($fh, '>>', $lock)) { print STDERR "spidersan-coordinator: cannot open $lock: $!\n"; exit 78; }
+if (!flock($fh, LOCK_EX | LOCK_NB)) {
+    print STDERR "spidersan-coordinator: another coordinator holds $lock\n";
+    exit 75;
+}
+
+$ENV{SPIDERSAN_COORDINATOR_LOCK_FD} = fileno($fh);
+my $main = $ENV{SPIDERSAN_COORDINATOR_MAIN} // dirname(abs_path($0)) . '/main.ts';
+my @command = ($ENV{SPIDERSAN_COORDINATOR_BUN} // 'bun', $main, $config, @ARGV);
+exec { $command[0] } @command or do { print STDERR "spidersan-coordinator: cannot exec $command[0]: $!\n"; exit 78; };

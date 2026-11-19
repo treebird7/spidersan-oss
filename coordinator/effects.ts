@@ -194,3 +194,25 @@ export class DryRunEffects implements Effects {
         return this.#record('createEscalation', request);
     }
 }
+
+/**
+ * The dry run the owner chose (2026-11-18): notes and escalations are really
+ * delivered, through `notes`; merges and gate resets are recorded and answered
+ * `dry-run`. It holds no object that can merge or reset a gate.
+ */
+export class NotifyingDryRunEffects extends DryRunEffects {
+    readonly #notes: Pick<EffectWriter, 'deliverNote' | 'createEscalation'>;
+
+    constructor(reads: EffectReader, notes: Pick<EffectWriter, 'deliverNote' | 'createEscalation'>) {
+        super(reads);
+        this.#notes = { deliverNote: (r) => notes.deliverNote(r), createEscalation: (r) => notes.createEscalation(r) };
+    }
+
+    override async deliverNote(request: NoteRequest): Promise<SendOutcome> {
+        return this.#notes.deliverNote(request);
+    }
+
+    override async createEscalation(request: EscalationRequest): Promise<SendOutcome> {
+        return this.#notes.createEscalation(request);
+    }
+}

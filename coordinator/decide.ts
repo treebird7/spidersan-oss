@@ -415,7 +415,7 @@ function validateRest(s: PrSnapshot): string | null {
     return null;
 }
 
-function validatePolicy(p: unknown): string | null {
+export function validatePolicy(p: unknown): string | null {
     if (!isRecord(p)) return 'policy';
     if (!isOneOf(MODES, p.mode)) return 'mode';
     if (!isAmount(p.ceiling) || p.ceiling <= 0) return 'ceiling';

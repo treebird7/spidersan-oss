@@ -389,3 +389,32 @@ describe('held repos', () => {
         expect(() => state.queue(note(), NOW)).toThrow();
     });
 });
+
+describe('triage', () => {
+    test('what triage printed is kept per head; the first answer stands', () => {
+        expect(state.triageFor(REPO, 7, HEAD)).toBeNull();
+        state.saveTriage({ repo: REPO, pr: 7, head: HEAD }, 'luna high small\n', NOW);
+        state.saveTriage({ repo: REPO, pr: 7, head: HEAD }, 'sol xhigh other\n', NOW + 1);
+        expect(state.triageFor(REPO, 7, HEAD)).toBe('luna high small\n');
+        expect(state.triageFor(REPO, 7, OTHER)).toBeNull();
+        expect(state.triageFor(REPO, 8, HEAD)).toBeNull();
+    });
+
+    test('a record for no full head is refused', () => {
+        expect(() => state.saveTriage({ repo: REPO, pr: 7, head: 'abc' }, 'x', NOW)).toThrow();
+    });
+});
+
+describe('secret', () => {
+    test('made once, kept across opens, and not the same in another database', () => {
+        const first = state.secret();
+        expect(first).toMatch(/^[0-9a-f]{64}$/);
+        expect(state.secret()).toBe(first);
+        state.close();
+        state = new State(path);
+        expect(state.secret()).toBe(first);
+        const other = new State(join(dir, 'other.db'));
+        expect(other.secret()).not.toBe(first);
+        other.close();
+    });
+});
