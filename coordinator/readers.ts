@@ -370,7 +370,7 @@ export interface RequiredContext {
 export interface CiInput {
     /** The commit the listing was fetched for. */
     headSha: unknown;
-    /** `[{context, appId, headSha, state}]`: every check run and commit status on that commit. */
+    /** `[{context, appId, headSha, state}]`: every CI entry on that commit (Actions jobs, runs, commit statuses). */
     observations: unknown;
     /** How many entries the source says exist; must equal `observations.length`. */
     expectedCount: unknown;
