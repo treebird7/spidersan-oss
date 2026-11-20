@@ -1,16 +1,17 @@
 /**
  * PR coordinator — reading GitHub (slice 4 of 4, part 2a).
  *
- * Pure parsers for five REST payloads, and `GitHub`, which fetches them with
+ * Pure parsers for the REST payloads a pass reads, and `GitHub`, which fetches them with
  * `gh api` through an injected `CommandRunner`, with the token of the repo's
  * owner. Nothing here writes.
  *
  * Fail closed: a payload that cannot be read whole gives `unknown`, `null` or
  * `complete: false`, never a default that reads as a result. Every listing is
  * one page of `PAGE` entries; a listing that fills the page, or disagrees with
- * the count GitHub gives for it, is not complete.
- * ponytail: one page. Follow the `Link` header if a repo ever has 100 open
- * PRs, or a PR 100 files or 100 check runs.
+ * the count GitHub gives for it, is not complete. CI's runs and jobs listings
+ * are paged through, up to MAX_PAGES.
+ * ponytail: one page elsewhere. Page through if a repo ever has 100 open PRs,
+ * or a PR 100 files or a commit 100 statuses.
  */
 
 import { isFullSha } from './decide';
@@ -129,9 +130,17 @@ export function parseBranchTip(stdout: unknown, baseRef: string): string | null 
     return doc.object.type === 'commit' && isFullSha(doc.object.sha) ? doc.object.sha : null;
 }
 
-// ── 3. CI: check runs and commit statuses → readCi's observations ──────────
+// ── 3. CI: Actions jobs and commit statuses → readCi's observations ────────
 
 export type Observations = Pick<CiInput, 'headSha' | 'observations' | 'expectedCount'>;
+
+/**
+ * The GitHub Actions app. Every Actions job is a check run it owns (a job's id is its check-run id),
+ * but the jobs listing does not name the app, so its observations are stamped with this one.
+ */
+export const ACTIONS_APP_ID = 15368;
+/** A paged listing longer than this is not read whole: no observations. */
+export const MAX_PAGES = 10;
 
 interface Observation {
     context: string;
@@ -139,6 +148,16 @@ interface Observation {
     appId: number | null;
     headSha: string;
     state: string;
+}
+
+/** One page of `{total_count, <key>: [...]}`, or null when it is not that. */
+export function listingPage(stdout: unknown, key: string): { total: number; entries: readonly unknown[] } | null {
+    const doc = parse(stdout);
+    if (!isRecord(doc) || !Array.isArray(doc[key])) return null;
+    // Any number: a total that is not a count never equals one, and the caller compares the two.
+    const total = doc.total_count;
+    if (typeof total !== 'number') return null;
+    return { total, entries: doc[key] as readonly unknown[] };
 }
 
 /** Latest commit statuses for `head`, or null when the listing is not whole. */
@@ -155,37 +174,89 @@ function statusEntries(stdout: unknown, head: string): { context: string; state:
     return out;
 }
 
+const isId = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) > 0;
+
+/** A run or job's state: `pending` until it completes, then its conclusion as GitHub gave it; null when it has none. */
+function stateOf(status: unknown, conclusion: unknown): string | null {
+    if (typeof status !== 'string') return null;
+    if (status !== 'completed') return 'pending';
+    return typeof conclusion === 'string' ? conclusion : null;
+}
+
 /**
- * `GET /repos/{repo}/commits/{head}/check-runs?per_page=100` and
- * `GET /repos/{repo}/commits/{head}/status?per_page=100` → the input `readCi`
- * judges. Null when either cannot be read at all. A listing that is not whole
- * is passed on with an `expectedCount` that `readCi` refuses.
+ * Every workflow run on `head` (`GET /repos/{repo}/actions/runs?head_sha=…`), every job of
+ * those runs (`GET …/actions/runs/{id}/jobs?filter=all`), and the commit statuses
+ * (`GET /repos/{repo}/commits/{head}/status`) → the input `readCi` judges. A job is
+ * observed under its name, the name its check run has, from the Actions app. Null when
+ * any part cannot be read whole: a listing the caller could not page through, an entry
+ * of the wrong shape, or one that names another commit or run.
  *
- * A run that has not completed is `pending`. Any other state is passed on as
- * GitHub gave it (`cancelled`, `timed_out`, `error`, …): `readCi` gives no
- * verdict on a state it does not know.
+ * Re-runs. A re-run is a new attempt of the same workflow run: the same run id,
+ * `run_attempt` one higher. `filter=all` lists every attempt's jobs. For each run and
+ * job name only the jobs of the highest attempt that has that name count: a failure
+ * an attempt superseded is not read again. "Latest" is the attempt number, not a
+ * time: a job that "re-run failed jobs" carried into the new attempt keeps its old
+ * timestamps (Envoak run 43420197808, attempt 2, 2026-11-13). Two runs on one head
+ * (a `push` and a `pull_request` run of one workflow) are not attempts of each other:
+ * both count, and `readCi` wants a required context to agree across them.
+ *
+ * A run that has not completed adds one `pending` observation, so the commit is not
+ * complete while it runs, whatever jobs it lists so far. A completed run with no jobs
+ * (a workflow that failed to start) adds its own conclusion. Neither can stand in
+ * for a required context: they carry no app id. A required context that is neither a
+ * job nor a status has no observation at all, and `readCi` gives it no verdict.
+ *
+ * ponytail: check runs from apps other than Actions (Socket Security on
+ * spidersan-oss) are not seen: a fine-grained token cannot read check runs on a
+ * private repo, and no repo requires one (2026-11-20). Read check runs again,
+ * for public repos only, if one ever does.
  */
-export function ciObservations(checkRuns: unknown, statuses: unknown, head: string): Observations | null {
-    const runs = parse(checkRuns);
-    if (!isFullSha(head) || !isRecord(runs) || !Array.isArray(runs.check_runs)) return null;
-    if (typeof runs.total_count !== 'number') return null;
+export function ciObservations(
+    runs: readonly unknown[],
+    jobs: readonly unknown[],
+    statuses: unknown,
+    head: string,
+): Observations | null {
+    if (!isFullSha(head)) return null;
     const observations: Observation[] = [];
-    for (const run of runs.check_runs as readonly unknown[]) {
-        if (!isRecord(run) || typeof run.name !== 'string' || typeof run.head_sha !== 'string') return null;
-        if (!isRecord(run.app) || typeof run.app.id !== 'number' || typeof run.status !== 'string') return null;
-        if (run.status === 'completed' && typeof run.conclusion !== 'string') return null;
-        observations.push({
-            context: run.name,
-            appId: run.app.id,
-            headSha: run.head_sha,
-            state: run.status === 'completed' ? (run.conclusion as string) : 'pending',
-        });
+    const listed = new Map<number, number>(); // run id → its jobs
+    for (const run of runs) {
+        if (!isRecord(run) || !isId(run.id) || run.head_sha !== head || listed.has(run.id)) return null;
+        if (!isId(run.run_attempt) || stateOf(run.status, run.conclusion) === null) return null;
+        listed.set(run.id, 0);
     }
-    const latest = statusEntries(statuses, head);
-    if (latest === null) return null;
-    for (const s of latest) observations.push({ context: s.context, appId: null, headSha: head, state: s.state });
-    const whole = runs.check_runs.length < PAGE;
-    return { headSha: head, observations, expectedCount: whole ? runs.total_count + latest.length : -1 };
+    const latest = new Map<string, { attempt: number; jobs: Observation[] }>();
+    const ids = new Set<number>();
+    for (const job of jobs) {
+        if (!isRecord(job) || !isId(job.id) || ids.has(job.id) || job.head_sha !== head) return null;
+        if (!isId(job.run_id) || !listed.has(job.run_id) || !isId(job.run_attempt)) return null;
+        if (typeof job.name !== 'string' || job.name === '') return null;
+        const state = stateOf(job.status, job.conclusion);
+        if (state === null) return null;
+        ids.add(job.id);
+        listed.set(job.run_id, (listed.get(job.run_id) ?? 0) + 1);
+        const key = `${job.run_id}\n${job.name}`;
+        const seen = latest.get(key);
+        const observed = { context: job.name, appId: ACTIONS_APP_ID, headSha: head, state };
+        if (seen === undefined || job.run_attempt > seen.attempt) {
+            latest.set(key, { attempt: job.run_attempt, jobs: [observed] });
+        } else if (job.run_attempt === seen.attempt) {
+            seen.jobs.push(observed);
+        }
+    }
+    for (const entry of latest.values()) observations.push(...entry.jobs);
+    for (const run of runs as readonly Record<string, unknown>[]) {
+        const state = stateOf(run.status, run.conclusion) as string;
+        if (state === 'pending' || listed.get(run.id as number) === 0) {
+            observations.push({ context: `actions run ${run.id as number}`, appId: null, headSha: head, state });
+        }
+    }
+    const latestStatuses = statusEntries(statuses, head);
+    if (latestStatuses === null) return null;
+    for (const s of latestStatuses) {
+        observations.push({ context: s.context, appId: null, headSha: head, state: s.state });
+    }
+    return { headSha: head, observations, expectedCount: observations.length };
 }
 
 /** The merge-gate commit status on `head`: `success`, `clear` (anything else, or absent), or `unknown`. */
@@ -225,7 +296,10 @@ export function parseFiles(stdout: unknown, head: string, changedFiles: number):
 /** The token for a repo's owner, or undefined when there is none. */
 export type TokenFor = (repo: string) => string | undefined;
 
-/** A token `gh` will use as given: non-empty, one line, no spaces. An empty `GH_TOKEN` makes `gh` fall back to its stored login. */
+/**
+ * A token `gh` will use as given: non-empty, one line, no spaces. An empty `GH_TOKEN` makes `gh` fall back to its
+ * stored login.
+ */
 export function isToken(value: unknown): value is string {
     return typeof value === 'string' && /^[\x21-\x7e]{1,1024}$/.test(value);
 }
@@ -285,10 +359,39 @@ export class GitHub {
         return typeof text === 'string' && text !== '' ? text : undefined;
     }
 
+    /**
+     * Every entry of a paged listing (`path` has a query; `&page=N` is added), or null when a page
+     * cannot be read, the pages disagree on the total, or they do not add up to it within MAX_PAGES.
+     */
+    async #all(repo: string, path: string, key: string): Promise<unknown[] | null> {
+        const entries: unknown[] = [];
+        let total: number | null = null;
+        for (let n = 1; n <= MAX_PAGES; n++) {
+            const page = listingPage(await this.#get(repo, `${path}&page=${n}`), key);
+            if (page === null || (total !== null && page.total !== total) || page.entries.length > PAGE) return null;
+            total = page.total;
+            entries.push(...page.entries);
+            if (page.entries.length < PAGE) return entries.length === total ? entries : null;
+        }
+        return null;
+    }
+
+    /** CI on `head` from Actions runs and jobs plus commit statuses (sp-cabo); see `ciObservations`. */
     async ci(repo: string, head: string): Promise<Observations | null> {
         if (!isRepoSlug(repo) || !isFullSha(head)) return null;
-        const runs = await this.#get(repo, `repos/${repo}/commits/${head}/check-runs?per_page=${PAGE}`);
-        return ciObservations(runs, await this.#statuses(repo, head), head);
+        const listing = `repos/${repo}/actions/runs?head_sha=${head}&per_page=${PAGE}`;
+        const runs = await this.#all(repo, listing, 'workflow_runs');
+        if (runs === null) return null;
+        const jobs: unknown[] = [];
+        for (const run of runs) {
+            const id = isRecord(run) ? run.id : undefined;
+            if (!isId(id)) return null;
+            const path = `repos/${repo}/actions/runs/${id}/jobs?filter=all&per_page=${PAGE}`;
+            const list = await this.#all(repo, path, 'jobs');
+            if (list === null) return null;
+            jobs.push(...list);
+        }
+        return ciObservations(runs, jobs, await this.#statuses(repo, head), head);
     }
 
     #statuses(repo: string, head: string): Promise<unknown> {

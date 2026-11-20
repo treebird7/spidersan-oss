@@ -1,5 +1,16 @@
 import { describe, expect, test } from 'bun:test';
-import { GitHub, PAGE, ciObservations, parseBranchTip, parseFiles, parseGate, parseInventory, parsePr } from './github';
+import {
+    ACTIONS_APP_ID,
+    GitHub,
+    MAX_PAGES,
+    PAGE,
+    ciObservations,
+    parseBranchTip,
+    parseFiles,
+    parseGate,
+    parseInventory,
+    parsePr,
+} from './github';
 import { classifyTouches, readCi } from './readers';
 import type { CommandResult } from './readers';
 
@@ -28,15 +39,111 @@ function pull(over: Record<string, unknown> = {}): Record<string, unknown> {
     return { ...listed(), merged: false, merge_commit_sha: null, changed_files: 2, ...over };
 }
 
-const run = (name: string, conclusion: string | null, over: Record<string, unknown> = {}) => ({
+// Real responses, trimmed to the fields read (plus `name` and `event`), 2026-11-20:
+// treebird7/spidersan-oss #360 at its head, and a partial re-run in treebird7/Envoak.
+const REAL_HEAD = 'f9c69f4bad6c1ff204322d07df819f7a376f830d';
+const REAL_RUNS = {
+    total_count: 2,
+    workflow_runs: [
+        {
+            id: 44531811903,
+            name: 'CI',
+            head_sha: REAL_HEAD,
+            status: 'completed',
+            conclusion: 'success',
+            run_attempt: 1,
+            event: 'pull_request',
+        },
+        {
+            id: 44531800887,
+            name: 'ts-review',
+            head_sha: REAL_HEAD,
+            status: 'completed',
+            conclusion: 'success',
+            run_attempt: 1,
+            event: 'push',
+        },
+    ],
+};
+const realJob = (id: number, runId: number, name: string) => ({
+    id,
+    run_id: runId,
+    run_attempt: 1,
+    name,
+    head_sha: REAL_HEAD,
+    status: 'completed',
+    conclusion: 'success',
+});
+const REAL_CI_JOBS = {
+    total_count: 8,
+    jobs: [
+        realJob(135586787441, 44531811903, 'Plugin hook suites'),
+        realJob(135586787562, 44531811903, 'coordinator typecheck · bun test'),
+        realJob(135586787565, 44531811903, 'build (24)'),
+        realJob(135586787642, 44531811903, 'mcp-server build · test · audit'),
+        realJob(135586787659, 44531811903, 'Dependency and secret scan'),
+        realJob(135586787676, 44531811903, 'ts-review detect step'),
+        realJob(135586788163, 44531811903, 'build (22)'),
+        realJob(135587234808, 44531811903, 'test-cli'),
+    ],
+};
+const REAL_REVIEW_JOBS = { total_count: 1, jobs: [realJob(135586754030, 44531800887, 'ts-review')] };
+const NO_STATUSES = json({ sha: REAL_HEAD, state: 'pending', total_count: 0, statuses: [] });
+/** spidersan-oss main's ruleset, 2026-11-20 (no app named: the Actions app reports all three). */
+const REAL_REQUIRED = ['build (22)', 'build (24)', 'test-cli'].map((context) => ({ context, appId: ACTIONS }));
+
+/** treebird7/Envoak run 43420197808, `jobs?filter=all`: attempt 2 re-ran the failed job and carried the rest over. */
+const RERUN_HEAD = 'e80e1c8e6e09fb5443feb3decc72b0a75811f897';
+const RERUN_ID = 43420197808;
+const rerunJob = (id: number, attempt: number, name: string, conclusion: string) => ({
+    id,
+    run_id: RERUN_ID,
+    run_attempt: attempt,
+    name,
+    head_sha: RERUN_HEAD,
+    status: 'completed',
+    conclusion,
+});
+const RERUN_JOBS = [
+    rerunJob(131867985864, 1, 'macOS · Touch ID helper watchdog', 'success'),
+    rerunJob(131867986283, 1, 'typecheck · build · test', 'failure'),
+    rerunJob(131867986306, 1, 'Dependency and secret scan', 'success'),
+    rerunJob(131867988670, 1, 'typecheck · build · test · node 26', 'skipped'),
+    rerunJob(131881242377, 2, 'typecheck · build · test', 'cancelled'),
+    rerunJob(131881244424, 2, 'macOS · Touch ID helper watchdog', 'success'),
+    rerunJob(131881294611, 2, 'Dependency and secret scan', 'success'),
+    rerunJob(131881294828, 2, 'typecheck · build · test · node 26', 'skipped'),
+];
+const RERUN_RUN = {
+    id: RERUN_ID,
+    name: 'CI',
+    head_sha: RERUN_HEAD,
+    status: 'completed',
+    conclusion: 'cancelled',
+    run_attempt: 2,
+};
+
+/** A workflow run on HEAD, completed. */
+const wfRun = (id: number, over: Record<string, unknown> = {}) => ({
+    id,
+    name: 'CI',
+    head_sha: HEAD,
+    status: 'completed',
+    conclusion: 'success',
+    run_attempt: 1,
+    ...over,
+});
+/** A job of run 11 on HEAD, first attempt; a null conclusion is a job still running. */
+const wfJob = (name: string, conclusion: string | null, over: Record<string, unknown> = {}) => ({
+    id: 1,
+    run_id: 11,
+    run_attempt: 1,
     name,
     head_sha: HEAD,
     status: conclusion === null ? 'in_progress' : 'completed',
     conclusion,
-    app: { id: ACTIONS },
     ...over,
 });
-const runs = (list: unknown[], total: number = list.length) => json({ total_count: total, check_runs: list });
 const statuses = (list: { context: string; state: string }[], over: Record<string, unknown> = {}) =>
     json({ sha: HEAD, state: 'pending', total_count: list.length, statuses: list, ...over });
 
@@ -147,82 +254,187 @@ describe('parseBranchTip', () => {
     });
 });
 
-describe('ciObservations → readCi', () => {
+describe('ciObservations → readCi (sp-cabo)', () => {
     const required = [{ context: 'build', appId: ACTIONS }];
-    const judge = (checkRuns: unknown, status: unknown = statuses([])) => {
-        const input = ciObservations(checkRuns, status, HEAD);
-        return input && readCi({ ...input, required, gateContext: 'gate', gateAppId: null, testedMerge: null });
+    const RUN = 11;
+    const judge = (runList: unknown[], jobList: unknown[], status: unknown = statuses([]), req = required) => {
+        const input = ciObservations(runList, jobList, status, HEAD);
+        return input && readCi({ ...input, required: req, gateContext: 'gate', gateAppId: null, testedMerge: null });
     };
-    const verdict = (complete: boolean, green: boolean) => ({ headSha: HEAD, complete, green, testedBase: null });
+    const verdict = (complete: boolean, green: boolean, head = HEAD) => ({
+        headSha: head,
+        complete,
+        green,
+        testedBase: null,
+    });
+    const one = [wfRun(RUN)];
 
-    test('all runs succeeded: complete and green', () => {
-        expect(judge(runs([run('build', 'success'), run('lint', 'skipped')]))).toEqual(verdict(true, true));
+    test('shape of a real actions/runs + jobs listing, spidersan-oss #360 head, 2026-11-20', () => {
+        const jobs = [...REAL_CI_JOBS.jobs, ...REAL_REVIEW_JOBS.jobs];
+        const input = ciObservations(REAL_RUNS.workflow_runs, jobs, NO_STATUSES, REAL_HEAD);
+        expect(input?.expectedCount).toBe(9);
+        expect(input?.observations).toContainEqual({
+            context: 'build (22)',
+            appId: ACTIONS,
+            headSha: REAL_HEAD,
+            state: 'success',
+        });
+        const settings = { required: REAL_REQUIRED, gateContext: null, gateAppId: null, testedMerge: null };
+        const ci = input && readCi({ ...input, ...settings });
+        expect(ci).toEqual(verdict(true, true, REAL_HEAD));
     });
 
-    test('a failed run that is not required: complete, not green', () => {
-        expect(judge(runs([run('build', 'success'), run('audit', 'failure')]))).toEqual(verdict(true, false));
+    test('shape of a real partial re-run (jobs?filter=all), Envoak, 2026-11-20: only attempt 2 counts', () => {
+        const none = json({ sha: RERUN_HEAD, total_count: 0, statuses: [] });
+        const input = ciObservations([RERUN_RUN], RERUN_JOBS, none, RERUN_HEAD);
+        expect(input?.observations).toHaveLength(4);
+        expect(input?.observations).toContainEqual({
+            context: 'typecheck · build · test',
+            appId: ACTIONS,
+            headSha: RERUN_HEAD,
+            state: 'cancelled',
+        });
+        expect(input?.observations).not.toContainEqual(expect.objectContaining({ state: 'failure' }));
     });
 
-    test('a run still in progress: not complete', () => {
-        expect(judge(runs([run('build', 'success'), run('slow', null)]))).toEqual(verdict(false, false));
+    test('a failure an attempt superseded is not read again: green', () => {
+        const jobs = [
+            wfJob('build', 'failure', { run_attempt: 1 }),
+            wfJob('build', 'success', { id: 2, run_attempt: 2 }),
+        ];
+        expect(judge([wfRun(RUN, { run_attempt: 2 })], jobs)).toEqual(verdict(true, true));
     });
 
-    test.each(['cancelled', 'timed_out', 'action_required', 'stale'])('a %s run: no verdict', (conclusion) => {
-        expect(judge(runs([run('build', 'success'), run('other', conclusion)]))).toEqual(verdict(false, false));
+    test('a success an attempt superseded does not count: red', () => {
+        const jobs = [
+            wfJob('build', 'success', { run_attempt: 2 }),
+            wfJob('build', 'failure', { id: 2, run_attempt: 3 }),
+        ];
+        expect(judge([wfRun(RUN, { run_attempt: 3 })], jobs)).toEqual(verdict(true, false));
     });
 
-    test('the required run from another app does not count', () => {
-        expect(judge(runs([run('build', 'success', { app: { id: 1 } })]))).toEqual(verdict(false, false));
+    test('the attempt number decides, not the order GitHub lists jobs in', () => {
+        const jobs = [
+            wfJob('build', 'success', { id: 2, run_attempt: 2 }),
+            wfJob('build', 'failure', { run_attempt: 1 }),
+        ];
+        expect(judge([wfRun(RUN, { run_attempt: 2 })], jobs)).toEqual(verdict(true, true));
+    });
+
+    test('two jobs of one name in the same attempt both count: disagreeing, no verdict', () => {
+        const jobs = [wfJob('build', 'success'), wfJob('build', 'failure', { id: 2 })];
+        expect(judge(one, jobs)).toEqual(verdict(false, false));
+    });
+
+    test('an attempt of one run does not supersede a job of another run', () => {
+        const jobs = [wfJob('build', 'failure'), wfJob('build', 'success', { id: 2, run_id: 12, run_attempt: 2 })];
+        expect(judge([...one, wfRun(12, { run_attempt: 2 })], jobs)).toEqual(verdict(false, false));
+    });
+
+    test('a newer attempt that has not reached a job yet: that job is not pending, its run is', () => {
+        const jobs = [wfJob('build', 'success', { run_attempt: 1 }), wfJob('lint', null, { id: 2, run_attempt: 2 })];
+        expect(judge([wfRun(RUN, { run_attempt: 2, status: 'in_progress', conclusion: null })], jobs)).toEqual(
+            verdict(false, false),
+        );
+    });
+
+    test('all jobs succeeded: complete and green', () => {
+        const jobs = [wfJob('build', 'success'), wfJob('lint', 'skipped', { id: 2 })];
+        expect(judge(one, jobs)).toEqual(verdict(true, true));
+    });
+
+    test('a failed job that is not required: complete, not green', () => {
+        const jobs = [wfJob('build', 'success'), wfJob('audit', 'failure', { id: 2 })];
+        expect(judge(one, jobs)).toEqual(verdict(true, false));
+    });
+
+    test('a job still running: not complete', () => {
+        expect(judge(one, [wfJob('build', 'success'), wfJob('slow', null, { id: 2 })])).toEqual(verdict(false, false));
+    });
+
+    test.each(['cancelled', 'timed_out', 'action_required', 'stale'])('a %s job: no verdict', (conclusion) => {
+        const jobs = [wfJob('build', 'success'), wfJob('other', conclusion, { id: 2 })];
+        expect(judge(one, jobs)).toEqual(verdict(false, false));
+    });
+
+    test('a run still in progress is pending, whatever jobs it lists so far', () => {
+        const running = [wfRun(RUN, { status: 'in_progress', conclusion: null })];
+        expect(judge(running, [wfJob('build', 'success')])).toEqual(verdict(false, false));
+        expect(ciObservations(running, [wfJob('build', 'success')], statuses([]), HEAD)?.observations).toContainEqual({
+            context: `actions run ${RUN}`,
+            appId: null,
+            headSha: HEAD,
+            state: 'pending',
+        });
+    });
+
+    test('a completed run with no jobs (it failed to start) counts with its own conclusion', () => {
+        const failed = wfRun(12, { conclusion: 'startup_failure' });
+        expect(judge([...one, failed], [wfJob('build', 'success')])).toEqual(verdict(false, false));
+        const red = wfRun(12, { conclusion: 'failure' });
+        expect(judge([...one, red], [wfJob('build', 'success')])).toEqual(verdict(true, false));
+    });
+
+    test('a run-level observation never stands in for a required context', () => {
+        expect(judge([wfRun(RUN, { name: 'build' })], [])).toEqual(verdict(false, false));
+    });
+
+    test('a required context that is neither a job nor a status: no verdict', () => {
+        expect(judge(one, [wfJob('lint', 'success')], statuses([{ context: 'ci/x', state: 'success' }]))).toEqual(
+            verdict(false, false),
+        );
+    });
+
+    test('no runs at all: the required context has no verdict', () => {
+        expect(judge([], [])).toEqual(verdict(false, false));
+    });
+
+    test('one job name in two runs (push and pull_request) that disagree: no verdict', () => {
+        const jobs = [wfJob('build', 'success'), wfJob('build', 'failure', { id: 2, run_id: 12 })];
+        expect(judge([...one, wfRun(12)], jobs)).toEqual(verdict(false, false));
     });
 
     test('commit statuses are judged too, and carry no app id', () => {
-        const input = ciObservations(
-            runs([run('build', 'success')]),
-            statuses([{ context: 'ci/x', state: 'failure' }]),
-            HEAD,
-        );
+        const red = statuses([{ context: 'ci/x', state: 'failure' }]);
+        const input = ciObservations(one, [wfJob('build', 'success')], red, HEAD);
         expect(input?.observations).toEqual([
             { context: 'build', appId: ACTIONS, headSha: HEAD, state: 'success' },
             { context: 'ci/x', appId: null, headSha: HEAD, state: 'failure' },
         ]);
         expect(input?.expectedCount).toBe(2);
-        expect(judge(runs([run('build', 'success')]), statuses([{ context: 'ci/x', state: 'failure' }]))).toEqual(
+        expect(judge(one, [wfJob('build', 'success')], statuses([{ context: 'ci/x', state: 'failure' }]))).toEqual(
             verdict(true, false),
         );
     });
 
     test('the coordinator gate status is left out of the verdict', () => {
-        expect(judge(runs([run('build', 'success')]), statuses([{ context: 'gate', state: 'pending' }]))).toEqual(
+        expect(judge(one, [wfJob('build', 'success')], statuses([{ context: 'gate', state: 'pending' }]))).toEqual(
             verdict(true, true),
         );
     });
 
-    test('more runs than the page holds: not complete', () => {
-        expect(judge(runs([run('build', 'success')], 2))).toEqual(verdict(false, false));
-        const page = Array.from({ length: PAGE }, (_, i) => run(`job ${i}`, 'success'));
-        expect(judge(runs([run('build', 'success'), ...page.slice(1)]))).toEqual(verdict(false, false));
-    });
-
-    test('a run on another commit: no evidence at all', () => {
-        expect(judge(runs([run('build', 'success', { head_sha: BASE })]))).toBeNull();
-    });
-
-    test.each([
-        ['check runs not JSON', 'nope', statuses([])],
-        ['no check_runs list', json({ total_count: 0 }), statuses([])],
-        ['no total_count', json({ check_runs: [] }), statuses([])],
-        ['a run with no app', runs([run('build', 'success', { app: null })]), statuses([])],
-        ['a completed run with no conclusion', runs([run('build', 'success', { conclusion: null })]), statuses([])],
-        ['statuses for another commit', runs([]), statuses([], { sha: BASE })],
-        ['a truncated status list', runs([]), statuses([], { total_count: 3 })],
-        ['a status with no state', runs([]), json({ sha: HEAD, total_count: 1, statuses: [{ context: 'x' }] })],
-        ['statuses missing', runs([]), undefined],
-    ])('%s: null', (_name, checkRuns, status) => {
-        expect(ciObservations(checkRuns, status, HEAD)).toBeNull();
+    test.each<[string, unknown[], unknown[], unknown]>([
+        ['a run on another commit', [wfRun(RUN, { head_sha: BASE })], [], statuses([])],
+        ['a run listed twice', [wfRun(RUN), wfRun(RUN)], [], statuses([])],
+        ['a run with no attempt number', [wfRun(RUN, { run_attempt: undefined })], [], statuses([])],
+        ['a completed run with no conclusion', [wfRun(RUN, { conclusion: null })], [], statuses([])],
+        ['a job on another commit', one, [wfJob('build', 'success', { head_sha: BASE })], statuses([])],
+        ['a job of a run not listed', one, [wfJob('build', 'success', { run_id: 99 })], statuses([])],
+        ['a job listed twice', one, [wfJob('build', 'success'), wfJob('build', 'success')], statuses([])],
+        ['a job with no name', one, [wfJob('', 'success')], statuses([])],
+        ['a job with no attempt number', one, [wfJob('build', 'success', { run_attempt: 0 })], statuses([])],
+        ['a completed job with no conclusion', one, [wfJob('build', 'success', { conclusion: null })], statuses([])],
+        ['a job that is not an object', one, ['build'], statuses([])],
+        ['statuses for another commit', one, [], statuses([], { sha: BASE })],
+        ['a truncated status list', one, [], statuses([], { total_count: 3 })],
+        ['a status with no state', one, [], json({ sha: HEAD, total_count: 1, statuses: [{ context: 'x' }] })],
+        ['statuses missing', one, [], undefined],
+    ])('%s: null', (_name, runList, jobList, status) => {
+        expect(ciObservations(runList, jobList, status, HEAD)).toBeNull();
     });
 
     test('a head that is not a full sha: null', () => {
-        expect(ciObservations(runs([]), statuses([]), 'abc1234')).toBeNull();
+        expect(ciObservations([], [], statuses([]), 'abc1234')).toBeNull();
     });
 });
 
@@ -363,16 +575,101 @@ describe('GitHub', () => {
         expect(calls).toEqual([]);
     });
 
-    test('inventory, ci and gate ask for one full page', async () => {
+    const RUNS = `repos/owner/name/actions/runs?head_sha=${HEAD}&per_page=100`;
+    const JOBS = 'repos/owner/name/actions/runs/11/jobs?filter=all&per_page=100';
+    const STATUS = `repos/owner/name/commits/${HEAD}/status?per_page=100`;
+    const runsPage = (list: unknown[], total = list.length) => json({ total_count: total, workflow_runs: list });
+    const jobsPage = (list: unknown[], total = list.length) => json({ total_count: total, jobs: list });
+    const manyJobs = (n: number, from = 1) =>
+        Array.from({ length: n }, (_, i) => wfJob(`job ${from + i}`, 'success', { id: from + i }));
+
+    test('inventory and gate ask for one page; ci for the runs on the head, all their jobs, and statuses', async () => {
         const { github, calls } = scripted({
             'repos/owner/name/pulls?state=open&per_page=100': json([listed()]),
-            [`repos/owner/name/commits/${HEAD}/check-runs?per_page=100`]: runs([run('build', 'success')]),
-            [`repos/owner/name/commits/${HEAD}/status?per_page=100`]: statuses([{ context: 'gate', state: 'success' }]),
+            [`${RUNS}&page=1`]: runsPage([wfRun(11)]),
+            [`${JOBS}&page=1`]: jobsPage([wfJob('build', 'success')]),
+            [STATUS]: statuses([{ context: 'gate', state: 'success' }]),
         });
         expect((await github.inventory(REPO)).prs).toHaveLength(1);
         expect((await github.ci(REPO, HEAD))?.expectedCount).toBe(2);
         expect(await github.gate({ repo: REPO, head: HEAD }, 'gate')).toEqual({ kind: 'success' });
-        expect(calls).toHaveLength(4);
+        expect(calls.map((c) => c[2])).toEqual([
+            'repos/owner/name/pulls?state=open&per_page=100',
+            `${RUNS}&page=1`,
+            `${JOBS}&page=1`,
+            STATUS,
+            STATUS,
+        ]);
+    });
+
+    test('ci: a run id that is not one is never put in a path', async () => {
+        const { github, calls } = scripted({
+            [`${RUNS}&page=1`]: runsPage([wfRun(11, { id: '11/../../x' })]),
+            [STATUS]: statuses([]),
+        });
+        expect(await github.ci(REPO, HEAD)).toBeNull();
+        expect(calls.map((c) => c[2])).toEqual([`${RUNS}&page=1`]);
+    });
+
+    test('ci: the Actions app id is the one branch protection names (Envoak, treebird; 2026-11-20)', () => {
+        expect(ACTIONS_APP_ID).toBe(ACTIONS);
+    });
+
+    test('ci: a listing longer than a page is read page by page', async () => {
+        const { github } = scripted({
+            [`${RUNS}&page=1`]: runsPage([wfRun(11)]),
+            [`${JOBS}&page=1`]: jobsPage(manyJobs(PAGE), PAGE + 1),
+            [`${JOBS}&page=2`]: jobsPage(manyJobs(1, PAGE + 1), PAGE + 1),
+            [STATUS]: statuses([]),
+        });
+        expect((await github.ci(REPO, HEAD))?.expectedCount).toBe(PAGE + 1);
+    });
+
+    test('ci: a listing of exactly one page asks for the next and finds it empty', async () => {
+        const { github } = scripted({
+            [`${RUNS}&page=1`]: runsPage([wfRun(11)]),
+            [`${JOBS}&page=1`]: jobsPage(manyJobs(PAGE)),
+            [`${JOBS}&page=2`]: jobsPage([], PAGE),
+            [STATUS]: statuses([]),
+        });
+        expect((await github.ci(REPO, HEAD))?.expectedCount).toBe(PAGE);
+    });
+
+    test.each<[string, Record<string, string>]>([
+        ['the runs listing cannot be read', { [`${JOBS}&page=1`]: jobsPage([]) }],
+        ['a jobs listing cannot be read', { [`${RUNS}&page=1`]: runsPage([wfRun(11)]) }],
+        ['a runs listing with no total', { [`${RUNS}&page=1`]: json({ workflow_runs: [] }) }],
+        ['fewer runs than the total', { [`${RUNS}&page=1`]: runsPage([], 1) }],
+        ['a run with no id', { [`${RUNS}&page=1`]: runsPage([wfRun(11, { id: undefined })]) }],
+        [
+            'pages that disagree on the total (a run started in between)',
+            {
+                [`${RUNS}&page=1`]: runsPage([wfRun(11)]),
+                [`${JOBS}&page=1`]: jobsPage(manyJobs(PAGE), PAGE + 1),
+                [`${JOBS}&page=2`]: jobsPage(manyJobs(2, PAGE + 1), PAGE + 2),
+            },
+        ],
+        [
+            'a page larger than asked for',
+            {
+                [`${RUNS}&page=1`]: runsPage([wfRun(11)]),
+                [`${JOBS}&page=1`]: jobsPage(manyJobs(PAGE + 1)),
+                [`${JOBS}&page=2`]: jobsPage([], PAGE + 1),
+            },
+        ],
+        [
+            'more pages than MAX_PAGES',
+            Object.fromEntries([
+                [`${RUNS}&page=1`, runsPage([wfRun(11)])],
+                ...Array.from({ length: MAX_PAGES + 1 }, (_, i) => [
+                    `${JOBS}&page=${i + 1}`,
+                    jobsPage(manyJobs(PAGE, i * PAGE + 1), (MAX_PAGES + 1) * PAGE),
+                ]),
+            ]),
+        ],
+    ])('ci: %s: null', async (_name, table) => {
+        const { github } = scripted({ [STATUS]: statuses([]), ...table });
+        expect(await github.ci(REPO, HEAD)).toBeNull();
     });
 
     test('files: the listing of an open PR, stamped with its head', async () => {
