@@ -355,6 +355,11 @@ async function main(argv: string[]): Promise<number> {
         if (ready) console.log(`coordinator: preflight passed for ${Object.keys(loop.repos).length} repo(s)`);
         return ready ? 0 : EXIT_CREDENTIALS;
     }
+    // Anything after the config is refused, not ignored: `<config> --preflight` must not run a pass.
+    if (argv.length > 1) {
+        console.error('coordinator: refusing to start: one argument, the config (or: main.ts --preflight <config.json>)');
+        return EXIT_CONFIG;
+    }
     let text: string | null = null;
     try {
         if (argv[0] !== undefined) text = readFileSync(argv[0], 'utf8');

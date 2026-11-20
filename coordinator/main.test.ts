@@ -336,6 +336,16 @@ describe('GitHub tokens (sp-vkqq)', () => {
         expect(existsSync(db)).toBe(false);
     });
 
+    test('--preflight after the config, through the launcher: refused, no pass, no gh, no database', () => {
+        writeConfig({ hostId: HOST, stateDb: db, ...withRepo() });
+        fakeGh();
+        const done = run([LAUNCHER, config, '--preflight'], { OWNER_PAT: TOKEN });
+        expect(done.exit).toBe(EXIT_CONFIG);
+        expect(done.err).toContain('one argument, the config');
+        expect(existsSync(join(dir, 'gh.log'))).toBe(false);
+        expect(existsSync(db)).toBe(false);
+    });
+
     test('--preflight: a missing token is 77, a missing config 78', () => {
         writeConfig({ hostId: HOST, stateDb: db, ...withRepo() });
         expect(run(['bun', MAIN, '--preflight', config]).exit).toBe(EXIT_CREDENTIALS);

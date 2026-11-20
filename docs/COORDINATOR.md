@@ -30,10 +30,11 @@ paid and charges nothing; it says which one in its output.
 
 ### GitHub tokens
 
-Every GitHub read runs with the fine-grained token of the repo's owner, passed
-to that one `gh` run as `GH_TOKEN`. The host's own `gh` login, and any
-`GH_TOKEN` or `GITHUB_TOKEN` the coordinator was started with, are never used:
-a repo with no token is not read. The tokens need Metadata, Contents, Pull
+Every GitHub read the coordinator makes runs with the fine-grained token of the
+repo's owner, passed to that one `gh` run as `GH_TOKEN`. The host's own `gh`
+login, and any `GH_TOKEN` or `GITHUB_TOKEN` the coordinator was started with,
+are never used for them: a repo with no token is not read. (Triage and prsan
+runs are separate: they still get an ambient `GH_TOKEN` if one is set.) The tokens need Metadata, Contents, Pull
 requests, Commit statuses and Actions read; a repo in `live` mode also needs
 Commit statuses write (and Contents and Pull requests write to merge).
 
@@ -49,7 +50,13 @@ what GitHub asked for, never the token.
 
 `bun coordinator/main.ts --preflight <config.json>` runs that check alone, with
 the write check for every repo whatever its mode, so a token can be checked
-before its repo goes live. It takes no lock and opens no database.
+before its repo goes live. It takes no lock and opens no database. The flag
+goes first: the launcher refuses anything after the config path (exit 78).
+
+CI is read from each head's Actions runs and jobs and its commit statuses, not
+from check runs, which a fine-grained token cannot read on a private repo. A
+re-run counts at its latest attempt. Check runs from other apps (Socket
+Security) are not seen; no repo requires one.
 
 ## Config
 
