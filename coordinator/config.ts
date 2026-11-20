@@ -7,6 +7,12 @@
  *
  * `live` is refused: no adapter that merges exists yet.
  *
+ * `githubTokens` maps a GitHub owner to the name of the environment variable
+ * that holds its fine-grained token (sp-vkqq). Every repo's owner must be in it,
+ * exactly as the repo key spells it. A fine-grained token covers one owner, so
+ * no two owners may share a variable, and the ambient `GH_TOKEN` and
+ * `GITHUB_TOKEN` are not names it may use: they are what `gh` falls back to.
+ *
  * ponytail: no required CI contexts, gate context or checkout path. `decide`
  * reads CI and conflicts only for a PR with a trusted task link, and no PR has
  * one until invoak can answer who registered a branch (invk-fosip). Add them
@@ -22,6 +28,11 @@ import type { Policy } from './types';
 
 const PRINCIPAL = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const PROJECT = /^[a-z0-9]{2,12}$/;
+/** A GitHub owner (user or organization) name. */
+const GITHUB_OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+const ENV_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/;
+/** What `gh` reads by itself: a token there would stand in for a missing one. */
+const AMBIENT_TOKENS: readonly string[] = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN'];
 
 export interface RepoConfig {
     /** invoak projects a PR title's `(xx-abcd)` may name. A task in any other project is no note target. */
@@ -48,6 +59,8 @@ export interface LoopConfig {
     /** The invoak project escalation tasks are created in. */
     escalationProject: string;
     maxReviewsPerPass: number;
+    /** GitHub owner → the environment variable holding that owner's token. */
+    githubTokens: Readonly<Record<string, string>>;
     prsan: PrsanConfig;
     repos: Readonly<Record<string, RepoConfig>>;
 }
@@ -67,6 +80,25 @@ function isTextMap(value: unknown): value is Record<string, string> {
 
 function isPaths(value: unknown): value is string[] {
     return Array.isArray(value) && value.every((path) => typeof path === 'string' && path !== '');
+}
+
+/** The owner → variable map, or null. Each variable is named once. */
+function parseTokens(value: unknown): Record<string, string> | null {
+    if (!isRecord(value)) return null;
+    const names = Object.values(value);
+    if (new Set(names).size !== names.length) return null;
+    for (const [owner, name] of Object.entries(value)) {
+        if (!GITHUB_OWNER.test(owner)) return null;
+        if (typeof name !== 'string' || !ENV_NAME.test(name) || AMBIENT_TOKENS.includes(name)) return null;
+    }
+    return value as Record<string, string>;
+}
+
+/** The variable that holds `repo`'s token: its owner's entry, matched exactly. Undefined when there is none. */
+export function tokenVariable(tokens: Readonly<Record<string, string>>, repo: string): string | undefined {
+    if (!isRepoSlug(repo)) return undefined;
+    const owner = repo.slice(0, repo.indexOf('/'));
+    return Object.hasOwn(tokens, owner) ? tokens[owner] : undefined;
 }
 
 function parseRepo(raw: unknown, models: Record<string, string>, read: ReadonlySet<string>): RepoConfig | null {
@@ -96,7 +128,7 @@ export function parseLoopConfig(text: string): LoopConfig | null {
         return null;
     }
     if (!isRecord(raw)) return null;
-    const { self, owner, escalationProject, maxReviewsPerPass, prsan, repos } = raw;
+    const { self, owner, escalationProject, maxReviewsPerPass, githubTokens, prsan, repos } = raw;
     if (typeof self !== 'string' || !PRINCIPAL.test(self)) return null;
     if (typeof owner !== 'string' || !PRINCIPAL.test(owner) || owner === self) return null;
     if (typeof escalationProject !== 'string' || !PROJECT.test(escalationProject)) return null;
@@ -110,11 +142,12 @@ export function parseLoopConfig(text: string): LoopConfig | null {
     const read = new Set(Object.values(families));
     if (!TRIAGE_MODELS.every((family) => Object.hasOwn(models, family) && read.has(family))) return null;
 
-    if (!isRecord(repos)) return null;
+    const tokens = parseTokens(githubTokens);
+    if (tokens === null || !isRecord(repos)) return null;
     const parsed: Record<string, RepoConfig> = {};
     for (const [slug, entry] of Object.entries(repos)) {
         const repo = isRepoSlug(slug) ? parseRepo(entry, models, read) : null;
-        if (repo === null) return null;
+        if (repo === null || tokenVariable(tokens, slug) === undefined) return null;
         parsed[slug] = repo;
     }
     return {
@@ -122,6 +155,7 @@ export function parseLoopConfig(text: string): LoopConfig | null {
         owner,
         escalationProject,
         maxReviewsPerPass: maxReviewsPerPass as number,
+        githubTokens: tokens,
         prsan: { home: prsan.home, timeoutMs: prsan.timeoutMs as number, models, families },
         repos: parsed,
     };

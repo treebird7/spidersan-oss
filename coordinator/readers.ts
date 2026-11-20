@@ -370,7 +370,7 @@ export interface RequiredContext {
 export interface CiInput {
     /** The commit the listing was fetched for. */
     headSha: unknown;
-    /** `[{context, appId, headSha, state}]`: every check run and commit status on that commit. */
+    /** `[{context, appId, headSha, state}]`: every CI entry on that commit (Actions jobs, runs, commit statuses). */
     observations: unknown;
     /** How many entries the source says exist; must equal `observations.length`. */
     expectedCount: unknown;
@@ -510,8 +510,12 @@ export interface CommandResult {
 export type CommandRunner = (
     command: string,
     argv: readonly string[],
-    /** With `env`, the run gets it and a short fixed list of the runner's own variables, not the whole environment. `timeoutMs`: the runner's default when absent. */
-    options: { cwd: string; env?: Readonly<Record<string, string>>; timeoutMs?: number },
+    /**
+     * With `env`, the run gets it and a short fixed list of the runner's own variables, not the whole environment.
+     * `githubToken` (a `gh` run): its `GH_TOKEN`, in place of any GitHub token the runner itself holds.
+     * `timeoutMs`: the runner's default when absent.
+     */
+    options: { cwd: string; env?: Readonly<Record<string, string>>; githubToken?: string; timeoutMs?: number },
 ) => CommandResult | Promise<CommandResult>;
 
 /** The argv for the conflicts check. `--base` is always passed: without it the command reads `.spidersanrc` from cwd. */

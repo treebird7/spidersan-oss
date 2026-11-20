@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { EXIT_CONFIG, childEnv, fileIo, parseConfig, readHostId, runCommand, start } from './main';
+import { EXIT_CONFIG, EXIT_CREDENTIALS, childEnv, fileIo, parseConfig, readHostId, runCommand, start } from './main';
 
 const LAUNCHER = resolve(import.meta.dir, 'spidersan-coordinator');
 const MAIN = resolve(import.meta.dir, 'main.ts');
@@ -15,6 +15,7 @@ const LOOP = {
     owner: 'treebird',
     escalationProject: 'sp',
     maxReviewsPerPass: 10,
+    githubTokens: {},
     prsan: {
         home: '/nonexistent/prsan',
         timeoutMs: 1000,
@@ -31,6 +32,51 @@ let config: string;
 /** An `invoak` first on PATH that answers every command with `stdout`. */
 function fakeInvoak(stdout: string): void {
     writeFileSync(join(dir, 'bin', 'invoak'), `#!/bin/sh\nprintf '%s' '${stdout}'\n`, { mode: 0o755 });
+}
+
+/**
+ * A `gh` first on PATH that answers `gh api -i <path>` like GitHub for owner/name, and appends the
+ * GH_TOKEN it was given and its argv to `gh.log`. `status` answers every call with that code instead.
+ */
+function fakeGh(status?: number): void {
+    const ok = (body: string) => `printf 'HTTP/2.0 200 OK\\r\\nContent-Type: application/json\\r\\n\\r\\n%s' '${body}'`;
+    const answer =
+        status !== undefined
+            ? `printf 'HTTP/2.0 ${status} No\\r\\nX-Accepted-GitHub-Permissions: statuses=read\\r\\n\\r\\n{}'; exit 1`
+            : [
+                  'case "$*" in',
+                  `  *statuses/0000000000000000000000000000000000000000*) printf 'HTTP/2.0 422 Unprocessable Entity\\r\\n\\r\\n{}'; exit 1 ;;`,
+                  `  *git/ref/heads/main*) ${ok(JSON.stringify({ object: { sha: 'b'.repeat(40) } }))} ;;`,
+                  `  *"api -i repos/owner/name") ${ok(JSON.stringify({ full_name: 'owner/name', default_branch: 'main' }))} ;;`,
+                  `  *) ${ok('{}')} ;;`,
+                  'esac',
+              ].join('\n');
+    writeFileSync(
+        join(dir, 'bin', 'gh'),
+        `#!/bin/sh\nprintf '%s|%s\\n' "$GH_TOKEN" "$*" >> '${join(dir, 'gh.log')}'\n${answer}\n`,
+        { mode: 0o755 },
+    );
+}
+
+/** LOOP with one dry-run repo, owner/name, whose token is in OWNER_PAT. */
+function withRepo(): Record<string, unknown> {
+    const policy = {
+        mode: 'dry-run',
+        ceiling: 5,
+        reservations: { triage: 0.05, plain: 0.5, second: 0.5, vector: 0.5 },
+        maxHeads: 4,
+        secondFamily: 'luna',
+        stallClaimantMs: 1,
+        stallOwnerMs: 2,
+        effectsClassified: false,
+        mergeGateApplied: false,
+        webhookInstalled: false,
+    };
+    return {
+        ...LOOP,
+        githubTokens: { owner: 'OWNER_PAT' },
+        repos: { 'owner/name': { taskProjects: ['sp'], policy, touches: { protectedPaths: ['x/'], mergeEffects: [] } } },
+    };
 }
 
 function writeConfig(value: unknown): void {
@@ -244,6 +290,70 @@ describe('launcher and entrypoint', () => {
     });
 });
 
+describe('GitHub tokens (sp-vkqq)', () => {
+    const TOKEN = 'github_pat_preflight_secret';
+
+    test('a repo whose token is not in the environment: exit 77, nothing asked of gh, database not created', () => {
+        writeConfig({ hostId: HOST, stateDb: db, ...withRepo() });
+        fakeGh();
+        const done = run([LAUNCHER, config], { GH_TOKEN: 'ambient', GITHUB_TOKEN: 'ambient' });
+        expect(done.exit).toBe(EXIT_CREDENTIALS);
+        expect(done.err).toContain('owner/name: OWNER_PAT is not set');
+        expect(existsSync(join(dir, 'gh.log'))).toBe(false);
+        expect(existsSync(db)).toBe(false);
+    });
+
+    test('a token GitHub refuses: exit 77 naming the repo and the permission, never the token', () => {
+        writeConfig({ hostId: HOST, stateDb: db, ...withRepo() });
+        fakeGh(403);
+        const done = run([LAUNCHER, config], { OWNER_PAT: TOKEN });
+        expect(done.exit).toBe(EXIT_CREDENTIALS);
+        expect(done.err).toContain('owner/name: OWNER_PAT cannot read the repository (HTTP 403, GitHub asks for statuses=read)');
+        expect(done.err + done.out).not.toContain(TOKEN);
+        expect(existsSync(db)).toBe(false);
+    });
+
+    test('a token that passes: the pass runs, and gh got that token and no other', () => {
+        writeConfig({ hostId: HOST, stateDb: db, ...withRepo() });
+        fakeGh();
+        const done = run([LAUNCHER, config], { OWNER_PAT: TOKEN, GH_TOKEN: 'ambient', GITHUB_TOKEN: 'ambient' });
+        expect(done.err).toBe('');
+        expect(done.exit).toBe(0);
+        const log = readFileSync(join(dir, 'gh.log'), 'utf8').trim().split('\n');
+        expect(log.length).toBeGreaterThan(5);
+        expect(log.every((line) => line.startsWith(`${TOKEN}|`))).toBe(true);
+        // dry-run writes nothing to GitHub, so its token is not asked to.
+        expect(log.some((line) => line.includes('statuses/0000'))).toBe(false);
+    });
+
+    test('--preflight: the check alone, writes probed too; no lock, no database', () => {
+        writeConfig({ hostId: 'not-this-machine', stateDb: db, ...withRepo() });
+        fakeGh();
+        const done = run(['bun', MAIN, '--preflight', config], { OWNER_PAT: TOKEN });
+        expect(done.exit).toBe(0);
+        expect(done.out).toContain('owner/name: OWNER_PAT reads and writes statuses (dry-run, no expiry)');
+        expect(readFileSync(join(dir, 'gh.log'), 'utf8')).toContain('statuses/0000');
+        expect(existsSync(db)).toBe(false);
+    });
+
+    test('--preflight after the config, through the launcher: refused, no pass, no gh, no database', () => {
+        writeConfig({ hostId: HOST, stateDb: db, ...withRepo() });
+        fakeGh();
+        const done = run([LAUNCHER, config, '--preflight'], { OWNER_PAT: TOKEN });
+        expect(done.exit).toBe(EXIT_CONFIG);
+        expect(done.err).toContain('one argument, the config');
+        expect(existsSync(join(dir, 'gh.log'))).toBe(false);
+        expect(existsSync(db)).toBe(false);
+    });
+
+    test('--preflight: a missing token is 77, a missing config 78', () => {
+        writeConfig({ hostId: HOST, stateDb: db, ...withRepo() });
+        expect(run(['bun', MAIN, '--preflight', config]).exit).toBe(EXIT_CREDENTIALS);
+        expect(run(['bun', MAIN, '--preflight', join(dir, 'missing.json')]).exit).toBe(EXIT_CONFIG);
+        expect(run(['bun', MAIN, '--preflight']).exit).toBe(EXIT_CONFIG);
+    });
+});
+
 describe('whose invoak token', () => {
     test.each([
         ['another agent', '{"whoami":{"principal":"mycsan"}}'],
@@ -275,6 +385,32 @@ describe('childEnv', () => {
 
     test('gh and invoak get their short list: no reviewer token, no owner secret (sp-sloro)', () => {
         expect(childEnv(own, undefined)).toEqual({ PATH: '/bin', HOME: '/h', ENVOAK_AGENT_LABEL: 'spidersan' });
+    });
+
+    test('a gh run gets its token as GH_TOKEN, and no ambient GitHub token (sp-vkqq)', () => {
+        const ambient = { ...own, GH_TOKEN: 'ambient', GITHUB_TOKEN: 'ambient', GH_CONFIG_DIR: '/c' };
+        expect(childEnv(ambient, undefined, 'mapped')).toEqual({
+            PATH: '/bin',
+            HOME: '/h',
+            GH_CONFIG_DIR: '/c',
+            ENVOAK_AGENT_LABEL: 'spidersan',
+            GH_TOKEN: 'mapped',
+        });
+        // invoak's run is unchanged.
+        expect(childEnv(ambient, undefined)).toMatchObject({ GH_TOKEN: 'ambient', GITHUB_TOKEN: 'ambient' });
+    });
+
+    test('a gh run really starts with only its token', async () => {
+        process.env.GITHUB_TOKEN = 'ambient';
+        try {
+            const done = await runCommand('/bin/sh', ['-c', 'printf "%s|%s" "$GH_TOKEN" "$GITHUB_TOKEN"'], {
+                cwd: '/',
+                githubToken: 'mapped',
+            });
+            expect(done.stdout).toBe('mapped|');
+        } finally {
+            delete process.env.GITHUB_TOKEN;
+        }
     });
 
     test('a run with its own env gets the short list and that env, nothing else', () => {
