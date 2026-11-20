@@ -2,7 +2,8 @@
  * PR coordinator — reading GitHub (slice 4 of 4, part 2a).
  *
  * Pure parsers for five REST payloads, and `GitHub`, which fetches them with
- * `gh api` through an injected `CommandRunner`. Nothing here writes.
+ * `gh api` through an injected `CommandRunner`, with the token of the repo's
+ * owner. Nothing here writes.
  *
  * Fail closed: a payload that cannot be read whole gives `unknown`, `null` or
  * `complete: false`, never a default that reads as a result. Every listing is
@@ -221,18 +222,35 @@ export function parseFiles(stdout: unknown, head: string, changedFiles: number):
 
 // ── Fetching ───────────────────────────────────────────────────────────────
 
-/** Reads one repo host through `gh api`. Every path is built from checked parts; a failed call is `undefined`. */
+/** The token for a repo's owner, or undefined when there is none. */
+export type TokenFor = (repo: string) => string | undefined;
+
+/** A token `gh` will use as given: non-empty, one line, no spaces. An empty `GH_TOKEN` makes `gh` fall back to its stored login. */
+export function isToken(value: unknown): value is string {
+    return typeof value === 'string' && /^[\x21-\x7e]{1,1024}$/.test(value);
+}
+
+/**
+ * Reads one repo host through `gh api`. Every path is built from checked parts; a failed call is `undefined`.
+ *
+ * Each call runs with the token of the repo it reads, as `GH_TOKEN` in that run's environment only (sp-vkqq).
+ * A repo with no usable token is not read at all: `gh` would otherwise use whatever login the host has.
+ */
 export class GitHub {
     readonly #run: CommandRunner;
+    readonly #token: TokenFor;
 
-    constructor(run: CommandRunner) {
+    constructor(run: CommandRunner, token: TokenFor) {
         this.#run = run;
+        this.#token = token;
     }
 
-    async #get(path: string, accept?: string): Promise<unknown> {
+    async #get(repo: string, path: string, accept?: string): Promise<unknown> {
         try {
+            const githubToken = this.#token(repo);
+            if (!isToken(githubToken)) return undefined;
             const argv = accept === undefined ? ['api', path] : ['api', '-H', `Accept: ${accept}`, path];
-            const result: unknown = await this.#run('gh', argv, { cwd: '/' });
+            const result: unknown = await this.#run('gh', argv, { cwd: '/', githubToken });
             return isRecord(result) && result.exitCode === 0 ? result.stdout : undefined;
         } catch {
             return undefined;
@@ -241,12 +259,12 @@ export class GitHub {
 
     async inventory(repo: string): Promise<Inventory> {
         if (!isRepoSlug(repo)) return { complete: false, prs: [] };
-        return parseInventory(await this.#get(`repos/${repo}/pulls?state=open&per_page=${PAGE}`), repo);
+        return parseInventory(await this.#get(repo, `repos/${repo}/pulls?state=open&per_page=${PAGE}`), repo);
     }
 
     async detail(ref: PrRef): Promise<PrDetail> {
         if (!isRecord(ref) || !isRepoSlug(ref.repo) || !isPrNumber(ref.pr)) return UNKNOWN;
-        return parsePr(await this.#get(`repos/${ref.repo}/pulls/${ref.pr}`), ref);
+        return parsePr(await this.#get(ref.repo, `repos/${ref.repo}/pulls/${ref.pr}`), ref);
     }
 
     /** `EffectReader.readPr`: an open PR's `base` is the tip of its base branch right now. */
@@ -254,7 +272,7 @@ export class GitHub {
         const detail = await this.detail(ref);
         if (detail.kind !== 'open') return detail;
         const base = parseBranchTip(
-            await this.#get(`repos/${ref.repo}/git/ref/heads/${detail.baseRef}`),
+            await this.#get(ref.repo, `repos/${ref.repo}/git/ref/heads/${detail.baseRef}`),
             detail.baseRef,
         );
         return base === null ? UNKNOWN : { kind: 'open', head: detail.head, base };
@@ -263,18 +281,18 @@ export class GitHub {
     /** The PR's diff as text, for triage; undefined when it cannot be read. Which head it is for is the caller's to check. */
     async diff(ref: PrRef): Promise<string | undefined> {
         if (!isRecord(ref) || !isRepoSlug(ref.repo) || !isPrNumber(ref.pr)) return undefined;
-        const text = await this.#get(`repos/${ref.repo}/pulls/${ref.pr}`, 'application/vnd.github.diff');
+        const text = await this.#get(ref.repo, `repos/${ref.repo}/pulls/${ref.pr}`, 'application/vnd.github.diff');
         return typeof text === 'string' && text !== '' ? text : undefined;
     }
 
     async ci(repo: string, head: string): Promise<Observations | null> {
         if (!isRepoSlug(repo) || !isFullSha(head)) return null;
-        const runs = await this.#get(`repos/${repo}/commits/${head}/check-runs?per_page=${PAGE}`);
+        const runs = await this.#get(repo, `repos/${repo}/commits/${head}/check-runs?per_page=${PAGE}`);
         return ciObservations(runs, await this.#statuses(repo, head), head);
     }
 
     #statuses(repo: string, head: string): Promise<unknown> {
-        return this.#get(`repos/${repo}/commits/${head}/status?per_page=${PAGE}`);
+        return this.#get(repo, `repos/${repo}/commits/${head}/status?per_page=${PAGE}`);
     }
 
     async gate(at: { repo: string; head: string }, gateContext: string): Promise<GateRead> {
@@ -290,7 +308,7 @@ export class GitHub {
     async files(ref: PrRef): Promise<TouchesInput | null> {
         const before = await this.detail(ref);
         if (before.kind !== 'open') return null;
-        const list = await this.#get(`repos/${ref.repo}/pulls/${ref.pr}/files?per_page=${PAGE}`);
+        const list = await this.#get(ref.repo, `repos/${ref.repo}/pulls/${ref.pr}/files?per_page=${PAGE}`);
         const after = await this.detail(ref);
         if (after.kind !== 'open' || after.head !== before.head || after.changedFiles !== before.changedFiles) {
             return { headSha: before.head, files: null, expectedCount: -1 };

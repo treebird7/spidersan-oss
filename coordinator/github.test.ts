@@ -292,7 +292,7 @@ describe('GitHub', () => {
             if (answer === undefined) return { exitCode: 1, stdout: json({ message: 'Not Found' }) };
             return { exitCode: 0, stdout: typeof answer === 'function' ? answer() : answer };
         };
-        return { github: new GitHub(runner), calls };
+        return { github: new GitHub(runner, () => 'tok'), calls };
     }
     const ref = { repo: REPO, pr: 7 };
     const tip = json({ ref: 'refs/heads/main', object: { type: 'commit', sha: BASE } });
@@ -323,9 +323,12 @@ describe('GitHub', () => {
 
     test('a failed command, or a runner that throws, is unknown', async () => {
         expect(await scripted({}).github.readPr(ref)).toEqual({ kind: 'unknown' });
-        const throwing = new GitHub(() => {
-            throw new Error('spawn failed');
-        });
+        const throwing = new GitHub(
+            () => {
+                throw new Error('spawn failed');
+            },
+            () => 'tok',
+        );
         expect(await throwing.readPr(ref)).toEqual({ kind: 'unknown' });
         expect(await throwing.inventory(REPO)).toEqual({ complete: false, prs: [] });
         expect(await throwing.ci(REPO, HEAD)).toBeNull();
@@ -334,8 +337,9 @@ describe('GitHub', () => {
 
     test('a non-zero exit is not read, whatever it printed', async () => {
         const merged = json(pull({ state: 'closed', merged: true, merge_commit_sha: MERGE }));
-        expect(await new GitHub(() => ({ exitCode: 1, stdout: merged })).readPr(ref)).toEqual({ kind: 'unknown' });
-        expect(await new GitHub(() => ({ exitCode: null, stdout: merged })).readPr(ref)).toEqual({ kind: 'unknown' });
+        const failed = (exitCode: number | null) => new GitHub(() => ({ exitCode, stdout: merged }), () => 'tok');
+        expect(await failed(1).readPr(ref)).toEqual({ kind: 'unknown' });
+        expect(await failed(null).readPr(ref)).toEqual({ kind: 'unknown' });
     });
 
     test.each([
@@ -403,10 +407,13 @@ describe('GitHub', () => {
     test('diff: asks for the diff media type and gives the text, or undefined', async () => {
         const calls: string[][] = [];
         let answer: CommandResult = { exitCode: 0, stdout: 'diff --git a/x b/x\n' };
-        const github = new GitHub((command, argv) => {
-            calls.push([command, ...argv]);
-            return answer;
-        });
+        const github = new GitHub(
+            (command, argv) => {
+                calls.push([command, ...argv]);
+                return answer;
+            },
+            () => 'tok',
+        );
         expect(await github.diff(ref)).toBe('diff --git a/x b/x\n');
         expect(calls).toEqual([['gh', 'api', '-H', 'Accept: application/vnd.github.diff', 'repos/owner/name/pulls/7']]);
         answer = { exitCode: 1, stdout: 'diff --git a/x b/x\n' };
@@ -414,5 +421,41 @@ describe('GitHub', () => {
         answer = { exitCode: 0, stdout: '' };
         expect(await github.diff(ref)).toBeUndefined();
         expect(await github.diff({ repo: 'nope', pr: 7 })).toBeUndefined();
+    });
+
+    describe('tokens (sp-vkqq)', () => {
+        const merged = json(pull({ state: 'closed', merged: true, merge_commit_sha: MERGE }));
+        /** A runner that records the token each call ran with. */
+        function withTokens(token: (repo: string) => string | undefined) {
+            const seen: { path: string | undefined; token: string | undefined }[] = [];
+            const github = new GitHub((_command, argv, options) => {
+                seen.push({ path: argv[1], token: options.githubToken });
+                return { exitCode: 0, stdout: merged };
+            }, token);
+            return { github, seen };
+        }
+
+        test("each repo is read with its own owner's token", async () => {
+            const tokens: Record<string, string> = { owner: 'owner-token', other: 'other-token' };
+            const { github, seen } = withTokens((repo) => tokens[repo.split('/')[0] ?? '']);
+            await github.readPr(ref);
+            await github.detail({ repo: 'other/name', pr: 7 });
+            expect(seen).toEqual([
+                { path: 'repos/owner/name/pulls/7', token: 'owner-token' },
+                { path: 'repos/other/name/pulls/7', token: 'other-token' },
+            ]);
+        });
+
+        test.each([
+            ['no token', undefined],
+            ['an empty token (gh would use its own login)', ''],
+            ['a token with a space', 'a b'],
+            ['a token with a newline', 'a\nb'],
+        ])('%s: nothing is run, and the read is unknown', async (_name, token) => {
+            const { github, seen } = withTokens(() => token);
+            expect(await github.readPr(ref)).toEqual({ kind: 'unknown' });
+            expect(await github.inventory(REPO)).toEqual({ complete: false, prs: [] });
+            expect(seen).toEqual([]);
+        });
     });
 });

@@ -11,8 +11,14 @@
  *   3. this process holds the lock on `<stateDb>.lock`.
  *
  * Any of the three failing, or a loop config that does not parse (`config.ts`),
- * is exit 78 with the database untouched. Then one reconcile pass runs, and
+ * is exit 78 with the database untouched. Then every repo's GitHub token is
+ * preflighted (`preflight.ts`): a missing, expired or under-permitted one is
+ * exit 77, still with the database untouched. Then one reconcile pass runs, and
  * one pass of the PR loop (`loop.ts`).
+ *
+ * `main.ts --preflight <config.json>` runs only the token check, with the write
+ * probe for every repo whatever its mode, and exits 0 or 77. It takes no lock and
+ * opens no database.
  *
  * Reads go to GitHub and invoak. Notes and escalations are really delivered;
  * a merge or a gate reset is recorded only (`NotifyingDryRunEffects`). Not
@@ -31,11 +37,14 @@ import { GitHub } from './github';
 import { Invoak, invoakPrincipal } from './invoak';
 import { pass } from './loop';
 import type { Io } from './loop';
+import { preflight, tokensFrom, writesGitHub } from './preflight';
 import type { CommandRunner, ReviewFile } from './readers';
 import { Actions } from './reconcile';
 import { State } from './state';
 
 export const EXIT_CONFIG = 78;
+/** A repo's GitHub token is missing, expired or lacks a permission (sysexits EX_NOPERM). */
+export const EXIT_CREDENTIALS = 77;
 const PROBE_TIMEOUT_MS = 10_000;
 
 export interface Config {
@@ -189,14 +198,25 @@ const CLI_ENV = [
     'INVOAK_TOKEN',
 ] as const;
 
-/** The environment of one run: CLI_ENV for `gh` and `invoak`, REVIEWER_ENV plus `env` for a run that brings its own. */
+/** What `gh` reads a token from by itself. A `gh` run gets none of them from the coordinator, only its repo's token. */
+const AMBIENT_GITHUB = new Set(['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']);
+
+/**
+ * The environment of one run: CLI_ENV for `gh` and `invoak`, REVIEWER_ENV plus `env` for a run that brings its own.
+ * With `githubToken` (a `gh` run, sp-vkqq): CLI_ENV without any ambient GitHub token, and `GH_TOKEN` set to that one.
+ */
 export function childEnv(
     own: Record<string, string | undefined>,
     extra: Readonly<Record<string, string>> | undefined,
+    githubToken?: string,
 ): Record<string, string | undefined> {
     const env: Record<string, string | undefined> = {};
     const names = extra === undefined ? CLI_ENV : REVIEWER_ENV;
-    for (const name of names) if (own[name] !== undefined) env[name] = own[name];
+    for (const name of names) {
+        if (githubToken !== undefined && AMBIENT_GITHUB.has(name)) continue;
+        if (own[name] !== undefined) env[name] = own[name];
+    }
+    if (githubToken !== undefined) env.GH_TOKEN = githubToken;
     return { ...env, ...extra };
 }
 
@@ -208,7 +228,7 @@ export const runCommand: CommandRunner = (command, argv, options) =>
             [...argv],
             {
                 cwd: options.cwd,
-                env: childEnv(process.env, options.env),
+                env: childEnv(process.env, options.env, options.githubToken),
                 timeout: options.timeoutMs ?? RUN_TIMEOUT_MS,
                 maxBuffer: MAX_OUTPUT,
                 encoding: 'utf8',
@@ -259,7 +279,7 @@ export function fileIo(reviewsDir: string): Io {
 }
 
 async function wake(config: Config, loop: LoopConfig): Promise<unknown> {
-    const github = new GitHub(runCommand);
+    const github = new GitHub(runCommand, tokensFrom(loop.githubTokens, process.env));
     const state = new State(config.stateDb);
     try {
         const invoak = new Invoak(runCommand, {
@@ -296,12 +316,44 @@ async function wake(config: Config, loop: LoopConfig): Promise<unknown> {
     }
 }
 
+/** The token preflight over every repo in `loop`; prints what it found. False: do not start. */
+async function tokensReady(loop: LoopConfig, allWrites: boolean): Promise<boolean> {
+    const repos = Object.entries(loop.repos).map(([repo, entry]) => ({ repo, mode: entry.policy.mode }));
+    const checked = await preflight(
+        runCommand,
+        repos,
+        loop.githubTokens,
+        process.env,
+        Date.now(),
+        allWrites ? () => true : writesGitHub,
+    );
+    if (allWrites) for (const line of checked.passed) console.log(`coordinator: preflight: ${line}`);
+    for (const line of checked.warnings) console.error(`coordinator: warning: ${line}`);
+    for (const line of checked.problems) console.error(`coordinator: refusing to start: ${line}`);
+    return checked.problems.length === 0;
+}
+
 async function main(argv: string[]): Promise<number> {
     if (argv[0] === '--host-id') {
         const id = readHostId();
         if (id === null) return EXIT_CONFIG;
         console.log(id);
         return 0;
+    }
+    if (argv[0] === '--preflight') {
+        let loop: LoopConfig | null = null;
+        try {
+            loop = argv[1] === undefined ? null : parseLoopConfig(readFileSync(argv[1], 'utf8'));
+        } catch {
+            // reported below
+        }
+        if (loop === null) {
+            console.error('coordinator: --preflight: the config is missing or malformed (see coordinator/config.ts)');
+            return EXIT_CONFIG;
+        }
+        const ready = await tokensReady(loop, true);
+        if (ready) console.log(`coordinator: preflight passed for ${Object.keys(loop.repos).length} repo(s)`);
+        return ready ? 0 : EXIT_CREDENTIALS;
     }
     let text: string | null = null;
     try {
@@ -327,6 +379,7 @@ async function main(argv: string[]): Promise<number> {
         console.error(`coordinator: refusing to start: invoak does not act as ${loop.self} (invoak whoami)`);
         return EXIT_CONFIG;
     }
+    if (!(await tokensReady(loop, false))) return EXIT_CREDENTIALS;
     console.log(JSON.stringify(await wake(started.config, loop)));
     return 0;
 }

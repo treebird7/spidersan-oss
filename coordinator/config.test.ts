@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { parseLoopConfig } from './config';
+import { parseLoopConfig, tokenVariable } from './config';
 
 const policy = () => ({
     mode: 'dry-run',
@@ -23,6 +23,7 @@ function config(edit: (c: any) => void = () => {}): string {
         owner: 'treebird',
         escalationProject: 'sp',
         maxReviewsPerPass: 10,
+        githubTokens: { owner: 'OWNER_PAT', 'Treebird-Ecosystem': 'ECO_PAT' },
         prsan: {
             home: '/x/prsan',
             timeoutMs: 1000,
@@ -47,6 +48,7 @@ describe('parseLoopConfig', () => {
         expect(parsed?.repos['owner/name']?.policy).toEqual(policy() as never);
         expect(parsed?.owner).toBe('treebird');
         expect(parsed?.prsan.models.claude).toBe('claude/claude-opus-5-5');
+        expect(parsed?.githubTokens).toEqual({ owner: 'OWNER_PAT', 'Treebird-Ecosystem': 'ECO_PAT' });
     });
 
     test('no repos is a config: a reconcile-only coordinator', () => {
@@ -79,6 +81,16 @@ describe('parseLoopConfig', () => {
         ['no owner', (c) => delete c.owner],
         ['no self', (c) => delete c.self],
         ['no escalation project', (c) => delete c.escalationProject],
+        ['no githubTokens (sp-vkqq)', (c) => delete c.githubTokens],
+        ['githubTokens as a list', (c) => (c.githubTokens = [])],
+        ['a repo whose owner has no token', (c) => (c.githubTokens = { other: 'OTHER_PAT' })],
+        ['an owner matched only up to case', (c) => (c.githubTokens = { Owner: 'OWNER_PAT' })],
+        ['two owners sharing one variable', (c) => (c.githubTokens = { owner: 'PAT', other: 'PAT' })],
+        ['the ambient GH_TOKEN', (c) => (c.githubTokens = { owner: 'GH_TOKEN' })],
+        ['the ambient GITHUB_TOKEN', (c) => (c.githubTokens = { owner: 'GITHUB_TOKEN' })],
+        ['a variable name that is not one', (c) => (c.githubTokens = { owner: 'my pat' })],
+        ['a variable that is not a name', (c) => (c.githubTokens = { owner: 7 })],
+        ['an owner that is not one', (c) => (c.githubTokens = { owner: 'OWNER_PAT', 'a/b': 'X_PAT' })],
     ])('refuses %s', (_name, edit) => {
         expect(parseLoopConfig(config(edit))).toBeNull();
     });
@@ -86,5 +98,23 @@ describe('parseLoopConfig', () => {
     test('refuses text that is not a JSON object', () => {
         expect(parseLoopConfig('nope')).toBeNull();
         expect(parseLoopConfig('[]')).toBeNull();
+    });
+});
+
+describe('tokenVariable', () => {
+    const tokens = { treebird7: 'T7_PAT', 'Treebird-Ecosystem': 'ECO_PAT' };
+
+    test("a repo's owner, matched exactly", () => {
+        expect(tokenVariable(tokens, 'treebird7/Envoak')).toBe('T7_PAT');
+        expect(tokenVariable(tokens, 'Treebird-Ecosystem/treebird')).toBe('ECO_PAT');
+    });
+
+    test.each([
+        ['another owner', 'mycsan/x'],
+        ['another case', 'Treebird7/Envoak'],
+        ['an inherited key', 'constructor/x'],
+        ['not a slug', 'treebird7'],
+    ])('%s: none', (_name, repo) => {
+        expect(tokenVariable(tokens, repo)).toBeUndefined();
     });
 });
