@@ -1,9 +1,32 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+    existsSync,
+    mkdirSync,
+    mkdtempSync,
+    openSync,
+    readdirSync,
+    readFileSync,
+    rmSync,
+    statSync,
+    writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { EXIT_CONFIG, childEnv, fileIo, parseConfig, readHostId, runCommand, start } from './main';
+import { TOKEN_VARIABLE } from './config';
+import {
+    CLI_ENV,
+    EXIT_CONFIG,
+    EXIT_CREDENTIALS,
+    REVIEWER_ENV,
+    childEnv,
+    fileIo,
+    parseConfig,
+    privateGhConfig,
+    readHostId,
+    runCommand,
+    start,
+} from './main';
 
 const LAUNCHER = resolve(import.meta.dir, 'spidersan-coordinator');
 const MAIN = resolve(import.meta.dir, 'main.ts');
@@ -15,6 +38,7 @@ const LOOP = {
     owner: 'treebird',
     escalationProject: 'sp',
     maxReviewsPerPass: 10,
+    githubTokens: {},
     prsan: {
         home: '/nonexistent/prsan',
         timeoutMs: 1000,
@@ -32,6 +56,78 @@ let config: string;
 function fakeInvoak(stdout: string): void {
     writeFileSync(join(dir, 'bin', 'invoak'), `#!/bin/sh\nprintf '%s' '${stdout}'\n`, { mode: 0o755 });
 }
+
+/**
+ * A `gh` first on PATH that answers `gh api -i <path>` like GitHub for owner/name, and appends the
+ * GH_TOKEN it was given and its argv to `gh.log`. `status` answers every call with that code instead.
+ */
+function fakeGh(status?: number): void {
+    const ok = (body: string) => `printf 'HTTP/2.0 200 OK\\r\\nContent-Type: application/json\\r\\n\\r\\n%s' '${body}'`;
+    /** With the file `not-a-listing-<what>` present, that endpoint answers 200 `{}`. */
+    const notListing = (what: string, body = '{}') =>
+        `[ -f '${join(dir, `not-a-listing-${what}`)}' ] && { ${ok(body)}; exit 0; };`;
+    const answer =
+        status !== undefined
+            ? `printf 'HTTP/2.0 ${status} No\\r\\nX-Accepted-GitHub-Permissions: statuses=read\\r\\n\\r\\n{}'; exit 1`
+            : [
+                  'case "$*" in',
+                  `  *statuses/0000000000000000000000000000000000000000*) printf 'HTTP/2.0 422 Unprocessable Entity\\r\\n\\r\\n%s' '${NO_COMMIT}'; exit 1 ;;`,
+                  // The coordinator passes gh no variable of the test's own, so a file switches this on.
+                  `  *actions/runs*) ` +
+                      `[ -f '${join(dir, 'partial')}' ] && { printf 'HTTP/2.0 200 OK\\r\\n'; kill -9 $$; }; ` +
+                      `${notListing('runs')} ${ok(EMPTY_RUNS)} ;;`,
+                  `  *pulls?state=open*) ${notListing('pulls')} ${ok('[]')} ;;`,
+                  `  *commits/*/status*) ${notListing('status')} ` +
+                      `${notListing('status-total', NO_TOTAL)} ${ok(EMPTY_STATUS)} ;;`,
+                  `  *git/ref/heads/main*) ${ok(JSON.stringify(MAIN_REF))} ;;`,
+                  `  *"api -i repos/owner/name --hostname github.com") ${ok(JSON.stringify(META))} ;;`,
+                  `  *) ${ok('{}')} ;;`,
+                  'esac',
+              ].join('\n');
+    const log = join(dir, 'gh.log');
+    writeFileSync(
+        join(dir, 'bin', 'gh'),
+        `#!/bin/sh\nprintf '%s|%s|%s|%s\\n' "$GH_TOKEN" "${LEAKS}" "$GH_HOST" "$*" >> '${log}'\n${answer}\n`,
+        { mode: 0o755 },
+    );
+}
+
+/** LOOP with one dry-run repo, owner/name, whose token is in OWNER_PAT. */
+function withRepo(): Record<string, unknown> {
+    const policy = {
+        mode: 'dry-run',
+        ceiling: 5,
+        reservations: { triage: 0.05, plain: 0.5, second: 0.5, vector: 0.5 },
+        maxHeads: 4,
+        secondFamily: 'luna',
+        stallClaimantMs: 1,
+        stallOwnerMs: 2,
+        effectsClassified: false,
+        mergeGateApplied: false,
+        webhookInstalled: false,
+    };
+    return {
+        ...LOOP,
+        githubTokens: { owner: 'OWNER_PAT' },
+        repos: { 'owner/name': { taskProjects: ['sp'], policy, touches: { protectedPaths: ['x/'], mergeEffects: [] } } },
+    };
+}
+
+const META = { full_name: 'owner/name', default_branch: 'main' };
+const MAIN_REF = { ref: 'refs/heads/main', object: { type: 'commit', sha: 'b'.repeat(40) } };
+/** In the fake gh's log line: a letter for each foreign credential it was given (none, expected). */
+const LEAKS = [
+    '${INVOAK_TOKEN:+I}',
+    '${INVOAK_API_URL:+U}',
+    '${ENVOAK_AGENT_LABEL:+E}',
+    '${ENVOAK_BROKER_SOCK:+B}',
+    '${CLAUDE_CODE_OAUTH_TOKEN:+C}',
+].join('');
+const EMPTY_RUNS = JSON.stringify({ total_count: 0, workflow_runs: [] });
+/** The shape of a real combined status with none on the commit (2026-11-20), for the tip the fake ref names. */
+const NO_TOTAL = JSON.stringify({ state: 'pending', sha: 'b'.repeat(40), statuses: [] });
+const EMPTY_STATUS = JSON.stringify({ state: 'pending', sha: 'b'.repeat(40), total_count: 0, statuses: [] });
+const NO_COMMIT = JSON.stringify({ message: `No commit found for SHA: ${'0'.repeat(40)}`, status: '422' });
 
 function writeConfig(value: unknown): void {
     writeFileSync(config, JSON.stringify(value));
@@ -244,6 +340,140 @@ describe('launcher and entrypoint', () => {
     });
 });
 
+describe('GitHub tokens (sp-vkqq)', () => {
+    const TOKEN = `github_pat_${'p'.repeat(82)}`;
+
+    test('a repo whose token is not in the environment: exit 77, nothing asked of gh, database not created', () => {
+        writeConfig({ hostId: HOST, stateDb: db, ...withRepo() });
+        fakeGh();
+        const done = run([LAUNCHER, config], { GH_TOKEN: 'ambient', GITHUB_TOKEN: 'ambient' });
+        expect(done.exit).toBe(EXIT_CREDENTIALS);
+        expect(done.err).toContain('owner/name: OWNER_PAT is not set');
+        expect(existsSync(join(dir, 'gh.log'))).toBe(false);
+        expect(existsSync(db)).toBe(false);
+    });
+
+    test('a token GitHub refuses: exit 77 naming the repo and the permission, never the token', () => {
+        writeConfig({ hostId: HOST, stateDb: db, ...withRepo() });
+        fakeGh(403);
+        const done = run([LAUNCHER, config], { OWNER_PAT: TOKEN });
+        expect(done.exit).toBe(EXIT_CREDENTIALS);
+        expect(done.err).toContain('owner/name: OWNER_PAT cannot read the repository (HTTP 403, GitHub asks for statuses=read)');
+        expect(done.err + done.out).not.toContain(TOKEN);
+        expect(existsSync(db)).toBe(false);
+    });
+
+    test('a token that passes: the pass runs, and gh got that token and no other', () => {
+        writeConfig({ hostId: HOST, stateDb: db, ...withRepo() });
+        fakeGh();
+        const done = run([LAUNCHER, config], {
+            OWNER_PAT: TOKEN,
+            GH_TOKEN: 'ambient',
+            GITHUB_TOKEN: 'ambient',
+            GH_HOST: 'ghe.example.com',
+            INVOAK_TOKEN: 'invoak-secret',
+            INVOAK_API_URL: 'https://invoak.example',
+            ENVOAK_AGENT_LABEL: 'spidersan',
+            ENVOAK_BROKER_SOCK: '/tmp/broker.sock',
+            CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-x',
+        });
+        expect(done.err).toBe('');
+        expect(done.exit).toBe(0);
+        const log = readFileSync(join(dir, 'gh.log'), 'utf8').trim().split('\n');
+        expect(log.length).toBeGreaterThan(5);
+        // No invoak, envoak or reviewer credential reached any gh run: the preflight's or the pass's (#361).
+        expect(log.every((line) => line.startsWith(`${TOKEN}|||`))).toBe(true);
+        // Pinned to github.com whatever GH_HOST says (#361 P1-1): reads in the pass and the preflight alike.
+        expect(log.every((line) => line.endsWith(' --hostname github.com'))).toBe(true);
+        expect(log.some((line) => line.includes('|api repos/owner/name/pulls?state=open&per_page=100 '))).toBe(true);
+        // dry-run writes nothing to GitHub, so its token is not asked to.
+        expect(log.some((line) => line.includes('statuses/0000'))).toBe(false);
+    });
+
+    test('a probe gh was killed in after a 200 header: exit 77, database not created (#361 P1-2)', () => {
+        writeConfig({ hostId: HOST, stateDb: db, ...withRepo() });
+        fakeGh();
+        writeFileSync(join(dir, 'partial'), '');
+        const done = run([LAUNCHER, config], { OWNER_PAT: TOKEN });
+        expect(done.exit).toBe(EXIT_CREDENTIALS);
+        expect(done.err).toContain('owner/name: OWNER_PAT cannot read Actions runs (gh did not finish)');
+        expect(existsSync(db)).toBe(false);
+    });
+
+    test.each([
+        ['runs', 'Actions runs'],
+        ['pulls', 'pull requests'],
+        ['status', 'commit statuses'],
+        ['status-total', 'commit statuses'],
+    ])('a 200 {} where the %s listing should be: exit 77, database not created (#361)', (what, named) => {
+        writeConfig({ hostId: HOST, stateDb: db, ...withRepo() });
+        fakeGh();
+        writeFileSync(join(dir, `not-a-listing-${what}`), '');
+        const done = run([LAUNCHER, config], { OWNER_PAT: TOKEN });
+        expect(done.exit).toBe(EXIT_CREDENTIALS);
+        expect(done.err).toContain(`owner/name: OWNER_PAT cannot read ${named} (HTTP 200)`);
+        expect(existsSync(db)).toBe(false);
+    });
+
+    test("an owner mapped to another service's credential: refused before any gh run (#361)", () => {
+        // The variable name is refused by the config: exit 78.
+        writeConfig({ hostId: HOST, stateDb: db, ...withRepo(), githubTokens: { owner: 'CLAUDE_CODE_OAUTH_TOKEN' } });
+        fakeGh();
+        const named = run([LAUNCHER, config], { CLAUDE_CODE_OAUTH_TOKEN: `sk-ant-oat01-${'d'.repeat(40)}` });
+        expect(named.exit).toBe(EXIT_CONFIG);
+        // A *_PAT variable holding something that is not a GitHub token: exit 77, never sent, never printed.
+        writeConfig({ hostId: HOST, stateDb: db, ...withRepo() });
+        const secret = `sk-ant-oat01-${'d'.repeat(40)}`;
+        const held = run([LAUNCHER, config], { OWNER_PAT: secret });
+        expect(held.exit).toBe(EXIT_CREDENTIALS);
+        expect(held.err).toContain('owner/name: OWNER_PAT does not hold a GitHub token');
+        expect(held.err + held.out).not.toContain(secret);
+        expect(existsSync(join(dir, 'gh.log'))).toBe(false);
+        expect(existsSync(db)).toBe(false);
+    });
+
+    test('no variable the coordinator passes to a child is in the token namespace', () => {
+        for (const name of [...CLI_ENV, ...REVIEWER_ENV]) expect(TOKEN_VARIABLE.test(name)).toBe(false);
+        expect(TOKEN_VARIABLE.test('TREEBIRD7_SPIDERSAN_PAT')).toBe(true);
+        expect(TOKEN_VARIABLE.test('TREEBIRD_ECOSYSTEM_SPIDERSAN_PAT')).toBe(true);
+    });
+
+    test('--preflight: the check alone, writes probed too; no lock, no database', () => {
+        writeConfig({ hostId: 'not-this-machine', stateDb: db, ...withRepo() });
+        fakeGh();
+        const done = run(['bun', MAIN, '--preflight', config], {
+            OWNER_PAT: TOKEN,
+            INVOAK_TOKEN: 'invoak-secret',
+            ENVOAK_AGENT_LABEL: 'spidersan',
+            ENVOAK_BROKER_SOCK: '/tmp/broker.sock',
+            CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-x',
+        });
+        expect(done.exit).toBe(0);
+        const lines = readFileSync(join(dir, 'gh.log'), 'utf8').trim().split('\n');
+        expect(lines.every((line) => line.startsWith(`${TOKEN}|||`))).toBe(true);
+        expect(done.out).toContain('owner/name: OWNER_PAT reads and writes statuses (dry-run, no expiry)');
+        expect(readFileSync(join(dir, 'gh.log'), 'utf8')).toContain('statuses/0000');
+        expect(existsSync(db)).toBe(false);
+    });
+
+    test('--preflight after the config, through the launcher: refused, no pass, no gh, no database', () => {
+        writeConfig({ hostId: HOST, stateDb: db, ...withRepo() });
+        fakeGh();
+        const done = run([LAUNCHER, config, '--preflight'], { OWNER_PAT: TOKEN });
+        expect(done.exit).toBe(EXIT_CONFIG);
+        expect(done.err).toContain('one argument, the config');
+        expect(existsSync(join(dir, 'gh.log'))).toBe(false);
+        expect(existsSync(db)).toBe(false);
+    });
+
+    test('--preflight: a missing token is 77, a missing config 78', () => {
+        writeConfig({ hostId: HOST, stateDb: db, ...withRepo() });
+        expect(run(['bun', MAIN, '--preflight', config]).exit).toBe(EXIT_CREDENTIALS);
+        expect(run(['bun', MAIN, '--preflight', join(dir, 'missing.json')]).exit).toBe(EXIT_CONFIG);
+        expect(run(['bun', MAIN, '--preflight']).exit).toBe(EXIT_CONFIG);
+    });
+});
+
 describe('whose invoak token', () => {
     test.each([
         ['another agent', '{"whoami":{"principal":"mycsan"}}'],
@@ -275,6 +505,52 @@ describe('childEnv', () => {
 
     test('gh and invoak get their short list: no reviewer token, no owner secret (sp-sloro)', () => {
         expect(childEnv(own, undefined)).toEqual({ PATH: '/bin', HOME: '/h', ENVOAK_AGENT_LABEL: 'spidersan' });
+    });
+
+    test('a gh run gets GH_ENV, its token and an empty config; nothing of invoak or envoak (#361)', () => {
+        const ambient = {
+            ...own,
+            TMPDIR: '/t',
+            GH_TOKEN: 'ambient',
+            GITHUB_TOKEN: 'ambient',
+            GH_ENTERPRISE_TOKEN: 'ambient',
+            GH_HOST: 'ghe.example.com',
+            GH_CONFIG_DIR: '/c',
+            XDG_CONFIG_HOME: '/x',
+            INVOAK_TOKEN: 'i',
+            INVOAK_API_URL: 'u',
+            ENVOAK_BROKER_SOCK: 's',
+            USER: 'me',
+        };
+        expect(childEnv(ambient, undefined, { token: 'mapped', configDir: '/private' })).toEqual({
+            PATH: '/bin',
+            HOME: '/h',
+            TMPDIR: '/t',
+            GH_TOKEN: 'mapped',
+            GH_CONFIG_DIR: '/private',
+        });
+        // invoak's run is unchanged.
+        expect(childEnv(ambient, undefined)).toMatchObject({
+            GH_TOKEN: 'ambient',
+            GH_HOST: 'ghe.example.com',
+            INVOAK_TOKEN: 'i',
+            ENVOAK_AGENT_LABEL: 'spidersan',
+        });
+    });
+
+    test('a gh run really starts with only its token, no GH_HOST, and an empty private config dir', async () => {
+        process.env.GITHUB_TOKEN = 'ambient';
+        process.env.GH_HOST = 'ghe.example.com';
+        try {
+            const script = 'printf "%s|%s|%s|%s" "$GH_TOKEN" "$GITHUB_TOKEN" "$GH_HOST" "$GH_CONFIG_DIR"';
+            const done = await runCommand('/bin/sh', ['-c', script], { cwd: '/', githubToken: 'mapped' });
+            expect(done.stdout).toBe(`mapped|||${privateGhConfig()}`);
+            expect(readdirSync(privateGhConfig())).toEqual([]);
+            expect(statSync(privateGhConfig()).mode & 0o777).toBe(0o700);
+        } finally {
+            delete process.env.GITHUB_TOKEN;
+            delete process.env.GH_HOST;
+        }
     });
 
     test('a run with its own env gets the short list and that env, nothing else', () => {

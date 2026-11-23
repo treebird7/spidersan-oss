@@ -356,6 +356,13 @@ export function parseTriage(stdout: unknown, headSha: unknown): Triage | null {
 /** What one check run or commit status says, normalised by the caller. */
 export const CI_STATES = ['success', 'failure', 'pending', 'skipped', 'neutral'] as const;
 
+/**
+ * Where an observation comes from (#361 round 6): an Actions `job` (a check run), a workflow `run`'s own state, or a
+ * commit `status`. Only a status can be the coordinator's gate and dropped; a run is always judged and never
+ * satisfies a required context.
+ */
+export const CI_SOURCES = ['job', 'run', 'status'] as const;
+
 /** One required context and the GitHub App that must report it (branch protection's `{context, app_id}`). */
 export interface RequiredContext {
     context: string;
@@ -370,7 +377,7 @@ export interface RequiredContext {
 export interface CiInput {
     /** The commit the listing was fetched for. */
     headSha: unknown;
-    /** `[{context, appId, headSha, state}]`: every check run and commit status on that commit. */
+    /** `[{context, appId, headSha, state, source}]`: every CI entry on that commit; `source` is one of CI_SOURCES. */
     observations: unknown;
     /** How many entries the source says exist; must equal `observations.length`. */
     expectedCount: unknown;
@@ -404,10 +411,11 @@ function isAppId(value: unknown): value is number {
 export function readCi(input: CiInput): CiEvidence | null {
     if (!isRecord(input) || !isFullSha(input.headSha) || !Array.isArray(input.observations)) return null;
     const headSha = input.headSha;
-    const all: { context: string; appId: unknown; state: string }[] = [];
+    const all: { context: string; appId: unknown; state: string; source: (typeof CI_SOURCES)[number] }[] = [];
     for (const o of input.observations as readonly unknown[]) {
         if (!isRecord(o) || !isText(o.context) || typeof o.state !== 'string' || o.headSha !== headSha) return null;
-        all.push({ context: o.context, appId: o.appId, state: o.state });
+        if (!isOneOf(CI_SOURCES, o.source)) return null;
+        all.push({ context: o.context, appId: o.appId, state: o.state, source: o.source });
     }
 
     const merge = input.testedMerge;
@@ -426,16 +434,21 @@ export function readCi(input: CiInput): CiEvidence | null {
         seen.add(r.context);
     }
 
-    // Only the coordinator's own gate entry is dropped. The same name from any other source is
-    // not its status, and a red one must not vanish: no verdict.
+    // Only the coordinator's own gate entry is dropped: a commit status of that name from that app. The same name
+    // from a job or another app is not its status, and a red one must not vanish: no verdict. A workflow run's own
+    // state is never the gate, whatever its name: it is judged like any entry (#361 round 6).
     const gateApp = input.gateAppId;
     if (gateApp !== null && !isAppId(gateApp)) return evidence(false, false);
-    if (all.some((o) => o.context === input.gateContext && o.appId !== gateApp)) return evidence(false, false);
-    const judged = all.filter((o) => o.context !== input.gateContext);
+    const isGate = (o: (typeof all)[number]) =>
+        o.source === 'status' && o.context === input.gateContext && o.appId === gateApp;
+    const impostor = (o: (typeof all)[number]) => o.source !== 'run' && o.context === input.gateContext && !isGate(o);
+    if (all.some(impostor)) return evidence(false, false);
+    const judged = all.filter((o) => !isGate(o));
     let complete = !judged.some((o) => o.state === 'pending' || !isOneOf(CI_STATES, o.state));
     let green = judged.every((o) => o.state === 'success' || o.state === 'skipped' || o.state === 'neutral');
     for (const r of required as readonly RequiredContext[]) {
-        const states = judged.filter((o) => o.context === r.context && o.appId === r.appId).map((o) => o.state);
+        const reported = judged.filter((o) => o.source !== 'run' && o.context === r.context && o.appId === r.appId);
+        const states = reported.map((o) => o.state);
         if (states.length === 0 || states.some((s) => s !== states[0])) complete = false;
         if (states.some((s) => s !== 'success')) green = false;
     }
@@ -510,8 +523,12 @@ export interface CommandResult {
 export type CommandRunner = (
     command: string,
     argv: readonly string[],
-    /** With `env`, the run gets it and a short fixed list of the runner's own variables, not the whole environment. `timeoutMs`: the runner's default when absent. */
-    options: { cwd: string; env?: Readonly<Record<string, string>>; timeoutMs?: number },
+    /**
+     * With `env`, the run gets it and a short fixed list of the runner's own variables, not the whole environment.
+     * `githubToken` (a `gh` run): its `GH_TOKEN`, in place of any GitHub token the runner itself holds.
+     * `timeoutMs`: the runner's default when absent.
+     */
+    options: { cwd: string; env?: Readonly<Record<string, string>>; githubToken?: string; timeoutMs?: number },
 ) => CommandResult | Promise<CommandResult>;
 
 /** The argv for the conflicts check. `--base` is always passed: without it the command reads `.spidersanrc` from cwd. */

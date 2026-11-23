@@ -26,6 +26,7 @@ function loopConfig(edit: (c: any) => void = () => {}): LoopConfig {
         owner: 'treebird',
         escalationProject: 'sp',
         maxReviewsPerPass: 10,
+        githubTokens: { [REPO.split('/')[0] as string]: 'OWNER_PAT' },
         prsan: {
             home: '/x/prsan',
             timeoutMs: 1000,
