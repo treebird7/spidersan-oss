@@ -238,6 +238,12 @@ describe('preflight', () => {
         expect((await runsAnswer({ total_count: 0, workflow_runs: [] })).problems).toEqual([]);
     });
 
+    test('a default branch with a lone surrogate: refused, nothing thrown (#361)', async () => {
+        const meta = http(200, META, EXPIRES).replace('"main"', '"x\\ud800"');
+        const done = await check({ ...healthy(), [`repos/${REPO}`]: meta });
+        expect(done.problems).toEqual([`${REPO}: OWNER_PAT cannot read the default branch name`]);
+    });
+
     test('a branch tip that is not a full sha: refused', async () => {
         const ref = http(200, { object: { sha: 'abc' } });
         const done = await check({ ...healthy(), [`repos/${REPO}/git/ref/heads/main`]: ref });
@@ -371,14 +377,18 @@ describe('branchPath', () => {
         ['.hidden', '.hidden'],
         ['release/1.0', 'release/1.0'],
         ['feat/a#b?c', 'feat/a%23b%3Fc'],
+        ['emoji/\u{1F600}', 'emoji/%F0%9F%98%80'],
         ['-dash', '-dash'],
     ])('%s → %s', (name, path) => {
         expect(branchPath(name)).toBe(path);
     });
 
-    test.each(['', '..', 'a/../b', 'a//b', '/a', 'a/', 'a b', 'a\nb', 'a/./b'])('%j: null', (name) => {
-        expect(branchPath(name)).toBeNull();
-    });
+    test.each(['', '..', 'a/../b', 'a//b', '/a', 'a/', 'a b', 'a\nb', 'a/./b', 'x\ud800', '\udc00x', 'a\udc00\ud800'])(
+        '%j: null',
+        (name) => {
+            expect(branchPath(name)).toBeNull();
+        },
+    );
 
     test.each([undefined, 7, null])('%p: null', (name) => {
         expect(branchPath(name)).toBeNull();

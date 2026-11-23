@@ -610,6 +610,15 @@ describe('GitHub', () => {
         expect(calls.map((c) => c[2])).toContain('repos/owner/name/git/ref/heads/_release');
     });
 
+    test('a base with a lone surrogate: dropped, listing incomplete, nothing thrown (#361)', async () => {
+        // As GitHub's JSON could carry it: an escaped `\ud800` with no pair.
+        const text = json([listed({ number: 8 })]).replace(']', `,${json(listed()).replace('"main"', '"x\\ud800"')}]`);
+        const { github } = scripted({ 'repos/owner/name/pulls?state=open&per_page=100': text });
+        const inventory = await github.inventory(REPO);
+        expect(inventory.complete).toBe(false);
+        expect(inventory.prs.map((pr) => pr.number)).toEqual([8]);
+    });
+
     test('readPr: a base with characters a URL path must not carry raw is encoded', async () => {
         const base = { ref: 'rel/a#b', sha: BASE, repo: { full_name: REPO } };
         const { github, calls } = scripted({
@@ -700,8 +709,92 @@ describe('GitHub', () => {
             `${RUNS}&page=1`,
             `${JOBS}&page=1`,
             STATUS,
+            `${RUNS}&page=1`,
             STATUS,
         ]);
+    });
+
+    test('ci: a re-run that starts after the runs listing, before its first job: null, not green (#361)', async () => {
+        const rerun = wfRun(11, { run_attempt: 2, status: 'queued', conclusion: null });
+        const listings = [runsPage([wfRun(11)]), runsPage([rerun])];
+        const { github, calls } = scripted({
+            [`${RUNS}&page=1`]: () => listings.shift() ?? '',
+            [`${JOBS}&page=1`]: jobsPage([wfJob('build', 'success')]),
+            [STATUS]: statuses([]),
+        });
+        expect(await github.ci(REPO, HEAD)).toBeNull();
+        expect(calls.filter((c) => c[2] === `${RUNS}&page=1`)).toHaveLength(2);
+    });
+
+    test.each<[string, Record<string, unknown>]>([
+        ['a new conclusion', { conclusion: 'failure' }],
+        ['a new status', { status: 'in_progress', conclusion: null }],
+    ])('ci: a run that shows %s on the second listing: null', async (_name, over) => {
+        const listings = [runsPage([wfRun(11)]), runsPage([wfRun(11, over)])];
+        const { github } = scripted({
+            [`${RUNS}&page=1`]: () => listings.shift() ?? '',
+            [`${JOBS}&page=1`]: jobsPage([wfJob('build', 'success')]),
+            [STATUS]: statuses([]),
+        });
+        expect(await github.ci(REPO, HEAD)).toBeNull();
+    });
+
+    test.each<[string, Record<string, unknown>, Record<string, unknown>]>([
+        ['only its attempt (a re-run that already finished green)', {}, { run_attempt: 2 }],
+        [
+            'only its status (queued, then in progress)',
+            { status: 'queued', conclusion: null },
+            { status: 'in_progress', conclusion: null },
+        ],
+    ])('ci: a run that changes %s between the listings: null', async (_name, first, second) => {
+        const listings = [runsPage([wfRun(11, first)]), runsPage([wfRun(11, second)])];
+        const { github } = scripted({
+            [`${RUNS}&page=1`]: () => listings.shift() ?? '',
+            [`${JOBS}&page=1`]: jobsPage([wfJob('build', 'success')]),
+            [STATUS]: statuses([]),
+        });
+        expect(await github.ci(REPO, HEAD)).toBeNull();
+    });
+
+    test('ci: a run that appears on the second listing: null', async () => {
+        const added = wfRun(12, { status: 'queued', conclusion: null });
+        const listings = [runsPage([wfRun(11)]), runsPage([wfRun(11), added])];
+        const { github } = scripted({
+            [`${RUNS}&page=1`]: () => listings.shift() ?? '',
+            [`${JOBS}&page=1`]: jobsPage([wfJob('build', 'success')]),
+            [STATUS]: statuses([]),
+        });
+        expect(await github.ci(REPO, HEAD)).toBeNull();
+    });
+
+    test('ci: the second runs listing unreadable: null', async () => {
+        const listings = [runsPage([wfRun(11)])];
+        const { github } = scripted({
+            [`${RUNS}&page=1`]: () => listings.shift() ?? 'nope',
+            [`${JOBS}&page=1`]: jobsPage([wfJob('build', 'success')]),
+            [STATUS]: statuses([]),
+        });
+        expect(await github.ci(REPO, HEAD)).toBeNull();
+    });
+
+    test('ci: the same runs twice, listed in another order: read, and green', async () => {
+        const listings = [runsPage([wfRun(11), wfRun(12)]), runsPage([wfRun(12), wfRun(11)])];
+        const { github } = scripted({
+            [`${RUNS}&page=1`]: () => listings.shift() ?? '',
+            [`${JOBS}&page=1`]: jobsPage([wfJob('build', 'success')]),
+            ['repos/owner/name/actions/runs/12/jobs?filter=all&per_page=100&page=1']: jobsPage([
+                wfJob('lint', 'success', { id: 2, run_id: 12 }),
+            ]),
+            [STATUS]: statuses([]),
+        });
+        const input = await github.ci(REPO, HEAD);
+        const settings = { required: [{ context: 'build', appId: ACTIONS }], gateContext: null, gateAppId: null };
+        expect(input && readCi({ ...input, ...settings, testedMerge: null })).toEqual({
+            headSha: HEAD,
+            complete: true,
+            green: true,
+            testedBase: null,
+        });
     });
 
     test("ci: a job that run 11's endpoint lists under run 12 is refused, though run 12 is listed (#361)", async () => {
@@ -737,14 +830,25 @@ describe('GitHub', () => {
         expect((await github.ci(REPO, HEAD))?.expectedCount).toBe(PAGE + 1);
     });
 
-    test('ci: a listing of exactly one page asks for the next and finds it empty', async () => {
-        const { github } = scripted({
+    test('ci: a listing of exactly one full page that reaches its total asks for no second', async () => {
+        const { github, calls } = scripted({
             [`${RUNS}&page=1`]: runsPage([wfRun(11)]),
             [`${JOBS}&page=1`]: jobsPage(manyJobs(PAGE)),
-            [`${JOBS}&page=2`]: jobsPage([], PAGE),
             [STATUS]: statuses([]),
         });
         expect((await github.ci(REPO, HEAD))?.expectedCount).toBe(PAGE);
+        expect(calls.some((c) => c[2] === `${JOBS}&page=2`)).toBe(false);
+    });
+
+    test('ci: MAX_PAGES full pages reaching their total (1000 jobs) are read, no request after (#361)', async () => {
+        const total = MAX_PAGES * PAGE;
+        const table: Record<string, string> = { [`${RUNS}&page=1`]: runsPage([wfRun(11)]), [STATUS]: statuses([]) };
+        for (let n = 1; n <= MAX_PAGES; n++) {
+            table[`${JOBS}&page=${n}`] = jobsPage(manyJobs(PAGE, (n - 1) * PAGE + 1), total);
+        }
+        const { github, calls } = scripted(table);
+        expect((await github.ci(REPO, HEAD))?.expectedCount).toBe(total);
+        expect(calls.some((c) => c[2] === `${JOBS}&page=${MAX_PAGES + 1}`)).toBe(false);
     });
 
     test.each<[string, Record<string, string>]>([

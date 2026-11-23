@@ -66,7 +66,9 @@ from check runs, which a fine-grained token cannot read on a private repo. A
 re-run counts at the run's current attempt only: an older attempt's jobs are
 history, and a re-run cancelled before any job started reads as cancelled. A
 workflow run that did not succeed counts by its own conclusion too, so a failed
-run is not green though every job it listed passed. Check runs from other apps (Socket
+run is not green though every job it listed passed. The runs are listed again after the jobs
+and statuses: if any run was added, re-run or moved on in between, there is no
+reading this pass, and the next pass reads again. Check runs from other apps (Socket
 Security) are not seen; no repo requires one.
 
 ## Config

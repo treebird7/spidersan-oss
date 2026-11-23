@@ -38,10 +38,14 @@ function parse(stdout: unknown): unknown {
  * A branch name as a URL path under `git/ref/heads/`: each `/`-separated part percent-encoded. Null when it is not a
  * name GitHub could hold: empty, an empty, `.` or `..` part, or a control character. A leading `_` or `.` is a name.
  */
+const UNPAIRED_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
 export function branchPath(name: unknown): string | null {
     if (typeof name !== 'string' || name === '' || name.length > 255 || /[\x00-\x20\x7f]/.test(name)) return null;
     const parts = name.split('/');
     if (parts.some((part) => part === '' || part === '.' || part === '..')) return null;
+    // A lone UTF-16 surrogate (JSON can carry one as `\ud800`) is no name, and encodeURIComponent throws on it.
+    if (UNPAIRED_SURROGATE.test(name)) return null;
     return parts.map(encodeURIComponent).join('/');
 }
 
@@ -320,6 +324,13 @@ export function parseFiles(stdout: unknown, head: string, changedFiles: number):
  */
 export const GITHUB_HOST = ['--hostname', 'github.com'] as const;
 
+/** Each run's id, attempt, status and conclusion, in a form two listings can be compared in. */
+function runStates(runs: readonly unknown[]): string {
+    const state = (run: unknown) =>
+        JSON.stringify(isRecord(run) ? [run.id, run.run_attempt, run.status, run.conclusion] : null);
+    return runs.map(state).sort().join('\n');
+}
+
 /** The token for a repo's owner, or undefined when there is none. */
 export type TokenFor = (repo: string) => string | undefined;
 
@@ -403,7 +414,10 @@ export class GitHub {
             if (page === null || (total !== null && page.total !== total) || page.entries.length > PAGE) return null;
             total = page.total;
             entries.push(...page.entries);
-            if (page.entries.length < PAGE) return entries.length === total ? entries : null;
+            // A short page ends the listing; so does a full one once the count is reached (10 full pages of 1000).
+            if (page.entries.length < PAGE || entries.length === total) {
+                return entries.length === total ? entries : null;
+            }
         }
         return null;
     }
@@ -424,7 +438,12 @@ export class GitHub {
             if (list === null || !list.every((job) => isRecord(job) && job.run_id === id)) return null;
             jobs.push(...list);
         }
-        return ciObservations(runs, jobs, await this.#statuses(repo, head), head);
+        const statuses = await this.#statuses(repo, head);
+        // The runs again, after the jobs: a re-run that started in between, before its first job, would leave the
+        // jobs of the attempt it replaces looking current. Any run added, gone, or moved on: no reading (#361).
+        const again = await this.#all(repo, listing, 'workflow_runs');
+        if (again === null || runStates(again) !== runStates(runs)) return null;
+        return ciObservations(runs, jobs, statuses, head);
     }
 
     #statuses(repo: string, head: string): Promise<unknown> {
