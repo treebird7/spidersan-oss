@@ -12,8 +12,13 @@
  *      EXPIRY_WARN_MS from expiry it is a warning, not a refusal;
  *   4. in a mode that writes to GitHub (`live`: the merge-gate status), write
  *      commit statuses. The probe posts a status to the all-zero sha, which no
- *      commit has: 422 means the token may write, 403 that it may not. Nothing
- *      is created either way.
+ *      commit has: 422 "No commit found" means the token may write, 403 that it
+ *      may not. Nothing is created either way.
+ *
+ * Every call is pinned to github.com (`--hostname`, with no stored login to
+ * fall back on: main.ts `childEnv`). A read passes only when gh exits 0 with a
+ * 200 and a JSON body: a killed or timed-out gh can leave a 200 header block
+ * behind, and that is not an answer.
  *
  * Any other answer, a timeout included, is a problem: the coordinator refuses
  * to start (EXIT_CREDENTIALS in main.ts). A message names the repo, the
@@ -26,7 +31,7 @@
 import { tokenVariable } from './config';
 import type { LoopConfig } from './config';
 import { isFullSha } from './decide';
-import { isToken } from './github';
+import { GITHUB_HOST, isToken } from './github';
 import type { TokenFor } from './github';
 import { isGitRef, isRepoSlug } from './readers';
 import type { CommandRunner } from './readers';
@@ -36,6 +41,10 @@ import type { Mode } from './types';
 export const EXPIRY_WARN_MS = 14 * 24 * 60 * 60 * 1000;
 const ZERO_SHA = '0'.repeat(40);
 const PROBE_CONTEXT = 'spidersan/preflight';
+/** `gh api`'s exit code for an HTTP error answer (4xx/5xx), checked 2026-11-23. */
+const GH_HTTP_ERROR = 1;
+/** What GitHub answers a status POST to ZERO_SHA from a token that may write (captured 2026-11-23). */
+const NO_COMMIT = `No commit found for SHA: ${ZERO_SHA}`;
 const EXPIRY_HEADER = 'github-authentication-token-expiration';
 const ACCEPTED_HEADER = 'x-accepted-github-permissions';
 
@@ -118,19 +127,33 @@ export const writesGitHub = (mode: Mode): boolean => mode === 'live';
 
 type Outcome = { problem: string } | { passed: string; warning?: string };
 
-async function call(run: CommandRunner, token: string, argv: string[]): Promise<Response | null> {
+interface Call {
+    /** null: gh was killed, timed out or printed too much; what it printed is not a whole answer. */
+    exitCode: number | null;
+    response: Response | null;
+}
+
+async function call(run: CommandRunner, token: string, argv: string[]): Promise<Call> {
     try {
-        const result: unknown = await run('gh', ['api', '-i', ...argv], { cwd: '/', githubToken: token });
-        return isRecord(result) ? parseResponse(result.stdout) : null;
+        const options = { cwd: '/', githubToken: token };
+        const result: unknown = await run('gh', ['api', '-i', ...argv, ...GITHUB_HOST], options);
+        if (!isRecord(result) || typeof result.exitCode !== 'number') return { exitCode: null, response: null };
+        return { exitCode: result.exitCode, response: parseResponse(result.stdout) };
     } catch {
-        return null;
+        return { exitCode: null, response: null };
     }
 }
 
-function refused(response: Response | null): string {
-    if (response === null) return 'no answer';
-    const wants = response.headers.get(ACCEPTED_HEADER);
-    return `HTTP ${response.status}${wants === undefined || wants === '' ? '' : `, GitHub asks for ${wants}`}`;
+/** A read that worked: gh exited 0 with a 200 and a JSON body. Anything else, partial output included, did not. */
+function read(c: Call): Response | null {
+    return c.exitCode === 0 && c.response?.status === 200 && c.response.body !== undefined ? c.response : null;
+}
+
+function refused(c: Call): string {
+    if (c.exitCode === null) return 'gh did not finish';
+    if (c.response === null) return `gh exit ${c.exitCode}, no answer`;
+    const wants = c.response.headers.get(ACCEPTED_HEADER);
+    return `HTTP ${c.response.status}${wants === undefined || wants === '' ? '' : `, GitHub asks for ${wants}`}`;
 }
 
 async function checkRepo(
@@ -150,10 +173,9 @@ async function checkRepo(
     if (!isToken(token)) return { problem: `${repo}: ${name} does not hold a token (empty, or has spaces)` };
     const fail = (what: string): Outcome => ({ problem: `${repo}: ${name} ${what}` });
 
-    const meta = await call(run, token, [`repos/${repo}`]);
-    if (meta === null || meta.status !== 200 || !isRecord(meta.body)) {
-        return fail(`cannot read the repository (${refused(meta)})`);
-    }
+    const metaCall = await call(run, token, [`repos/${repo}`]);
+    const meta = read(metaCall);
+    if (meta === null || !isRecord(meta.body)) return fail(`cannot read the repository (${refused(metaCall)})`);
     if (meta.body.full_name !== repo) {
         return fail(`reads the repository as ${String(meta.body.full_name)}: the config must spell it that way`);
     }
@@ -164,14 +186,15 @@ async function checkRepo(
     if (!isGitRef(branch)) return fail('cannot read the default branch name');
 
     const pulls = await call(run, token, [`repos/${repo}/pulls?state=open&per_page=1`]);
-    if (pulls?.status !== 200) return fail(`cannot read pull requests (${refused(pulls)})`);
-    const ref = await call(run, token, [`repos/${repo}/git/ref/heads/${branch}`]);
+    if (read(pulls) === null) return fail(`cannot read pull requests (${refused(pulls)})`);
+    const refCall = await call(run, token, [`repos/${repo}/git/ref/heads/${branch}`]);
+    const ref = read(refCall);
     const tip = ref !== null && isRecord(ref.body) && isRecord(ref.body.object) ? ref.body.object.sha : undefined;
-    if (ref?.status !== 200 || !isFullSha(tip)) return fail(`cannot read contents (${refused(ref)})`);
+    if (!isFullSha(tip)) return fail(`cannot read contents (${refused(refCall)})`);
     const status = await call(run, token, [`repos/${repo}/commits/${tip}/status?per_page=1`]);
-    if (status?.status !== 200) return fail(`cannot read commit statuses (${refused(status)})`);
+    if (read(status) === null) return fail(`cannot read commit statuses (${refused(status)})`);
     const runs = await call(run, token, [`repos/${repo}/actions/runs?per_page=1`]);
-    if (runs?.status !== 200) return fail(`cannot read Actions runs (${refused(runs)})`);
+    if (read(runs) === null) return fail(`cannot read Actions runs (${refused(runs)})`);
 
     const writes = probeWrites(target.mode);
     if (writes) {
@@ -184,8 +207,12 @@ async function checkRepo(
             '-f',
             `context=${PROBE_CONTEXT}`,
         ]);
-        if (post?.status === 403) return fail(`cannot write commit statuses (${refused(post)})`);
-        if (post?.status !== 422) return fail(`status write probe: ${refused(post)}, expected HTTP 422`);
+        // gh exits GH_HTTP_ERROR on a 4xx, so only that exit with a whole response is read at all.
+        const answer = post.exitCode === GH_HTTP_ERROR ? post.response : null;
+        if (answer?.status === 403) return fail(`cannot write commit statuses (${refused(post)})`);
+        const body = answer?.body;
+        const noCommit = answer?.status === 422 && isRecord(body) && body.message === NO_COMMIT;
+        if (!noCommit) return fail(`status write probe: ${refused(post)}, expected HTTP 422 "${NO_COMMIT}"`);
     }
 
     const until = expires === null ? 'no expiry' : `expires ${new Date(expires).toISOString().slice(0, 10)}`;

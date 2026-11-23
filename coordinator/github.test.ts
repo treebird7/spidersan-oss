@@ -516,8 +516,8 @@ describe('GitHub', () => {
         });
         expect(await github.readPr(ref)).toEqual({ kind: 'open', head: HEAD, base: BASE });
         expect(calls).toEqual([
-            ['gh', 'api', 'repos/owner/name/pulls/7'],
-            ['gh', 'api', 'repos/owner/name/git/ref/heads/main'],
+            ['gh', 'api', 'repos/owner/name/pulls/7', '--hostname', 'github.com'],
+            ['gh', 'api', 'repos/owner/name/git/ref/heads/main', '--hostname', 'github.com'],
         ]);
     });
 
@@ -600,6 +600,16 @@ describe('GitHub', () => {
             STATUS,
             STATUS,
         ]);
+    });
+
+    test("ci: a job that run 11's endpoint lists under run 12 is refused, though run 12 is listed (#361)", async () => {
+        const { github } = scripted({
+            [`${RUNS}&page=1`]: runsPage([wfRun(11), wfRun(12)]),
+            [`${JOBS}&page=1`]: jobsPage([wfJob('build', 'success', { run_id: 12 })]),
+            ['repos/owner/name/actions/runs/12/jobs?filter=all&per_page=100&page=1']: jobsPage([]),
+            [STATUS]: statuses([]),
+        });
+        expect(await github.ci(REPO, HEAD)).toBeNull();
     });
 
     test('ci: a run id that is not one is never put in a path', async () => {
@@ -712,7 +722,17 @@ describe('GitHub', () => {
             () => 'tok',
         );
         expect(await github.diff(ref)).toBe('diff --git a/x b/x\n');
-        expect(calls).toEqual([['gh', 'api', '-H', 'Accept: application/vnd.github.diff', 'repos/owner/name/pulls/7']]);
+        expect(calls).toEqual([
+            [
+                'gh',
+                'api',
+                '-H',
+                'Accept: application/vnd.github.diff',
+                'repos/owner/name/pulls/7',
+                '--hostname',
+                'github.com',
+            ],
+        ]);
         answer = { exitCode: 1, stdout: 'diff --git a/x b/x\n' };
         expect(await github.diff(ref)).toBeUndefined();
         answer = { exitCode: 0, stdout: '' };

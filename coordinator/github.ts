@@ -293,6 +293,12 @@ export function parseFiles(stdout: unknown, head: string, changedFiles: number):
 
 // ── Fetching ───────────────────────────────────────────────────────────────
 
+/**
+ * Every `gh api` call names its host: github.com, the host the tokens are for. Without it `gh` sends the request,
+ * and its own login for that host, wherever `GH_HOST` or its config points (sp-vkqq, prsan #361 P1-1).
+ */
+export const GITHUB_HOST = ['--hostname', 'github.com'] as const;
+
 /** The token for a repo's owner, or undefined when there is none. */
 export type TokenFor = (repo: string) => string | undefined;
 
@@ -324,6 +330,7 @@ export class GitHub {
             const githubToken = this.#token(repo);
             if (!isToken(githubToken)) return undefined;
             const argv = accept === undefined ? ['api', path] : ['api', '-H', `Accept: ${accept}`, path];
+            argv.push(...GITHUB_HOST);
             const result: unknown = await this.#run('gh', argv, { cwd: '/', githubToken });
             return isRecord(result) && result.exitCode === 0 ? result.stdout : undefined;
         } catch {
@@ -388,7 +395,8 @@ export class GitHub {
             if (!isId(id)) return null;
             const path = `repos/${repo}/actions/runs/${id}/jobs?filter=all&per_page=${PAGE}`;
             const list = await this.#all(repo, path, 'jobs');
-            if (list === null) return null;
+            // Each job must be of the run whose endpoint listed it, not merely of some listed run.
+            if (list === null || !list.every((job) => isRecord(job) && job.run_id === id)) return null;
             jobs.push(...list);
         }
         return ciObservations(runs, jobs, await this.#statuses(repo, head), head);

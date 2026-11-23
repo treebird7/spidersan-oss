@@ -33,7 +33,10 @@ paid and charges nothing; it says which one in its output.
 Every GitHub read the coordinator makes runs with the fine-grained token of the
 repo's owner, passed to that one `gh` run as `GH_TOKEN`. The host's own `gh`
 login, and any `GH_TOKEN` or `GITHUB_TOKEN` the coordinator was started with,
-are never used for them: a repo with no token is not read. (Triage and prsan
+are never used for them: a repo with no token is not read. Each such run is
+pinned to github.com (`gh api --hostname github.com`), gets no `GH_HOST`, and
+runs with an empty, private `GH_CONFIG_DIR`, so no stored login for any host
+can answer in the token's place. (Triage and prsan
 runs are separate: they still get an ambient `GH_TOKEN` if one is set.) The tokens need Metadata, Contents, Pull
 requests, Commit statuses and Actions read; a repo in `live` mode also needs
 Commit statuses write (and Contents and Pull requests write to merge).
@@ -41,8 +44,11 @@ Commit statuses write (and Contents and Pull requests write to merge).
 Before any pass, each repo's token is checked. It must be set, read the repo,
 its pull requests, its default branch, commit statuses and Actions runs, and not
 be expired. In `live` mode it must also be allowed to write commit statuses:
-the check posts a status to the all-zero sha, which GitHub refuses with 422 when
-the token may write and 403 when it may not, and creates nothing either way.
+the check posts a status to the all-zero sha, which GitHub refuses with 422
+"No commit found for SHA: 000…" when the token may write and 403 when it may
+not, and creates nothing either way. Any other answer is refused. A read passes
+only when `gh` exits 0 with a 200 and a JSON body: a killed or timed-out `gh`
+can leave a 200 header behind, and that is not an answer.
 Review-only and dry-run deliver through invoak and write nothing to GitHub, so
 their tokens are not asked to write. A token under 14 days from expiry starts
 with a warning. Anything else is exit 77, naming the repo, the variable and

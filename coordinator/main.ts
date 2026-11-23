@@ -198,26 +198,60 @@ const CLI_ENV = [
     'INVOAK_TOKEN',
 ] as const;
 
-/** What `gh` reads a token from by itself. A `gh` run gets none of them from the coordinator, only its repo's token. */
-const AMBIENT_GITHUB = new Set(['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']);
+/**
+ * What a `gh` run with a repo's token never inherits: a token `gh` would read by itself, a host to send it to, or
+ * a config directory whose stored login (`hosts.yml`, the keyring entries it names) could answer instead.
+ */
+const NOT_FOR_TOKEN_RUNS = new Set([
+    'GH_TOKEN',
+    'GITHUB_TOKEN',
+    'GH_ENTERPRISE_TOKEN',
+    'GITHUB_ENTERPRISE_TOKEN',
+    'GH_HOST',
+    'GH_CONFIG_DIR',
+    'XDG_CONFIG_HOME',
+]);
+
+/** A `gh` run's own token, and the empty private config directory it runs with. */
+export interface GhRun {
+    token: string;
+    configDir: string;
+}
 
 /**
  * The environment of one run: CLI_ENV for `gh` and `invoak`, REVIEWER_ENV plus `env` for a run that brings its own.
- * With `githubToken` (a `gh` run, sp-vkqq): CLI_ENV without any ambient GitHub token, and `GH_TOKEN` set to that one.
+ * With `gh` (a run that carries a repo's token, sp-vkqq): CLI_ENV without NOT_FOR_TOKEN_RUNS, `GH_TOKEN` set to that
+ * token, and `GH_CONFIG_DIR` set to an empty directory, so no stored login can stand in for it. The host is pinned
+ * in the argv (`--hostname github.com`, github.ts).
  */
 export function childEnv(
     own: Record<string, string | undefined>,
     extra: Readonly<Record<string, string>> | undefined,
-    githubToken?: string,
+    gh?: GhRun,
 ): Record<string, string | undefined> {
     const env: Record<string, string | undefined> = {};
     const names = extra === undefined ? CLI_ENV : REVIEWER_ENV;
     for (const name of names) {
-        if (githubToken !== undefined && AMBIENT_GITHUB.has(name)) continue;
+        if (gh !== undefined && NOT_FOR_TOKEN_RUNS.has(name)) continue;
         if (own[name] !== undefined) env[name] = own[name];
     }
-    if (githubToken !== undefined) env.GH_TOKEN = githubToken;
+    if (gh !== undefined) {
+        env.GH_TOKEN = gh.token;
+        env.GH_CONFIG_DIR = gh.configDir;
+    }
     return { ...env, ...extra };
+}
+
+let ghConfig: string | undefined;
+
+/** An empty directory only this process can read, for `gh` to take as its config: created once, removed at exit. */
+export function privateGhConfig(): string {
+    if (ghConfig === undefined) {
+        const dir = mkdtempSync(join(tmpdir(), 'coordinator-gh-'));
+        process.once('exit', () => rmSync(dir, { recursive: true, force: true }));
+        ghConfig = dir;
+    }
+    return ghConfig;
 }
 
 /** Runs an argv (never a shell string) with stdin closed. A kill, a timeout or too much output is `exitCode: null`. */
@@ -228,7 +262,13 @@ export const runCommand: CommandRunner = (command, argv, options) =>
             [...argv],
             {
                 cwd: options.cwd,
-                env: childEnv(process.env, options.env, options.githubToken),
+                env: childEnv(
+                    process.env,
+                    options.env,
+                    options.githubToken === undefined
+                        ? undefined
+                        : { token: options.githubToken, configDir: privateGhConfig() },
+                ),
                 timeout: options.timeoutMs ?? RUN_TIMEOUT_MS,
                 maxBuffer: MAX_OUTPUT,
                 encoding: 'utf8',

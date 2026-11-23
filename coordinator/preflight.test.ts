@@ -33,7 +33,12 @@ function healthy(): Record<string, string> {
         [`repos/${REPO}/git/ref/heads/main`]: http(200, { ref: 'refs/heads/main', object: { type: 'commit', sha: TIP } }),
         [`repos/${REPO}/commits/${TIP}/status?per_page=1`]: http(200, { sha: TIP, statuses: [] }),
         [`repos/${REPO}/actions/runs?per_page=1`]: http(200, { total_count: 0, workflow_runs: [] }),
-        [`repos/${REPO}/statuses/${ZERO}`]: http(422, { message: `No commit found for SHA: ${ZERO}` }),
+        // The body GitHub really sends, 2026-11-23.
+        [`repos/${REPO}/statuses/${ZERO}`]: http(422, {
+            message: `No commit found for SHA: ${ZERO}`,
+            documentation_url: 'https://docs.github.com/rest/commits/statuses#create-a-commit-status',
+            status: '422',
+        }),
     };
 }
 
@@ -107,7 +112,10 @@ describe('preflight', () => {
             'state=pending',
             '-f',
             'context=spidersan/preflight',
+            '--hostname',
+            'github.com',
         ]);
+        expect(done.calls.every((c) => c.argv.slice(-2).join(' ') === '--hostname github.com')).toBe(true);
     });
 
     test.each<Mode>(['dry-run', 'review-only'])('%s writes nothing to GitHub: no write probe', async (mode) => {
@@ -155,7 +163,7 @@ describe('preflight', () => {
     });
 
     test.each([
-        ['no answer at all', undefined, 'no answer'],
+        ['no answer at all', undefined, 'gh exit 1, no answer'],
         ['a 404 (no access to the repo)', http(404), 'HTTP 404'],
     ])('the repository read gives %s: refused', async (_name, answer, why) => {
         const table: Record<string, string> = healthy();
@@ -205,6 +213,45 @@ describe('preflight', () => {
         const done = await check(table);
         expect(done.problems).toHaveLength(1);
         expect(done.problems[0]).toContain('status write probe');
+    });
+
+    test('a 422 for another reason than the missing commit is no proof of write access (#361)', async () => {
+        const other = http(422, { message: 'Validation Failed', errors: [{ field: 'state', code: 'invalid' }] });
+        const done = await check({ ...healthy(), [`repos/${REPO}/statuses/${ZERO}`]: other });
+        expect(done.problems).toHaveLength(1);
+        expect(done.problems[0]).toContain('status write probe: HTTP 422');
+    });
+
+    test('the missing-commit body under another status than 422: refused', async () => {
+        const body = { message: `No commit found for SHA: ${ZERO}`, status: '422' };
+        const done = await check({ ...healthy(), [`repos/${REPO}/statuses/${ZERO}`]: http(400, body) });
+        expect(done.problems[0]).toContain('status write probe: HTTP 400');
+    });
+
+    test('a 422 with the right body but an exit gh never gives for one: refused', async () => {
+        const { run } = scripted(healthy());
+        const exit0 = (c: string, argv: readonly string[], o: { githubToken?: string }) => {
+            const r = run(c, argv, o);
+            return argv.includes('POST') ? { ...r, exitCode: 0 } : r;
+        };
+        const done = await preflight(exit0, [{ repo: REPO, mode: 'live' }], TOKENS, ENV, NOW);
+        expect(done.problems[0]).toContain('status write probe');
+    });
+
+    test.each([
+        ['killed after a 200 header (exit null)', null, 'HTTP/2.0 200 OK\r\nContent-Type: application/json'],
+        ['killed mid-body (exit null)', null, 'HTTP/2.0 200 OK\r\n\r\n{"total_count": 1, "workf'],
+        ['a 200 with exit 1', 1, http(200, { total_count: 0, workflow_runs: [] })],
+        ['exit 0 with a body that is not JSON', 0, 'HTTP/2.0 200 OK\r\n\r\n{"total'],
+        ['exit 0 with a status that is not 200', 0, http(203, { total_count: 0, workflow_runs: [] })],
+    ])('the Actions runs probe %s: refused (#361 P1-2)', async (_name, exitCode, stdout) => {
+        const { run } = scripted(healthy());
+        const partial = (c: string, argv: readonly string[], o: { githubToken?: string }) =>
+            argv.some((a) => a.includes('actions/runs')) ? { exitCode, stdout } : run(c, argv, o);
+        const done = await preflight(partial, [{ repo: REPO, mode: 'dry-run' }], TOKENS, ENV, NOW);
+        expect(done.problems).toHaveLength(1);
+        expect(done.problems[0]).toContain('cannot read Actions runs');
+        expect(done.passed).toEqual([]);
     });
 
     test('an expired token: refused', async () => {
