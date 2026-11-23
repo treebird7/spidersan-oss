@@ -31,7 +31,7 @@
 import { tokenVariable } from './config';
 import type { LoopConfig } from './config';
 import { isFullSha } from './decide';
-import { GITHUB_HOST, branchPath, branchTip, isBranch, isToken } from './github';
+import { GITHUB_HOST, branchPath, branchTip, combinedStatus, isBranch, isToken } from './github';
 import type { TokenFor } from './github';
 import { isRepoSlug } from './readers';
 import type { CommandRunner } from './readers';
@@ -196,10 +196,9 @@ async function checkRepo(
     // The ref asked for, naming a commit (github.ts branchTip, shared with readPr), not any sha in any body (#361).
     const tip = ref === null ? null : branchTip(ref.body, defaultBranch);
     if (tip === null) return fail(`cannot read contents (${refused(refCall)})`);
-    const status = await call(run, token, [`repos/${repo}/commits/${tip}/status?per_page=1`]);
-    const combined = read(status)?.body;
-    // The combined status of that commit, not any JSON (#361); no statuses at all is fine.
-    if (!isRecord(combined) || combined.sha !== tip || !Array.isArray(combined.statuses)) {
+    // The page and the validator the runtime uses (github.ts combinedStatus), so both agree on what is readable.
+    const status = await call(run, token, [`repos/${repo}/commits/${tip}/status?per_page=100`]);
+    if (combinedStatus(read(status)?.body, tip) === null) {
         return fail(`cannot read commit statuses (${refused(status)})`);
     }
     const runs = await call(run, token, [`repos/${repo}/actions/runs?per_page=1`]);

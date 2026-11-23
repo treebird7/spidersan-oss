@@ -25,6 +25,7 @@ function http(status: number, body: unknown = {}, headers: Record<string, string
 }
 
 const META = { full_name: REPO, default_branch: 'main' };
+const STATUS_PATH = `repos/${REPO}/commits/${TIP}/status?per_page=100`;
 const EXPIRES = { 'Github-Authentication-Token-Expiration': '2027-02-18 00:00:00 UTC' };
 
 /** Every answer a healthy token gets, keyed by the path argument. */
@@ -33,7 +34,7 @@ function healthy(): Record<string, string> {
         [`repos/${REPO}`]: http(200, META, EXPIRES),
         [`repos/${REPO}/pulls?state=open&per_page=1`]: http(200, []),
         [`repos/${REPO}/git/ref/heads/main`]: http(200, { ref: 'refs/heads/main', object: { type: 'commit', sha: TIP } }),
-        [`repos/${REPO}/commits/${TIP}/status?per_page=1`]: http(200, { sha: TIP, statuses: [] }),
+        [STATUS_PATH]: http(200, { sha: TIP, state: 'pending', total_count: 0, statuses: [] }),
         [`repos/${REPO}/actions/runs?per_page=1`]: http(200, { total_count: 0, workflow_runs: [] }),
         // The body GitHub really sends, 2026-11-23.
         [`repos/${REPO}/statuses/${ZERO}`]: http(422, {
@@ -166,7 +167,7 @@ describe('preflight', () => {
         ['the repository', `repos/${REPO}`, 'cannot read the repository'],
         ['pull requests', `repos/${REPO}/pulls?state=open&per_page=1`, 'cannot read pull requests'],
         ['contents', `repos/${REPO}/git/ref/heads/main`, 'cannot read contents'],
-        ['commit statuses', `repos/${REPO}/commits/${TIP}/status?per_page=1`, 'cannot read commit statuses'],
+        ['commit statuses', `repos/${REPO}/commits/${TIP}/status?per_page=100`, 'cannot read commit statuses'],
         ['Actions runs', `repos/${REPO}/actions/runs?per_page=1`, 'cannot read Actions runs'],
     ])('a 403 on %s: refused, naming what GitHub asks for, never the token', async (_name, path, why) => {
         const done = await check({ ...healthy(), [path]: deny(403) });
@@ -211,23 +212,38 @@ describe('preflight', () => {
     test.each<[string, string, unknown, string]>([
         ['pulls as {}', `repos/${REPO}/pulls?state=open&per_page=1`, {}, 'cannot read pull requests'],
         ['pulls as null', `repos/${REPO}/pulls?state=open&per_page=1`, null, 'cannot read pull requests'],
-        ['the status as {}', `repos/${REPO}/commits/${TIP}/status?per_page=1`, {}, 'cannot read commit statuses'],
-        ['the status as null', `repos/${REPO}/commits/${TIP}/status?per_page=1`, null, 'cannot read commit statuses'],
+        ['the status as {}', `repos/${REPO}/commits/${TIP}/status?per_page=100`, {}, 'cannot read commit statuses'],
+        ['the status as null', `repos/${REPO}/commits/${TIP}/status?per_page=100`, null, 'cannot read commit statuses'],
         [
             'the status of another commit',
-            `repos/${REPO}/commits/${TIP}/status?per_page=1`,
+            `repos/${REPO}/commits/${TIP}/status?per_page=100`,
             { sha: 'c'.repeat(40), statuses: [] },
             'cannot read commit statuses',
         ],
         [
             'a status with no list',
-            `repos/${REPO}/commits/${TIP}/status?per_page=1`,
+            `repos/${REPO}/commits/${TIP}/status?per_page=100`,
             { sha: TIP, statuses: null },
             'cannot read commit statuses',
         ],
     ])('%s: refused (#361)', async (_name, path, body, why) => {
         const done = await check({ ...healthy(), [path]: http(200, body) });
         expect(done.problems).toEqual([`${REPO}: OWNER_PAT ${why} (HTTP 200)`]);
+    });
+
+    test.each<[string, unknown]>([
+        ['no total_count (#361 round 6)', { sha: TIP, statuses: [] }],
+        ['a total_count the list does not reach', { sha: TIP, total_count: 2, statuses: [{ context: 'x', state: 's' }] }],
+        ['a status with no state', { sha: TIP, total_count: 1, statuses: [{ context: 'x' }] }],
+    ])('a combined status with %s: refused, as the runtime reader refuses it', async (_name, body) => {
+        const done = await check({ ...healthy(), [STATUS_PATH]: http(200, body) });
+        expect(done.problems).toEqual([`${REPO}: OWNER_PAT cannot read commit statuses (HTTP 200)`]);
+    });
+
+    test('a combined status with statuses on it passes', async () => {
+        const body = { sha: TIP, total_count: 1, statuses: [{ context: 'ci/x', state: 'success' }] };
+        const done = await check({ ...healthy(), [STATUS_PATH]: http(200, body) });
+        expect(done.problems).toEqual([]);
     });
 
     test('an Actions answer that is JSON but not a runs listing: refused (#361)', async () => {

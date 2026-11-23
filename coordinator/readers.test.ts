@@ -445,11 +445,13 @@ describe('triage → Triage', () => {
 
 const ACTIONS = 15368; // GitHub Actions' app id, as in Envoak's MERGE_GATE.md protection payload
 const OTHER_APP = 99;
+/** A job (a check run) from `appId`; with no app id, a commit status. */
 const obs = (context: string, state = 'success', appId: unknown = ACTIONS, headSha: unknown = HEAD) => ({
     context,
     appId,
     headSha,
     state,
+    source: appId === null ? 'status' : 'job',
 });
 const REQUIRED = [
     { context: 'typecheck · build · test', appId: ACTIONS },
@@ -523,6 +525,37 @@ describe('CI → CiEvidence', () => {
         const observations = [obs('typecheck · build · test'), obs('Dependency and secret scan'), obs('spidersan/merge-gate', 'failure', null)];
         expect(readCi(ci({ observations, gateContext: 'spidersan/merge-gate' }))).toEqual(GREEN);
         expect(readCi(ci({ observations }))).toEqual(RED);
+    });
+
+    test('only a commit status is the gate: a failed run of its name is judged, not dropped (#361 round 6)', () => {
+        const run = { ...obs('spidersan/merge-gate', 'failure', null), source: 'run' };
+        const observations = [obs('typecheck · build · test'), obs('Dependency and secret scan'), run];
+        expect(readCi(ci({ observations, gateContext: 'spidersan/merge-gate' }))).toEqual(RED);
+        const gateToo = [...observations, obs('spidersan/merge-gate', 'success', null)];
+        expect(readCi(ci({ observations: gateToo, gateContext: 'spidersan/merge-gate' }))).toEqual(RED);
+    });
+
+    test('a status of the gate name from another app than the gate posts with is not the gate: no verdict', () => {
+        const observations = [obs('typecheck · build · test'), obs('Dependency and secret scan'), obs('gate', 'failure', null)];
+        expect(readCi(ci({ observations, gateContext: 'gate', gateAppId: 99 }))).toEqual(INCOMPLETE);
+        expect(readCi(ci({ observations, gateContext: 'gate', gateAppId: null }))).toEqual(GREEN);
+    });
+
+    test('a job named like the gate is not the gate: no verdict', () => {
+        const gateNamedJob = obs('spidersan/merge-gate');
+        const observations = [obs('typecheck · build · test'), obs('Dependency and secret scan'), gateNamedJob];
+        expect(readCi(ci({ observations, gateContext: 'spidersan/merge-gate' }))).toEqual(INCOMPLETE);
+    });
+
+    test('a run never satisfies a required context, even under its name and app (#361 round 6)', () => {
+        const asRun = { ...obs('Dependency and secret scan'), source: 'run' };
+        const observations = [obs('typecheck · build · test'), asRun];
+        expect(readCi(ci({ observations }))).toEqual(INCOMPLETE);
+    });
+
+    test.each([undefined, 'check', 7])('an observation whose source is %p is no CI evidence', (source) => {
+        const observations = [obs('typecheck · build · test'), { ...obs('Dependency and secret scan'), source }];
+        expect(readCi(ci({ observations }))).toBeNull();
     });
 
     test.each<[string, Partial<CiInput>]>([

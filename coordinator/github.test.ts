@@ -284,6 +284,7 @@ describe('ciObservations → readCi (sp-cabo)', () => {
             appId: ACTIONS,
             headSha: REAL_HEAD,
             state: 'success',
+            source: 'job',
         });
         const settings = { required: REAL_REQUIRED, gateContext: null, gateAppId: null, testedMerge: null };
         const ci = input && readCi({ ...input, ...settings });
@@ -300,12 +301,14 @@ describe('ciObservations → readCi (sp-cabo)', () => {
             appId: null,
             headSha: RERUN_HEAD,
             state: 'cancelled',
+            source: 'run',
         });
         expect(input?.observations).toContainEqual({
             context: 'typecheck · build · test',
             appId: ACTIONS,
             headSha: RERUN_HEAD,
             state: 'cancelled',
+            source: 'job',
         });
         expect(input?.observations).not.toContainEqual(expect.objectContaining({ state: 'failure' }));
     });
@@ -335,6 +338,7 @@ describe('ciObservations → readCi (sp-cabo)', () => {
             appId: null,
             headSha: HEAD,
             state: 'failure',
+            source: 'run',
         });
     });
 
@@ -351,7 +355,7 @@ describe('ciObservations → readCi (sp-cabo)', () => {
 
     test('a successful run with jobs adds nothing of its own', () => {
         expect(ciObservations(one, [wfJob('build', 'success')], statuses([]), HEAD)?.observations).toEqual([
-            { context: 'build', appId: ACTIONS, headSha: HEAD, state: 'success' },
+            { context: 'build', appId: ACTIONS, headSha: HEAD, state: 'success', source: 'job' },
         ]);
     });
 
@@ -366,7 +370,7 @@ describe('ciObservations → readCi (sp-cabo)', () => {
         const run = wfRun(RUN, { run_attempt: 2, conclusion: 'cancelled' });
         const input = ciObservations([run], [wfJob('build', 'success')], statuses([]), HEAD);
         expect(input?.observations).toEqual([
-            { context: `actions run ${RUN}`, appId: null, headSha: HEAD, state: 'cancelled' },
+            { context: `actions run ${RUN}`, appId: null, headSha: HEAD, state: 'cancelled', source: 'run' },
         ]);
         expect(judge([run], [wfJob('build', 'success')])).toEqual(verdict(false, false));
     });
@@ -439,6 +443,7 @@ describe('ciObservations → readCi (sp-cabo)', () => {
             appId: null,
             headSha: HEAD,
             state: 'pending',
+            source: 'run',
         });
     });
 
@@ -472,13 +477,23 @@ describe('ciObservations → readCi (sp-cabo)', () => {
         const red = statuses([{ context: 'ci/x', state: 'failure' }]);
         const input = ciObservations(one, [wfJob('build', 'success')], red, HEAD);
         expect(input?.observations).toEqual([
-            { context: 'build', appId: ACTIONS, headSha: HEAD, state: 'success' },
-            { context: 'ci/x', appId: null, headSha: HEAD, state: 'failure' },
+            { context: 'build', appId: ACTIONS, headSha: HEAD, state: 'success', source: 'job' },
+            { context: 'ci/x', appId: null, headSha: HEAD, state: 'failure', source: 'status' },
         ]);
         expect(input?.expectedCount).toBe(2);
         expect(judge(one, [wfJob('build', 'success')], statuses([{ context: 'ci/x', state: 'failure' }]))).toEqual(
             verdict(true, false),
         );
+    });
+
+    test('a status named like a failed run, used as the gate, does not hide the run (#361 round 6)', () => {
+        const failed = wfRun(RUN, { conclusion: 'failure' });
+        const gateNamedLikeRun = statuses([{ context: `actions run ${RUN}`, state: 'success' }]);
+        const input = ciObservations([failed], [wfJob('build', 'success')], gateNamedLikeRun, HEAD);
+        const read = (gateContext: string) =>
+            input && readCi({ ...input, required, gateContext, gateAppId: null, testedMerge: null });
+        expect(read(`actions run ${RUN}`)).toEqual(verdict(true, false));
+        expect(read(`actions run ${RUN}`)?.green).toBe(false);
     });
 
     test('the coordinator gate status is left out of the verdict', () => {

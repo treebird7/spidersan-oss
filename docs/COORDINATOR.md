@@ -62,8 +62,11 @@ the write check for every repo whatever its mode, so a token can be checked
 before its repo goes live. It takes no lock and opens no database. The flag
 goes first: the launcher refuses anything after the config path (exit 78).
 
-CI is read from each head's Actions runs and jobs and its commit statuses, not
-from check runs, which a fine-grained token cannot read on a private repo. A
+The CI reader (`GitHub.ci`, `readCi`) is implemented and tested, but not wired
+into the loop yet: a pass still sets `ci: null` (`coordinator/loop.ts`), so no
+decision reads CI today. When it does, CI is read from each head's Actions runs
+and jobs and its commit statuses, not from check runs, which a fine-grained
+token cannot read on a private repo. A
 re-run counts at the run's current attempt only: an older attempt's jobs are
 history, and a re-run cancelled before any job started reads as cancelled. A
 workflow run that did not succeed counts by its own conclusion too, so a failed

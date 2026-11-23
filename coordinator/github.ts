@@ -17,7 +17,7 @@
 import { isFullSha } from './decide';
 import type { GateRead, PrRead, PrRef } from './effects';
 import { isPrNumber, isRepoSlug } from './readers';
-import type { CiInput, CommandRunner, TouchesInput } from './readers';
+import type { CI_SOURCES, CiInput, CommandRunner, TouchesInput } from './readers';
 
 export const PAGE = 100;
 
@@ -171,10 +171,11 @@ export const MAX_PAGES = 10;
 
 interface Observation {
     context: string;
-    /** A commit status carries no app id. */
+    /** A commit status, and a run's own state, carry no app id. */
     appId: number | null;
     headSha: string;
     state: string;
+    source: (typeof CI_SOURCES)[number];
 }
 
 /** One page of `{total_count, <key>: [...]}`, or null when it is not that. */
@@ -189,7 +190,15 @@ export function listingPage(stdout: unknown, key: string): { total: number; entr
 
 /** Latest commit statuses for `head`, or null when the listing is not whole. */
 function statusEntries(stdout: unknown, head: string): { context: string; state: string }[] | null {
-    const doc = parse(stdout);
+    return combinedStatus(parse(stdout), head);
+}
+
+/**
+ * A parsed `GET /repos/{repo}/commits/{head}/status?per_page=100` → its statuses, or null when it is not that
+ * commit's combined status whole: `total_count` must equal the list, and a full page is not whole. The preflight
+ * probe reads it through this too, so a response the runtime refuses never passes the preflight (#361 round 6).
+ */
+export function combinedStatus(doc: unknown, head: string): { context: string; state: string }[] | null {
     if (!isRecord(doc) || doc.sha !== head || !Array.isArray(doc.statuses)) return null;
     if (doc.total_count !== doc.statuses.length || doc.statuses.length >= PAGE) return null;
     const out: { context: string; state: string }[] = [];
@@ -273,20 +282,21 @@ export function ciObservations(
         ids.add(job.id);
         if (job.run_attempt !== run.attempt) continue;
         run.jobs += 1;
-        observations.push({ context: job.name, appId: ACTIONS_APP_ID, headSha: head, state });
+        observations.push({ context: job.name, appId: ACTIONS_APP_ID, headSha: head, state, source: 'job' });
     }
     for (const run of runs as readonly Record<string, unknown>[]) {
         const state = stateOf(run.status, run.conclusion) as string;
         // A run's own state stands beside its jobs unless it is plainly success with jobs listed: a failed workflow
         // whose listed jobs all passed (it failed expanding a later one) is not green (#361).
         if (state !== 'success' || current.get(run.id as number)?.jobs === 0) {
-            observations.push({ context: `actions run ${run.id as number}`, appId: null, headSha: head, state });
+            const context = `actions run ${run.id as number}`;
+            observations.push({ context, appId: null, headSha: head, state, source: 'run' });
         }
     }
     const latestStatuses = statusEntries(statuses, head);
     if (latestStatuses === null) return null;
     for (const s of latestStatuses) {
-        observations.push({ context: s.context, appId: null, headSha: head, state: s.state });
+        observations.push({ context: s.context, appId: null, headSha: head, state: s.state, source: 'status' });
     }
     return { headSha: head, observations, expectedCount: observations.length };
 }

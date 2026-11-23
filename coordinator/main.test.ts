@@ -64,7 +64,8 @@ function fakeInvoak(stdout: string): void {
 function fakeGh(status?: number): void {
     const ok = (body: string) => `printf 'HTTP/2.0 200 OK\\r\\nContent-Type: application/json\\r\\n\\r\\n%s' '${body}'`;
     /** With the file `not-a-listing-<what>` present, that endpoint answers 200 `{}`. */
-    const notListing = (what: string) => `[ -f '${join(dir, `not-a-listing-${what}`)}' ] && { ${ok('{}')}; exit 0; };`;
+    const notListing = (what: string, body = '{}') =>
+        `[ -f '${join(dir, `not-a-listing-${what}`)}' ] && { ${ok(body)}; exit 0; };`;
     const answer =
         status !== undefined
             ? `printf 'HTTP/2.0 ${status} No\\r\\nX-Accepted-GitHub-Permissions: statuses=read\\r\\n\\r\\n{}'; exit 1`
@@ -76,7 +77,8 @@ function fakeGh(status?: number): void {
                       `[ -f '${join(dir, 'partial')}' ] && { printf 'HTTP/2.0 200 OK\\r\\n'; kill -9 $$; }; ` +
                       `${notListing('runs')} ${ok(EMPTY_RUNS)} ;;`,
                   `  *pulls?state=open*) ${notListing('pulls')} ${ok('[]')} ;;`,
-                  `  *commits/*/status*) ${notListing('status')} ${ok(EMPTY_STATUS)} ;;`,
+                  `  *commits/*/status*) ${notListing('status')} ` +
+                      `${notListing('status-total', NO_TOTAL)} ${ok(EMPTY_STATUS)} ;;`,
                   `  *git/ref/heads/main*) ${ok(JSON.stringify(MAIN_REF))} ;;`,
                   `  *"api -i repos/owner/name --hostname github.com") ${ok(JSON.stringify(META))} ;;`,
                   `  *) ${ok('{}')} ;;`,
@@ -123,6 +125,7 @@ const LEAKS = [
 ].join('');
 const EMPTY_RUNS = JSON.stringify({ total_count: 0, workflow_runs: [] });
 /** The shape of a real combined status with none on the commit (2026-11-20), for the tip the fake ref names. */
+const NO_TOTAL = JSON.stringify({ state: 'pending', sha: 'b'.repeat(40), statuses: [] });
 const EMPTY_STATUS = JSON.stringify({ state: 'pending', sha: 'b'.repeat(40), total_count: 0, statuses: [] });
 const NO_COMMIT = JSON.stringify({ message: `No commit found for SHA: ${'0'.repeat(40)}`, status: '422' });
 
@@ -401,6 +404,7 @@ describe('GitHub tokens (sp-vkqq)', () => {
         ['runs', 'Actions runs'],
         ['pulls', 'pull requests'],
         ['status', 'commit statuses'],
+        ['status-total', 'commit statuses'],
     ])('a 200 {} where the %s listing should be: exit 77, database not created (#361)', (what, named) => {
         writeConfig({ hostId: HOST, stateDb: db, ...withRepo() });
         fakeGh();
