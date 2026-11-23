@@ -77,14 +77,15 @@ function fakeGh(status?: number): void {
                       `${notListing('runs')} ${ok(EMPTY_RUNS)} ;;`,
                   `  *pulls?state=open*) ${notListing('pulls')} ${ok('[]')} ;;`,
                   `  *commits/*/status*) ${notListing('status')} ${ok(EMPTY_STATUS)} ;;`,
-                  `  *git/ref/heads/main*) ${ok(JSON.stringify({ object: { sha: 'b'.repeat(40) } }))} ;;`,
+                  `  *git/ref/heads/main*) ${ok(JSON.stringify(MAIN_REF))} ;;`,
                   `  *"api -i repos/owner/name --hostname github.com") ${ok(JSON.stringify(META))} ;;`,
                   `  *) ${ok('{}')} ;;`,
                   'esac',
               ].join('\n');
+    const log = join(dir, 'gh.log');
     writeFileSync(
         join(dir, 'bin', 'gh'),
-        `#!/bin/sh\nprintf '%s|%s|%s\\n' "$GH_TOKEN" "$GH_HOST" "$*" >> '${join(dir, 'gh.log')}'\n${answer}\n`,
+        `#!/bin/sh\nprintf '%s|%s|%s|%s\\n' "$GH_TOKEN" "${LEAKS}" "$GH_HOST" "$*" >> '${log}'\n${answer}\n`,
         { mode: 0o755 },
     );
 }
@@ -111,6 +112,15 @@ function withRepo(): Record<string, unknown> {
 }
 
 const META = { full_name: 'owner/name', default_branch: 'main' };
+const MAIN_REF = { ref: 'refs/heads/main', object: { type: 'commit', sha: 'b'.repeat(40) } };
+/** In the fake gh's log line: a letter for each foreign credential it was given (none, expected). */
+const LEAKS = [
+    '${INVOAK_TOKEN:+I}',
+    '${INVOAK_API_URL:+U}',
+    '${ENVOAK_AGENT_LABEL:+E}',
+    '${ENVOAK_BROKER_SOCK:+B}',
+    '${CLAUDE_CODE_OAUTH_TOKEN:+C}',
+].join('');
 const EMPTY_RUNS = JSON.stringify({ total_count: 0, workflow_runs: [] });
 /** The shape of a real combined status with none on the commit (2026-11-20), for the tip the fake ref names. */
 const EMPTY_STATUS = JSON.stringify({ state: 'pending', sha: 'b'.repeat(40), total_count: 0, statuses: [] });
@@ -358,12 +368,18 @@ describe('GitHub tokens (sp-vkqq)', () => {
             GH_TOKEN: 'ambient',
             GITHUB_TOKEN: 'ambient',
             GH_HOST: 'ghe.example.com',
+            INVOAK_TOKEN: 'invoak-secret',
+            INVOAK_API_URL: 'https://invoak.example',
+            ENVOAK_AGENT_LABEL: 'spidersan',
+            ENVOAK_BROKER_SOCK: '/tmp/broker.sock',
+            CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-x',
         });
         expect(done.err).toBe('');
         expect(done.exit).toBe(0);
         const log = readFileSync(join(dir, 'gh.log'), 'utf8').trim().split('\n');
         expect(log.length).toBeGreaterThan(5);
-        expect(log.every((line) => line.startsWith(`${TOKEN}||`))).toBe(true);
+        // No invoak, envoak or reviewer credential reached any gh run: the preflight's or the pass's (#361).
+        expect(log.every((line) => line.startsWith(`${TOKEN}|||`))).toBe(true);
         // Pinned to github.com whatever GH_HOST says (#361 P1-1): reads in the pass and the preflight alike.
         expect(log.every((line) => line.endsWith(' --hostname github.com'))).toBe(true);
         expect(log.some((line) => line.includes('|api repos/owner/name/pulls?state=open&per_page=100 '))).toBe(true);
@@ -421,8 +437,16 @@ describe('GitHub tokens (sp-vkqq)', () => {
     test('--preflight: the check alone, writes probed too; no lock, no database', () => {
         writeConfig({ hostId: 'not-this-machine', stateDb: db, ...withRepo() });
         fakeGh();
-        const done = run(['bun', MAIN, '--preflight', config], { OWNER_PAT: TOKEN });
+        const done = run(['bun', MAIN, '--preflight', config], {
+            OWNER_PAT: TOKEN,
+            INVOAK_TOKEN: 'invoak-secret',
+            ENVOAK_AGENT_LABEL: 'spidersan',
+            ENVOAK_BROKER_SOCK: '/tmp/broker.sock',
+            CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-x',
+        });
         expect(done.exit).toBe(0);
+        const lines = readFileSync(join(dir, 'gh.log'), 'utf8').trim().split('\n');
+        expect(lines.every((line) => line.startsWith(`${TOKEN}|||`))).toBe(true);
         expect(done.out).toContain('owner/name: OWNER_PAT reads and writes statuses (dry-run, no expiry)');
         expect(readFileSync(join(dir, 'gh.log'), 'utf8')).toContain('statuses/0000');
         expect(existsSync(db)).toBe(false);
@@ -479,29 +503,34 @@ describe('childEnv', () => {
         expect(childEnv(own, undefined)).toEqual({ PATH: '/bin', HOME: '/h', ENVOAK_AGENT_LABEL: 'spidersan' });
     });
 
-    test('a gh run gets its token, an empty config, and no ambient token, host or config (sp-vkqq, #361 P1-1)', () => {
+    test('a gh run gets GH_ENV, its token and an empty config; nothing of invoak or envoak (#361)', () => {
         const ambient = {
             ...own,
+            TMPDIR: '/t',
             GH_TOKEN: 'ambient',
             GITHUB_TOKEN: 'ambient',
             GH_ENTERPRISE_TOKEN: 'ambient',
             GH_HOST: 'ghe.example.com',
             GH_CONFIG_DIR: '/c',
             XDG_CONFIG_HOME: '/x',
+            INVOAK_TOKEN: 'i',
+            INVOAK_API_URL: 'u',
+            ENVOAK_BROKER_SOCK: 's',
+            USER: 'me',
         };
         expect(childEnv(ambient, undefined, { token: 'mapped', configDir: '/private' })).toEqual({
             PATH: '/bin',
             HOME: '/h',
-            ENVOAK_AGENT_LABEL: 'spidersan',
+            TMPDIR: '/t',
             GH_TOKEN: 'mapped',
             GH_CONFIG_DIR: '/private',
         });
         // invoak's run is unchanged.
         expect(childEnv(ambient, undefined)).toMatchObject({
             GH_TOKEN: 'ambient',
-            GITHUB_TOKEN: 'ambient',
             GH_HOST: 'ghe.example.com',
-            GH_CONFIG_DIR: '/c',
+            INVOAK_TOKEN: 'i',
+            ENVOAK_AGENT_LABEL: 'spidersan',
         });
     });
 

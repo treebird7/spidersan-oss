@@ -31,7 +31,7 @@
 import { tokenVariable } from './config';
 import type { LoopConfig } from './config';
 import { isFullSha } from './decide';
-import { GITHUB_HOST, branchPath, isToken } from './github';
+import { GITHUB_HOST, branchPath, branchTip, isBranch, isToken } from './github';
 import type { TokenFor } from './github';
 import { isRepoSlug } from './readers';
 import type { CommandRunner } from './readers';
@@ -179,21 +179,23 @@ async function checkRepo(
     const metaCall = await call(run, token, [`repos/${repo}`]);
     const meta = read(metaCall);
     if (meta === null || !isRecord(meta.body)) return fail(`cannot read the repository (${refused(metaCall)})`);
-    if (meta.body.full_name !== repo) {
-        return fail(`reads the repository as ${String(meta.body.full_name)}: the config must spell it that way`);
-    }
+    const fullName = meta.body.full_name;
+    if (typeof fullName !== 'string') return fail('reads a repository with no name (full_name)');
+    if (fullName !== repo) return fail(`reads the repository as ${fullName}: the config must spell it that way`);
     const expires = parseExpiry(meta.headers.get(EXPIRY_HEADER));
     if (expires !== null && Number.isNaN(expires)) return fail(`has an expiry GitHub states in a form not read here`);
     if (expires !== null && expires <= now) return fail(`expired at ${new Date(expires).toISOString()}`);
-    const branch = branchPath(meta.body.default_branch);
-    if (branch === null) return fail('cannot read the default branch name');
+    const defaultBranch = meta.body.default_branch;
+    const branch = branchPath(defaultBranch);
+    if (branch === null || !isBranch(defaultBranch)) return fail('cannot read the default branch name');
 
     const pulls = await call(run, token, [`repos/${repo}/pulls?state=open&per_page=1`]);
     if (!Array.isArray(read(pulls)?.body)) return fail(`cannot read pull requests (${refused(pulls)})`);
     const refCall = await call(run, token, [`repos/${repo}/git/ref/heads/${branch}`]);
     const ref = read(refCall);
-    const tip = ref !== null && isRecord(ref.body) && isRecord(ref.body.object) ? ref.body.object.sha : undefined;
-    if (!isFullSha(tip)) return fail(`cannot read contents (${refused(refCall)})`);
+    // The ref asked for, naming a commit (github.ts branchTip, shared with readPr), not any sha in any body (#361).
+    const tip = ref === null ? null : branchTip(ref.body, defaultBranch);
+    if (tip === null) return fail(`cannot read contents (${refused(refCall)})`);
     const status = await call(run, token, [`repos/${repo}/commits/${tip}/status?per_page=1`]);
     const combined = read(status)?.body;
     // The combined status of that commit, not any JSON (#361); no statuses at all is fine.

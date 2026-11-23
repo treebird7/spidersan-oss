@@ -199,18 +199,11 @@ export const CLI_ENV = [
 ] as const;
 
 /**
- * What a `gh` run with a repo's token never inherits: a token `gh` would read by itself, a host to send it to, or
- * a config directory whose stored login (`hosts.yml`, the keyring entries it names) could answer instead.
+ * All a `gh` run with a repo's token inherits (prsan #361): what finding and running `gh` takes, nothing from
+ * invoak or envoak, and no GitHub token, host or config of its own. `gh api` worked with none of these at all
+ * (2026-11-23, `env -i` with only GH_TOKEN and GH_CONFIG_DIR); PATH finds `gh`, the rest are its runtime's.
  */
-const NOT_FOR_TOKEN_RUNS = new Set([
-    'GH_TOKEN',
-    'GITHUB_TOKEN',
-    'GH_ENTERPRISE_TOKEN',
-    'GITHUB_ENTERPRISE_TOKEN',
-    'GH_HOST',
-    'GH_CONFIG_DIR',
-    'XDG_CONFIG_HOME',
-]);
+export const GH_ENV = ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL'] as const;
 
 /** A `gh` run's own token, and the empty private config directory it runs with. */
 export interface GhRun {
@@ -220,9 +213,9 @@ export interface GhRun {
 
 /**
  * The environment of one run: CLI_ENV for `gh` and `invoak`, REVIEWER_ENV plus `env` for a run that brings its own.
- * With `gh` (a run that carries a repo's token, sp-vkqq): CLI_ENV without NOT_FOR_TOKEN_RUNS, `GH_TOKEN` set to that
- * token, and `GH_CONFIG_DIR` set to an empty directory, so no stored login can stand in for it. The host is pinned
- * in the argv (`--hostname github.com`, github.ts).
+ * With `gh` (a run that carries a repo's token, sp-vkqq): GH_ENV only, `GH_TOKEN` set to that token, and
+ * `GH_CONFIG_DIR` set to an empty directory, so no stored login can stand in for it. The host is pinned in the argv
+ * (`--hostname github.com`, github.ts).
  */
 export function childEnv(
     own: Record<string, string | undefined>,
@@ -230,11 +223,8 @@ export function childEnv(
     gh?: GhRun,
 ): Record<string, string | undefined> {
     const env: Record<string, string | undefined> = {};
-    const names = extra === undefined ? CLI_ENV : REVIEWER_ENV;
-    for (const name of names) {
-        if (gh !== undefined && NOT_FOR_TOKEN_RUNS.has(name)) continue;
-        if (own[name] !== undefined) env[name] = own[name];
-    }
+    const names = gh !== undefined ? GH_ENV : extra === undefined ? CLI_ENV : REVIEWER_ENV;
+    for (const name of names) if (own[name] !== undefined) env[name] = own[name];
     if (gh !== undefined) {
         env.GH_TOKEN = gh.token;
         env.GH_CONFIG_DIR = gh.configDir;

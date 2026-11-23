@@ -199,7 +199,10 @@ describe('preflight', () => {
         const table = healthy();
         delete table[`repos/${REPO}/git/ref/heads/main`];
         table[`repos/${REPO}`] = http(200, { ...META, default_branch: '_release' }, EXPIRES);
-        table[`repos/${REPO}/git/ref/heads/_release`] = http(200, { object: { sha: TIP } });
+        table[`repos/${REPO}/git/ref/heads/_release`] = http(200, {
+            ref: 'refs/heads/_release',
+            object: { type: 'commit', sha: TIP },
+        });
         const done = await check(table);
         expect(done.problems).toEqual([]);
         expect(done.calls.some((c) => c.argv.includes(`repos/${REPO}/git/ref/heads/_release`))).toBe(true);
@@ -242,6 +245,25 @@ describe('preflight', () => {
         const meta = http(200, META, EXPIRES).replace('"main"', '"x\\ud800"');
         const done = await check({ ...healthy(), [`repos/${REPO}`]: meta });
         expect(done.problems).toEqual([`${REPO}: OWNER_PAT cannot read the default branch name`]);
+    });
+
+    test.each<[string, unknown]>([
+        ['another ref with a valid commit', { ref: 'refs/heads/other', object: { type: 'commit', sha: TIP } }],
+        ['the branch, but a tag object', { ref: 'refs/heads/main', object: { type: 'tag', sha: TIP } }],
+        ['no ref at all', { object: { type: 'commit', sha: TIP } }],
+    ])('contents: %s is refused (#361)', async (_name, body) => {
+        const done = await check({ ...healthy(), [`repos/${REPO}/git/ref/heads/main`]: http(200, body) });
+        expect(done.problems).toEqual([`${REPO}: OWNER_PAT cannot read contents (HTTP 200)`]);
+    });
+
+    test.each<[string, unknown]>([
+        ['an object that cannot be printed', { toString: null }],
+        ['a number', 7],
+        ['nothing', undefined],
+    ])('a full_name that is %s: refused with a problem, not a throw (#361)', async (_name, fullName) => {
+        const meta = http(200, { ...META, full_name: fullName }, EXPIRES);
+        const done = await check({ ...healthy(), [`repos/${REPO}`]: meta });
+        expect(done.problems).toEqual([`${REPO}: OWNER_PAT reads a repository with no name (full_name)`]);
     });
 
     test('a branch tip that is not a full sha: refused', async () => {

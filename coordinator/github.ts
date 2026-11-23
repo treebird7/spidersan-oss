@@ -143,11 +143,18 @@ export function parsePr(stdout: unknown, ref: PrRef): PrDetail {
     return { kind: 'merged', head, mergeCommit: doc.merge_commit_sha };
 }
 
+/**
+ * A parsed `GET /repos/{repo}/git/ref/heads/{branch}` → that branch's tip commit; null when it names another ref or
+ * a non-commit object.
+ */
+export function branchTip(doc: unknown, branch: string): string | null {
+    if (!isRecord(doc) || doc.ref !== `refs/heads/${branch}` || !isRecord(doc.object)) return null;
+    return doc.object.type === 'commit' && isFullSha(doc.object.sha) ? doc.object.sha : null;
+}
+
 /** `GET /repos/{repo}/git/ref/heads/{ref}` → the branch tip, or null. */
 export function parseBranchTip(stdout: unknown, baseRef: string): string | null {
-    const doc = parse(stdout);
-    if (!isRecord(doc) || doc.ref !== `refs/heads/${baseRef}` || !isRecord(doc.object)) return null;
-    return doc.object.type === 'commit' && isFullSha(doc.object.sha) ? doc.object.sha : null;
+    return branchTip(parse(stdout), baseRef);
 }
 
 // ── 3. CI: Actions jobs and commit statuses → readCi's observations ────────

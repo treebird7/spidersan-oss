@@ -34,9 +34,10 @@ Every GitHub read the coordinator makes runs with the fine-grained token of the
 repo's owner, passed to that one `gh` run as `GH_TOKEN`. The host's own `gh`
 login, and any `GH_TOKEN` or `GITHUB_TOKEN` the coordinator was started with,
 are never used for them: a repo with no token is not read. Each such run is
-pinned to github.com (`gh api --hostname github.com`), gets no `GH_HOST`, and
-runs with an empty, private `GH_CONFIG_DIR`, so no stored login for any host
-can answer in the token's place. (Triage and prsan
+pinned to github.com (`gh api --hostname github.com`) and gets only `PATH`,
+`HOME`, `TMPDIR`, `LANG` and `LC_ALL` from the coordinator (no invoak, envoak or
+reviewer variable, no `GH_HOST`), plus its token and an empty, private
+`GH_CONFIG_DIR`, so no stored login for any host can answer in the token's place. (Triage and prsan
 runs are separate: they still get an ambient `GH_TOKEN` if one is set.) The tokens need Metadata, Contents, Pull
 requests, Commit statuses and Actions read; a repo in `live` mode also needs
 Commit statuses write (and Contents and Pull requests write to merge).
