@@ -67,7 +67,9 @@ function fakeGh(status?: number): void {
                   'case "$*" in',
                   `  *statuses/0000000000000000000000000000000000000000*) printf 'HTTP/2.0 422 Unprocessable Entity\\r\\n\\r\\n%s' '${NO_COMMIT}'; exit 1 ;;`,
                   // The coordinator passes gh no variable of the test's own, so a file switches this on.
-                  `  *actions/runs*) [ -f '${join(dir, 'partial')}' ] && { printf 'HTTP/2.0 200 OK\\r\\n'; kill -9 $$; }; ${ok('{}')} ;;`,
+                  `  *actions/runs*) ` +
+                      `[ -f '${join(dir, 'partial')}' ] && { printf 'HTTP/2.0 200 OK\\r\\n'; kill -9 $$; }; ` +
+                      `[ -f '${join(dir, 'not-a-listing')}' ] && { ${ok('{}')}; exit 0; }; ${ok(EMPTY_RUNS)} ;;`,
                   `  *git/ref/heads/main*) ${ok(JSON.stringify({ object: { sha: 'b'.repeat(40) } }))} ;;`,
                   `  *"api -i repos/owner/name --hostname github.com") ${ok(JSON.stringify(META))} ;;`,
                   `  *) ${ok('{}')} ;;`,
@@ -102,6 +104,7 @@ function withRepo(): Record<string, unknown> {
 }
 
 const META = { full_name: 'owner/name', default_branch: 'main' };
+const EMPTY_RUNS = JSON.stringify({ total_count: 0, workflow_runs: [] });
 const NO_COMMIT = JSON.stringify({ message: `No commit found for SHA: ${'0'.repeat(40)}`, status: '422' });
 
 function writeConfig(value: unknown): void {
@@ -366,6 +369,16 @@ describe('GitHub tokens (sp-vkqq)', () => {
         const done = run([LAUNCHER, config], { OWNER_PAT: TOKEN });
         expect(done.exit).toBe(EXIT_CREDENTIALS);
         expect(done.err).toContain('owner/name: OWNER_PAT cannot read Actions runs (gh did not finish)');
+        expect(existsSync(db)).toBe(false);
+    });
+
+    test('an Actions answer of {} is no listing: exit 77, database not created (#361)', () => {
+        writeConfig({ hostId: HOST, stateDb: db, ...withRepo() });
+        fakeGh();
+        writeFileSync(join(dir, 'not-a-listing'), '');
+        const done = run([LAUNCHER, config], { OWNER_PAT: TOKEN });
+        expect(done.exit).toBe(EXIT_CREDENTIALS);
+        expect(done.err).toContain('owner/name: OWNER_PAT cannot read Actions runs (HTTP 200)');
         expect(existsSync(db)).toBe(false);
     });
 

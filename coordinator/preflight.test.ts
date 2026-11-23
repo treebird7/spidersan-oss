@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { EXPIRY_WARN_MS, parseExpiry, parseResponse, preflight, tokensFrom } from './preflight';
+import { EXPIRY_WARN_MS, branchPath, parseExpiry, parseResponse, preflight, tokensFrom } from './preflight';
 import type { CommandResult } from './readers';
 import type { Mode } from './types';
 
@@ -177,9 +177,30 @@ describe('preflight', () => {
         expect(done.problems[0]).toContain('reads the repository as Owner/Name');
     });
 
-    test('a default branch that cannot be an argv element: refused', async () => {
-        const done = await check({ ...healthy(), [`repos/${REPO}`]: http(200, { ...META, default_branch: '-x' }) });
+    test('a default branch that would climb out of the ref path: refused', async () => {
+        const done = await check({ ...healthy(), [`repos/${REPO}`]: http(200, { ...META, default_branch: 'a/../b' }) });
         expect(done.problems).toEqual([`${REPO}: OWNER_PAT cannot read the default branch name`]);
+    });
+
+    test('a default branch with a leading underscore is a branch: its ref is read, and it passes (#361)', async () => {
+        const table = healthy();
+        delete table[`repos/${REPO}/git/ref/heads/main`];
+        table[`repos/${REPO}`] = http(200, { ...META, default_branch: '_release' }, EXPIRES);
+        table[`repos/${REPO}/git/ref/heads/_release`] = http(200, { object: { sha: TIP } });
+        const done = await check(table);
+        expect(done.problems).toEqual([]);
+        expect(done.calls.some((c) => c.argv.includes(`repos/${REPO}/git/ref/heads/_release`))).toBe(true);
+    });
+
+    test('an Actions answer that is JSON but not a runs listing: refused (#361)', async () => {
+        const done = await check({ ...healthy(), [`repos/${REPO}/actions/runs?per_page=1`]: http(200, {}) });
+        expect(done.problems).toEqual([`${REPO}: OWNER_PAT cannot read Actions runs (HTTP 200)`]);
+        const path = `repos/${REPO}/actions/runs?per_page=1`;
+        const runsAnswer = (body: unknown) => check({ ...healthy(), [path]: http(200, body) });
+        expect((await runsAnswer({ total_count: 0, workflow_runs: null })).problems).toHaveLength(1);
+        expect((await runsAnswer({ workflow_runs: [] })).problems).toHaveLength(1);
+        expect((await runsAnswer(null)).problems).toHaveLength(1);
+        expect((await runsAnswer({ total_count: 0, workflow_runs: [] })).problems).toEqual([]);
     });
 
     test('a branch tip that is not a full sha: refused', async () => {
@@ -305,5 +326,26 @@ describe('tokensFrom', () => {
         const token = tokensFrom({ owner: 'OWNER_PAT' }, { OWNER_PAT: 't', GH_TOKEN: 'ambient' });
         expect(token(REPO)).toBe('t');
         expect(token('other/name')).toBeUndefined();
+    });
+});
+
+describe('branchPath', () => {
+    test.each([
+        ['main', 'main'],
+        ['_release', '_release'],
+        ['.hidden', '.hidden'],
+        ['release/1.0', 'release/1.0'],
+        ['feat/a#b?c', 'feat/a%23b%3Fc'],
+        ['-dash', '-dash'],
+    ])('%s → %s', (name, path) => {
+        expect(branchPath(name)).toBe(path);
+    });
+
+    test.each(['', '..', 'a/../b', 'a//b', '/a', 'a/', 'a b', 'a\nb', 'a/./b'])('%j: null', (name) => {
+        expect(branchPath(name)).toBeNull();
+    });
+
+    test.each([undefined, 7, null])('%p: null', (name) => {
+        expect(branchPath(name)).toBeNull();
     });
 });

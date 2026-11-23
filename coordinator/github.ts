@@ -192,18 +192,23 @@ function stateOf(status: unknown, conclusion: unknown): string | null {
  * of the wrong shape, or one that names another commit or run.
  *
  * Re-runs. A re-run is a new attempt of the same workflow run: the same run id,
- * `run_attempt` one higher. `filter=all` lists every attempt's jobs. For each run and
- * job name only the jobs of the highest attempt that has that name count: a failure
- * an attempt superseded is not read again. "Latest" is the attempt number, not a
- * time: a job that "re-run failed jobs" carried into the new attempt keeps its old
- * timestamps (Envoak run 43420197808, attempt 2, 2026-11-13). Two runs on one head
- * (a `push` and a `pull_request` run of one workflow) are not attempts of each other:
- * both count, and `readCi` wants a required context to agree across them.
+ * `run_attempt` one higher, and the runs listing reports the run at its current
+ * attempt. `filter=all` lists every attempt's jobs, and only the jobs of the run's
+ * current attempt count; an older attempt's job, green or red, is history. That
+ * loses nothing GitHub still holds: "re-run failed jobs" copies the jobs it does not
+ * re-run into the new attempt, with new ids and their old timestamps (Envoak run
+ * 43420197808, attempt 2, 2026-11-13), so timestamps are no order either. A job a
+ * re-run dropped keeps no stale green, and a required job only an older attempt has
+ * is missing: no verdict. A job of an attempt newer than the run's means the runs
+ * listing is older than the jobs listing: null. Two runs on one head (a `push` and a
+ * `pull_request` run of one workflow) are not attempts of each other: both count,
+ * and `readCi` wants a required context to agree across them.
  *
  * A run that has not completed adds one `pending` observation, so the commit is not
- * complete while it runs, whatever jobs it lists so far. A completed run with no jobs
- * (a workflow that failed to start) adds its own conclusion. Neither can stand in
- * for a required context: they carry no app id. A required context that is neither a
+ * complete while it runs, whatever jobs it lists so far. A completed run whose current
+ * attempt has no jobs (a workflow that failed to start, or a re-run cancelled before a
+ * job started) adds its own conclusion. Neither can stand in for a required context:
+ * they carry no app id. A required context that is neither a
  * job nor a status has no observation at all, and `readCi` gives it no verdict.
  *
  * ponytail: check runs from apps other than Actions (Socket Security on
@@ -219,35 +224,29 @@ export function ciObservations(
 ): Observations | null {
     if (!isFullSha(head)) return null;
     const observations: Observation[] = [];
-    const listed = new Map<number, number>(); // run id → its jobs
+    /** Run id → its current attempt, and how many jobs of that attempt are listed. */
+    const current = new Map<number, { attempt: number; jobs: number }>();
     for (const run of runs) {
-        if (!isRecord(run) || !isId(run.id) || run.head_sha !== head || listed.has(run.id)) return null;
+        if (!isRecord(run) || !isId(run.id) || run.head_sha !== head || current.has(run.id)) return null;
         if (!isId(run.run_attempt) || stateOf(run.status, run.conclusion) === null) return null;
-        listed.set(run.id, 0);
+        current.set(run.id, { attempt: run.run_attempt, jobs: 0 });
     }
-    const latest = new Map<string, { attempt: number; jobs: Observation[] }>();
     const ids = new Set<number>();
     for (const job of jobs) {
         if (!isRecord(job) || !isId(job.id) || ids.has(job.id) || job.head_sha !== head) return null;
-        if (!isId(job.run_id) || !listed.has(job.run_id) || !isId(job.run_attempt)) return null;
+        const run = isId(job.run_id) ? current.get(job.run_id) : undefined;
+        if (run === undefined || !isId(job.run_attempt) || job.run_attempt > run.attempt) return null;
         if (typeof job.name !== 'string' || job.name === '') return null;
         const state = stateOf(job.status, job.conclusion);
         if (state === null) return null;
         ids.add(job.id);
-        listed.set(job.run_id, (listed.get(job.run_id) ?? 0) + 1);
-        const key = `${job.run_id}\n${job.name}`;
-        const seen = latest.get(key);
-        const observed = { context: job.name, appId: ACTIONS_APP_ID, headSha: head, state };
-        if (seen === undefined || job.run_attempt > seen.attempt) {
-            latest.set(key, { attempt: job.run_attempt, jobs: [observed] });
-        } else if (job.run_attempt === seen.attempt) {
-            seen.jobs.push(observed);
-        }
+        if (job.run_attempt !== run.attempt) continue;
+        run.jobs += 1;
+        observations.push({ context: job.name, appId: ACTIONS_APP_ID, headSha: head, state });
     }
-    for (const entry of latest.values()) observations.push(...entry.jobs);
     for (const run of runs as readonly Record<string, unknown>[]) {
         const state = stateOf(run.status, run.conclusion) as string;
-        if (state === 'pending' || listed.get(run.id as number) === 0) {
+        if (state === 'pending' || current.get(run.id as number)?.jobs === 0) {
             observations.push({ context: `actions run ${run.id as number}`, appId: null, headSha: head, state });
         }
     }

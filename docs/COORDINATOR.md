@@ -61,7 +61,8 @@ goes first: the launcher refuses anything after the config path (exit 78).
 
 CI is read from each head's Actions runs and jobs and its commit statuses, not
 from check runs, which a fine-grained token cannot read on a private repo. A
-re-run counts at its latest attempt. Check runs from other apps (Socket
+re-run counts at the run's current attempt only: an older attempt's jobs are
+history, and a re-run cancelled before any job started reads as cancelled. Check runs from other apps (Socket
 Security) are not seen; no repo requires one.
 
 ## Config

@@ -33,7 +33,7 @@ import type { LoopConfig } from './config';
 import { isFullSha } from './decide';
 import { GITHUB_HOST, isToken } from './github';
 import type { TokenFor } from './github';
-import { isGitRef, isRepoSlug } from './readers';
+import { isRepoSlug } from './readers';
 import type { CommandRunner } from './readers';
 import type { Mode } from './types';
 
@@ -106,6 +106,17 @@ export function parseExpiry(value: string | undefined): number | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * A branch name as a URL path under `git/ref/heads/`: each `/`-separated part percent-encoded. Null when it is not a
+ * name GitHub could hold: empty, an empty, `.` or `..` part, or a control character. A leading `_` or `.` is a name.
+ */
+export function branchPath(name: unknown): string | null {
+    if (typeof name !== 'string' || name === '' || name.length > 255 || /[\x00-\x20\x7f]/.test(name)) return null;
+    const parts = name.split('/');
+    if (parts.some((part) => part === '' || part === '.' || part === '..')) return null;
+    return parts.map(encodeURIComponent).join('/');
 }
 
 export interface PreflightRepo {
@@ -182,8 +193,8 @@ async function checkRepo(
     const expires = parseExpiry(meta.headers.get(EXPIRY_HEADER));
     if (expires !== null && Number.isNaN(expires)) return fail(`has an expiry GitHub states in a form not read here`);
     if (expires !== null && expires <= now) return fail(`expired at ${new Date(expires).toISOString()}`);
-    const branch = meta.body.default_branch;
-    if (!isGitRef(branch)) return fail('cannot read the default branch name');
+    const branch = branchPath(meta.body.default_branch);
+    if (branch === null) return fail('cannot read the default branch name');
 
     const pulls = await call(run, token, [`repos/${repo}/pulls?state=open&per_page=1`]);
     if (read(pulls) === null) return fail(`cannot read pull requests (${refused(pulls)})`);
@@ -194,7 +205,11 @@ async function checkRepo(
     const status = await call(run, token, [`repos/${repo}/commits/${tip}/status?per_page=1`]);
     if (read(status) === null) return fail(`cannot read commit statuses (${refused(status)})`);
     const runs = await call(run, token, [`repos/${repo}/actions/runs?per_page=1`]);
-    if (read(runs) === null) return fail(`cannot read Actions runs (${refused(runs)})`);
+    const listing = read(runs)?.body;
+    // The listing's own shape, not any JSON: an empty listing passes, `{}` does not (#361).
+    if (!isRecord(listing) || typeof listing.total_count !== 'number' || !Array.isArray(listing.workflow_runs)) {
+        return fail(`cannot read Actions runs (${refused(runs)})`);
+    }
 
     const writes = probeWrites(target.mode);
     if (writes) {

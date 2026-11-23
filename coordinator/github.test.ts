@@ -313,6 +313,31 @@ describe('ciObservations → readCi (sp-cabo)', () => {
         expect(judge([wfRun(RUN, { run_attempt: 3 })], jobs)).toEqual(verdict(true, false));
     });
 
+    test('a re-run cancelled before any job started: the run is cancelled, attempt 1 green is history (#361)', () => {
+        const run = wfRun(RUN, { run_attempt: 2, conclusion: 'cancelled' });
+        const input = ciObservations([run], [wfJob('build', 'success')], statuses([]), HEAD);
+        expect(input?.observations).toEqual([
+            { context: `actions run ${RUN}`, appId: null, headSha: HEAD, state: 'cancelled' },
+        ]);
+        expect(judge([run], [wfJob('build', 'success')])).toEqual(verdict(false, false));
+    });
+
+    test('a job a re-run dropped keeps no stale green: a required job only attempt 1 has is no verdict', () => {
+        const jobs = [wfJob('lint', 'success'), wfJob('build', 'success', { id: 2, run_attempt: 2 })];
+        const req = [...required, { context: 'lint', appId: ACTIONS }];
+        expect(judge([wfRun(RUN, { run_attempt: 2 })], jobs, statuses([]), req)).toEqual(verdict(false, false));
+    });
+
+    test('nor a stale red: only the current attempt is judged', () => {
+        const jobs = [wfJob('audit', 'failure'), wfJob('build', 'success', { id: 2, run_attempt: 2 })];
+        expect(judge([wfRun(RUN, { run_attempt: 2 })], jobs)).toEqual(verdict(true, true));
+    });
+
+    test('a job of an attempt newer than the run says (the runs listing is older): null', () => {
+        const jobs = [wfJob('build', 'success', { run_attempt: 2 })];
+        expect(ciObservations([wfRun(RUN)], jobs, statuses([]), HEAD)).toBeNull();
+    });
+
     test('the attempt number decides, not the order GitHub lists jobs in', () => {
         const jobs = [
             wfJob('build', 'success', { id: 2, run_attempt: 2 }),
