@@ -21,6 +21,11 @@ const BASE = sha('b');
 const MERGE = sha('c');
 const REPO = 'owner/name';
 const ACTIONS = 15368;
+/** Tokens of the shape GitHub issues (a fine-grained PAT: github_pat_ + 82 characters). */
+const pat = (c: string): string => `github_pat_${c.repeat(82)}`;
+const TOK = pat('t');
+const OWNER_TOKEN = pat('o');
+const OTHER_TOKEN = pat('x');
 
 const json = (value: unknown): string => JSON.stringify(value);
 
@@ -189,7 +194,7 @@ describe('parseInventory', () => {
         ['a base in another repo', listed({ base: { ref: 'main', repo: { full_name: 'x/y' } } })],
         ['a closed entry', listed({ state: 'closed' })],
         ['no draft flag', listed({ draft: undefined })],
-        ['a base ref starting with a dash', listed({ base: { ref: '-x', repo: { full_name: REPO } } })],
+        ['a base ref that climbs out of its path', listed({ base: { ref: 'a/../b', repo: { full_name: REPO } } })],
         ['a string', 'nope'],
     ])('an entry with %s is dropped and marks the listing incomplete', (_name, bad) => {
         const inventory = parseInventory(json([listed({ number: 8 }), bad]), REPO);
@@ -229,6 +234,7 @@ describe('parsePr', () => {
         ['an unknown state', json(pull({ state: 'locked' }))],
         ['no merged flag', json(pull({ merged: undefined }))],
         ['no file count', json(pull({ changed_files: undefined }))],
+        ['a base that climbs out of its path', json(pull({ base: { ref: 'a/../b', repo: { full_name: REPO } } }))],
         ['no output', undefined],
     ])('%s is unknown', (_name, stdout) => {
         expect(parsePr(stdout, ref)).toEqual({ kind: 'unknown' });
@@ -287,7 +293,14 @@ describe('ciObservations → readCi (sp-cabo)', () => {
     test('shape of a real partial re-run (jobs?filter=all), Envoak, 2026-11-20: only attempt 2 counts', () => {
         const none = json({ sha: RERUN_HEAD, total_count: 0, statuses: [] });
         const input = ciObservations([RERUN_RUN], RERUN_JOBS, none, RERUN_HEAD);
-        expect(input?.observations).toHaveLength(4);
+        // attempt 2's four jobs, and the run itself: it ended cancelled.
+        expect(input?.observations).toHaveLength(5);
+        expect(input?.observations).toContainEqual({
+            context: `actions run ${RERUN_ID}`,
+            appId: null,
+            headSha: RERUN_HEAD,
+            state: 'cancelled',
+        });
         expect(input?.observations).toContainEqual({
             context: 'typecheck · build · test',
             appId: ACTIONS,
@@ -311,6 +324,42 @@ describe('ciObservations → readCi (sp-cabo)', () => {
             wfJob('build', 'failure', { id: 2, run_attempt: 3 }),
         ];
         expect(judge([wfRun(RUN, { run_attempt: 3 })], jobs)).toEqual(verdict(true, false));
+    });
+
+    test('a failed current attempt whose listed jobs all passed is not green (#361)', () => {
+        const run = wfRun(RUN, { conclusion: 'failure' });
+        expect(judge([run], [wfJob('build', 'success')])).toEqual(verdict(true, false));
+        const input = ciObservations([run], [wfJob('build', 'success')], statuses([]), HEAD);
+        expect(input?.observations).toContainEqual({
+            context: `actions run ${RUN}`,
+            appId: null,
+            headSha: HEAD,
+            state: 'failure',
+        });
+    });
+
+    test.each(['cancelled', 'timed_out', 'startup_failure', 'action_required', 'stale'])(
+        'a %s current attempt with passing jobs: no verdict',
+        (conclusion) => {
+            expect(judge([wfRun(RUN, { conclusion })], [wfJob('build', 'success')])).toEqual(verdict(false, false));
+        },
+    );
+
+    test.each(['neutral', 'skipped'])('a %s run with passing jobs: judged as readCi judges the state, green', (c) => {
+        expect(judge([wfRun(RUN, { conclusion: c })], [wfJob('build', 'success')])).toEqual(verdict(true, true));
+    });
+
+    test('a successful run with jobs adds nothing of its own', () => {
+        expect(ciObservations(one, [wfJob('build', 'success')], statuses([]), HEAD)?.observations).toEqual([
+            { context: 'build', appId: ACTIONS, headSha: HEAD, state: 'success' },
+        ]);
+    });
+
+    test('a run named like the required job cannot stand in for it, even green with no jobs', () => {
+        expect(judge([wfRun(RUN, { name: 'build' })], [])).toEqual(verdict(false, false));
+        expect(judge([wfRun(RUN, { name: 'build', conclusion: 'failure' })], [wfJob('lint', 'success')])).toEqual(
+            verdict(false, false),
+        );
     });
 
     test('a re-run cancelled before any job started: the run is cancelled, attempt 1 green is history (#361)', () => {
@@ -529,7 +578,7 @@ describe('GitHub', () => {
             if (answer === undefined) return { exitCode: 1, stdout: json({ message: 'Not Found' }) };
             return { exitCode: 0, stdout: typeof answer === 'function' ? answer() : answer };
         };
-        return { github: new GitHub(runner, () => 'tok'), calls };
+        return { github: new GitHub(runner, () => TOK), calls };
     }
     const ref = { repo: REPO, pr: 7 };
     const tip = json({ ref: 'refs/heads/main', object: { type: 'commit', sha: BASE } });
@@ -544,6 +593,34 @@ describe('GitHub', () => {
             ['gh', 'api', 'repos/owner/name/pulls/7', '--hostname', 'github.com'],
             ['gh', 'api', 'repos/owner/name/git/ref/heads/main', '--hostname', 'github.com'],
         ]);
+    });
+
+    test('a PR on a base GitHub allows but git refs used to refuse (_release): listed and read (#361)', async () => {
+        const base = { ref: '_release', sha: BASE, repo: { full_name: REPO } };
+        const { github, calls } = scripted({
+            'repos/owner/name/pulls?state=open&per_page=100': json([listed({ base })]),
+            'repos/owner/name/pulls/7': json(pull({ base })),
+            'repos/owner/name/git/ref/heads/_release': json({
+                ref: 'refs/heads/_release',
+                object: { type: 'commit', sha: BASE },
+            }),
+        });
+        expect((await github.inventory(REPO)).prs.map((pr) => pr.baseRef)).toEqual(['_release']);
+        expect(await github.readPr(ref)).toEqual({ kind: 'open', head: HEAD, base: BASE });
+        expect(calls.map((c) => c[2])).toContain('repos/owner/name/git/ref/heads/_release');
+    });
+
+    test('readPr: a base with characters a URL path must not carry raw is encoded', async () => {
+        const base = { ref: 'rel/a#b', sha: BASE, repo: { full_name: REPO } };
+        const { github, calls } = scripted({
+            'repos/owner/name/pulls/7': json(pull({ base })),
+            'repos/owner/name/git/ref/heads/rel/a%23b': json({
+                ref: 'refs/heads/rel/a#b',
+                object: { type: 'commit', sha: BASE },
+            }),
+        });
+        expect(await github.readPr(ref)).toEqual({ kind: 'open', head: HEAD, base: BASE });
+        expect(calls.map((c) => c[2])).toContain('repos/owner/name/git/ref/heads/rel/a%23b');
     });
 
     test('readPr: open with an unreadable base tip is unknown', async () => {
@@ -564,7 +641,7 @@ describe('GitHub', () => {
             () => {
                 throw new Error('spawn failed');
             },
-            () => 'tok',
+            () => TOK,
         );
         expect(await throwing.readPr(ref)).toEqual({ kind: 'unknown' });
         expect(await throwing.inventory(REPO)).toEqual({ complete: false, prs: [] });
@@ -574,7 +651,7 @@ describe('GitHub', () => {
 
     test('a non-zero exit is not read, whatever it printed', async () => {
         const merged = json(pull({ state: 'closed', merged: true, merge_commit_sha: MERGE }));
-        const failed = (exitCode: number | null) => new GitHub(() => ({ exitCode, stdout: merged }), () => 'tok');
+        const failed = (exitCode: number | null) => new GitHub(() => ({ exitCode, stdout: merged }), () => TOK);
         expect(await failed(1).readPr(ref)).toEqual({ kind: 'unknown' });
         expect(await failed(null).readPr(ref)).toEqual({ kind: 'unknown' });
     });
@@ -744,7 +821,7 @@ describe('GitHub', () => {
                 calls.push([command, ...argv]);
                 return answer;
             },
-            () => 'tok',
+            () => TOK,
         );
         expect(await github.diff(ref)).toBe('diff --git a/x b/x\n');
         expect(calls).toEqual([
@@ -778,13 +855,13 @@ describe('GitHub', () => {
         }
 
         test("each repo is read with its own owner's token", async () => {
-            const tokens: Record<string, string> = { owner: 'owner-token', other: 'other-token' };
+            const tokens: Record<string, string> = { owner: OWNER_TOKEN, other: OTHER_TOKEN };
             const { github, seen } = withTokens((repo) => tokens[repo.split('/')[0] ?? '']);
             await github.readPr(ref);
             await github.detail({ repo: 'other/name', pr: 7 });
             expect(seen).toEqual([
-                { path: 'repos/owner/name/pulls/7', token: 'owner-token' },
-                { path: 'repos/other/name/pulls/7', token: 'other-token' },
+                { path: 'repos/owner/name/pulls/7', token: OWNER_TOKEN },
+                { path: 'repos/other/name/pulls/7', token: OTHER_TOKEN },
             ]);
         });
 

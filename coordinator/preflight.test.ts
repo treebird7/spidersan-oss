@@ -1,16 +1,18 @@
 import { describe, expect, test } from 'bun:test';
-import { EXPIRY_WARN_MS, branchPath, parseExpiry, parseResponse, preflight, tokensFrom } from './preflight';
+import { branchPath } from './github';
+import { EXPIRY_WARN_MS, parseExpiry, parseResponse, preflight, tokensFrom } from './preflight';
 import type { CommandResult } from './readers';
 import type { Mode } from './types';
 
 const REPO = 'owner/name';
-const TOKEN = 'github_pat_secret_value';
+const TOKEN = `github_pat_${'s'.repeat(82)}`;
 const TIP = 'b'.repeat(40);
 const ZERO = '0'.repeat(40);
 const NOW = Date.parse('2026-11-20T12:00:00Z');
 const DAY = 24 * 60 * 60 * 1000;
 const TOKENS = { owner: 'OWNER_PAT' };
 const ENV = { OWNER_PAT: TOKEN };
+const NOT_GITHUB = 'OWNER_PAT does not hold a GitHub token (github_pat_, ghp_, gho_, ghs_ or ghu_)';
 
 /**
  * `gh api -i` output: the status line, the headers as gh prints them (re-cased), a blank line, the body.
@@ -129,12 +131,23 @@ describe('preflight', () => {
     test.each([
         ['not set', {}, 'OWNER_PAT is not set'],
         ['empty (gh would use its own login)', { OWNER_PAT: '' }, 'OWNER_PAT is not set'],
-        ['not one token', { OWNER_PAT: 'a b' }, 'OWNER_PAT does not hold a token'],
+        ['with a space', { OWNER_PAT: 'github_pat_a b' }, NOT_GITHUB],
+        ["another service's credential (#361)", { OWNER_PAT: `sk-ant-oat01-${'d'.repeat(60)}` }, NOT_GITHUB],
+        ['a GitHub prefix with too little after it', { OWNER_PAT: 'github_pat_short' }, NOT_GITHUB],
+        ['a refresh token (ghr_), which is no API token', { OWNER_PAT: `ghr_${'r'.repeat(36)}` }, NOT_GITHUB],
         ['in GH_TOKEN only', { GH_TOKEN: TOKEN }, 'OWNER_PAT is not set'],
-    ])('a token %s: refused before gh is asked', async (_name, env, why) => {
+    ])('a token %s: refused before gh is asked, the value never printed', async (_name, env, why) => {
         const done = await check(healthy(), 'live', env);
-        expect(done.problems).toEqual([`${REPO}: ${why}${why.endsWith('token') ? ' (empty, or has spaces)' : ''}`]);
+        expect(done.problems).toEqual([`${REPO}: ${why}`]);
         expect(done.calls).toEqual([]);
+        for (const value of Object.values(env)) if (value !== '') expect(done.problems.join()).not.toContain(value);
+    });
+
+    test.each([
+        ['a classic PAT', `ghp_${'c'.repeat(36)}`],
+        ['an app installation token', `ghs_${'s'.repeat(36)}`],
+    ])('%s is a GitHub token', async (_name, token) => {
+        expect((await check(healthy(), 'live', { OWNER_PAT: token })).problems).toEqual([]);
     });
 
     test('a repo whose owner has no entry: refused', async () => {
@@ -190,6 +203,28 @@ describe('preflight', () => {
         const done = await check(table);
         expect(done.problems).toEqual([]);
         expect(done.calls.some((c) => c.argv.includes(`repos/${REPO}/git/ref/heads/_release`))).toBe(true);
+    });
+
+    test.each<[string, string, unknown, string]>([
+        ['pulls as {}', `repos/${REPO}/pulls?state=open&per_page=1`, {}, 'cannot read pull requests'],
+        ['pulls as null', `repos/${REPO}/pulls?state=open&per_page=1`, null, 'cannot read pull requests'],
+        ['the status as {}', `repos/${REPO}/commits/${TIP}/status?per_page=1`, {}, 'cannot read commit statuses'],
+        ['the status as null', `repos/${REPO}/commits/${TIP}/status?per_page=1`, null, 'cannot read commit statuses'],
+        [
+            'the status of another commit',
+            `repos/${REPO}/commits/${TIP}/status?per_page=1`,
+            { sha: 'c'.repeat(40), statuses: [] },
+            'cannot read commit statuses',
+        ],
+        [
+            'a status with no list',
+            `repos/${REPO}/commits/${TIP}/status?per_page=1`,
+            { sha: TIP, statuses: null },
+            'cannot read commit statuses',
+        ],
+    ])('%s: refused (#361)', async (_name, path, body, why) => {
+        const done = await check({ ...healthy(), [path]: http(200, body) });
+        expect(done.problems).toEqual([`${REPO}: OWNER_PAT ${why} (HTTP 200)`]);
     });
 
     test('an Actions answer that is JSON but not a runs listing: refused (#361)', async () => {
@@ -307,7 +342,7 @@ describe('preflight', () => {
             return { exitCode: 1, stdout: http(404) };
         };
         const tokens = { owner: 'OWNER_PAT', other: 'OTHER_PAT' };
-        const env = { OWNER_PAT: 'owner-token', OTHER_PAT: 'other-token' };
+        const env = { OWNER_PAT: `ghp_${'o'.repeat(36)}`, OTHER_PAT: `ghs_${'x'.repeat(36)}` };
         const repos = [
             { repo: REPO, mode: 'dry-run' as const },
             { repo: 'other/name', mode: 'dry-run' as const },
@@ -315,8 +350,8 @@ describe('preflight', () => {
         const done = await preflight(run, repos, tokens, env, NOW);
         expect(done.problems).toHaveLength(2);
         expect(seen).toEqual([
-            ['repos/owner/name', 'owner-token'],
-            ['repos/other/name', 'other-token'],
+            ['repos/owner/name', `ghp_${'o'.repeat(36)}`],
+            ['repos/other/name', `ghs_${'x'.repeat(36)}`],
         ]);
     });
 });

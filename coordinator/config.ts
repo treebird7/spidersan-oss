@@ -30,7 +30,12 @@ const PRINCIPAL = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const PROJECT = /^[a-z0-9]{2,12}$/;
 /** A GitHub owner (user or organization) name. */
 const GITHUB_OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
-const ENV_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/;
+/**
+ * A GitHub token variable is named `…_PAT`: a namespace of its own, so an owner cannot be mapped to a variable that
+ * holds another service's credential (CLAUDE_CODE_OAUTH_TOKEN, INVOAK_TOKEN, …; prsan #361). No name the coordinator
+ * passes to a child (main.ts CLI_ENV, REVIEWER_ENV) is one; main.test.ts holds that.
+ */
+export const TOKEN_VARIABLE = /^[A-Z][A-Z0-9_]{0,123}_PAT$/;
 /** What `gh` reads by itself: a token there would stand in for a missing one. */
 const AMBIENT_TOKENS: readonly string[] = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN'];
 
@@ -89,7 +94,7 @@ function parseTokens(value: unknown): Record<string, string> | null {
     if (new Set(names).size !== names.length) return null;
     for (const [owner, name] of Object.entries(value)) {
         if (!GITHUB_OWNER.test(owner)) return null;
-        if (typeof name !== 'string' || !ENV_NAME.test(name) || AMBIENT_TOKENS.includes(name)) return null;
+        if (typeof name !== 'string' || !TOKEN_VARIABLE.test(name) || AMBIENT_TOKENS.includes(name)) return null;
     }
     return value as Record<string, string>;
 }

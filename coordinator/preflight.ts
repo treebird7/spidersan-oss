@@ -31,7 +31,7 @@
 import { tokenVariable } from './config';
 import type { LoopConfig } from './config';
 import { isFullSha } from './decide';
-import { GITHUB_HOST, isToken } from './github';
+import { GITHUB_HOST, branchPath, isToken } from './github';
 import type { TokenFor } from './github';
 import { isRepoSlug } from './readers';
 import type { CommandRunner } from './readers';
@@ -108,17 +108,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/**
- * A branch name as a URL path under `git/ref/heads/`: each `/`-separated part percent-encoded. Null when it is not a
- * name GitHub could hold: empty, an empty, `.` or `..` part, or a control character. A leading `_` or `.` is a name.
- */
-export function branchPath(name: unknown): string | null {
-    if (typeof name !== 'string' || name === '' || name.length > 255 || /[\x00-\x20\x7f]/.test(name)) return null;
-    const parts = name.split('/');
-    if (parts.some((part) => part === '' || part === '.' || part === '..')) return null;
-    return parts.map(encodeURIComponent).join('/');
-}
-
 export interface PreflightRepo {
     repo: string;
     mode: Mode;
@@ -181,7 +170,10 @@ async function checkRepo(
     if (name === undefined) return { problem: `${repo}: no githubTokens entry for its owner` };
     const token = env[name];
     if (token === undefined || token === '') return { problem: `${repo}: ${name} is not set` };
-    if (!isToken(token)) return { problem: `${repo}: ${name} does not hold a token (empty, or has spaces)` };
+    // Checked here, before any gh run: a value that is not a GitHub token is never sent to GitHub.
+    if (!isToken(token)) {
+        return { problem: `${repo}: ${name} does not hold a GitHub token (github_pat_, ghp_, gho_, ghs_ or ghu_)` };
+    }
     const fail = (what: string): Outcome => ({ problem: `${repo}: ${name} ${what}` });
 
     const metaCall = await call(run, token, [`repos/${repo}`]);
@@ -197,13 +189,17 @@ async function checkRepo(
     if (branch === null) return fail('cannot read the default branch name');
 
     const pulls = await call(run, token, [`repos/${repo}/pulls?state=open&per_page=1`]);
-    if (read(pulls) === null) return fail(`cannot read pull requests (${refused(pulls)})`);
+    if (!Array.isArray(read(pulls)?.body)) return fail(`cannot read pull requests (${refused(pulls)})`);
     const refCall = await call(run, token, [`repos/${repo}/git/ref/heads/${branch}`]);
     const ref = read(refCall);
     const tip = ref !== null && isRecord(ref.body) && isRecord(ref.body.object) ? ref.body.object.sha : undefined;
     if (!isFullSha(tip)) return fail(`cannot read contents (${refused(refCall)})`);
     const status = await call(run, token, [`repos/${repo}/commits/${tip}/status?per_page=1`]);
-    if (read(status) === null) return fail(`cannot read commit statuses (${refused(status)})`);
+    const combined = read(status)?.body;
+    // The combined status of that commit, not any JSON (#361); no statuses at all is fine.
+    if (!isRecord(combined) || combined.sha !== tip || !Array.isArray(combined.statuses)) {
+        return fail(`cannot read commit statuses (${refused(status)})`);
+    }
     const runs = await call(run, token, [`repos/${repo}/actions/runs?per_page=1`]);
     const listing = read(runs)?.body;
     // The listing's own shape, not any JSON: an empty listing passes, `{}` does not (#361).

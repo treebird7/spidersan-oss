@@ -157,7 +157,7 @@ const MAX_REVIEW_FILE = 1024 * 1024;
  * no `PRSAN_*` setting from whoever started the coordinator, which could
  * switch its sandbox off.
  */
-const REVIEWER_ENV = [
+export const REVIEWER_ENV = [
     'PATH',
     'HOME',
     'USER',
@@ -178,7 +178,7 @@ const REVIEWER_ENV = [
  * token: under `envoak vault inject` the coordinator holds CLAUDE_CODE_OAUTH_TOKEN, and only
  * triage and prsan need it (sp-sloro). Nor INVOAK_OWNER_SECRET: the coordinator acts as an agent.
  */
-const CLI_ENV = [
+export const CLI_ENV = [
     'PATH',
     'HOME',
     'USER',

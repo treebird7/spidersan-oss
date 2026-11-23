@@ -13,9 +13,12 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { TOKEN_VARIABLE } from './config';
 import {
+    CLI_ENV,
     EXIT_CONFIG,
     EXIT_CREDENTIALS,
+    REVIEWER_ENV,
     childEnv,
     fileIo,
     parseConfig,
@@ -60,6 +63,8 @@ function fakeInvoak(stdout: string): void {
  */
 function fakeGh(status?: number): void {
     const ok = (body: string) => `printf 'HTTP/2.0 200 OK\\r\\nContent-Type: application/json\\r\\n\\r\\n%s' '${body}'`;
+    /** With the file `not-a-listing-<what>` present, that endpoint answers 200 `{}`. */
+    const notListing = (what: string) => `[ -f '${join(dir, `not-a-listing-${what}`)}' ] && { ${ok('{}')}; exit 0; };`;
     const answer =
         status !== undefined
             ? `printf 'HTTP/2.0 ${status} No\\r\\nX-Accepted-GitHub-Permissions: statuses=read\\r\\n\\r\\n{}'; exit 1`
@@ -69,7 +74,9 @@ function fakeGh(status?: number): void {
                   // The coordinator passes gh no variable of the test's own, so a file switches this on.
                   `  *actions/runs*) ` +
                       `[ -f '${join(dir, 'partial')}' ] && { printf 'HTTP/2.0 200 OK\\r\\n'; kill -9 $$; }; ` +
-                      `[ -f '${join(dir, 'not-a-listing')}' ] && { ${ok('{}')}; exit 0; }; ${ok(EMPTY_RUNS)} ;;`,
+                      `${notListing('runs')} ${ok(EMPTY_RUNS)} ;;`,
+                  `  *pulls?state=open*) ${notListing('pulls')} ${ok('[]')} ;;`,
+                  `  *commits/*/status*) ${notListing('status')} ${ok(EMPTY_STATUS)} ;;`,
                   `  *git/ref/heads/main*) ${ok(JSON.stringify({ object: { sha: 'b'.repeat(40) } }))} ;;`,
                   `  *"api -i repos/owner/name --hostname github.com") ${ok(JSON.stringify(META))} ;;`,
                   `  *) ${ok('{}')} ;;`,
@@ -105,6 +112,8 @@ function withRepo(): Record<string, unknown> {
 
 const META = { full_name: 'owner/name', default_branch: 'main' };
 const EMPTY_RUNS = JSON.stringify({ total_count: 0, workflow_runs: [] });
+/** The shape of a real combined status with none on the commit (2026-11-20), for the tip the fake ref names. */
+const EMPTY_STATUS = JSON.stringify({ state: 'pending', sha: 'b'.repeat(40), total_count: 0, statuses: [] });
 const NO_COMMIT = JSON.stringify({ message: `No commit found for SHA: ${'0'.repeat(40)}`, status: '422' });
 
 function writeConfig(value: unknown): void {
@@ -319,7 +328,7 @@ describe('launcher and entrypoint', () => {
 });
 
 describe('GitHub tokens (sp-vkqq)', () => {
-    const TOKEN = 'github_pat_preflight_secret';
+    const TOKEN = `github_pat_${'p'.repeat(82)}`;
 
     test('a repo whose token is not in the environment: exit 77, nothing asked of gh, database not created', () => {
         writeConfig({ hostId: HOST, stateDb: db, ...withRepo() });
@@ -372,14 +381,41 @@ describe('GitHub tokens (sp-vkqq)', () => {
         expect(existsSync(db)).toBe(false);
     });
 
-    test('an Actions answer of {} is no listing: exit 77, database not created (#361)', () => {
+    test.each([
+        ['runs', 'Actions runs'],
+        ['pulls', 'pull requests'],
+        ['status', 'commit statuses'],
+    ])('a 200 {} where the %s listing should be: exit 77, database not created (#361)', (what, named) => {
         writeConfig({ hostId: HOST, stateDb: db, ...withRepo() });
         fakeGh();
-        writeFileSync(join(dir, 'not-a-listing'), '');
+        writeFileSync(join(dir, `not-a-listing-${what}`), '');
         const done = run([LAUNCHER, config], { OWNER_PAT: TOKEN });
         expect(done.exit).toBe(EXIT_CREDENTIALS);
-        expect(done.err).toContain('owner/name: OWNER_PAT cannot read Actions runs (HTTP 200)');
+        expect(done.err).toContain(`owner/name: OWNER_PAT cannot read ${named} (HTTP 200)`);
         expect(existsSync(db)).toBe(false);
+    });
+
+    test("an owner mapped to another service's credential: refused before any gh run (#361)", () => {
+        // The variable name is refused by the config: exit 78.
+        writeConfig({ hostId: HOST, stateDb: db, ...withRepo(), githubTokens: { owner: 'CLAUDE_CODE_OAUTH_TOKEN' } });
+        fakeGh();
+        const named = run([LAUNCHER, config], { CLAUDE_CODE_OAUTH_TOKEN: `sk-ant-oat01-${'d'.repeat(40)}` });
+        expect(named.exit).toBe(EXIT_CONFIG);
+        // A *_PAT variable holding something that is not a GitHub token: exit 77, never sent, never printed.
+        writeConfig({ hostId: HOST, stateDb: db, ...withRepo() });
+        const secret = `sk-ant-oat01-${'d'.repeat(40)}`;
+        const held = run([LAUNCHER, config], { OWNER_PAT: secret });
+        expect(held.exit).toBe(EXIT_CREDENTIALS);
+        expect(held.err).toContain('owner/name: OWNER_PAT does not hold a GitHub token');
+        expect(held.err + held.out).not.toContain(secret);
+        expect(existsSync(join(dir, 'gh.log'))).toBe(false);
+        expect(existsSync(db)).toBe(false);
+    });
+
+    test('no variable the coordinator passes to a child is in the token namespace', () => {
+        for (const name of [...CLI_ENV, ...REVIEWER_ENV]) expect(TOKEN_VARIABLE.test(name)).toBe(false);
+        expect(TOKEN_VARIABLE.test('TREEBIRD7_SPIDERSAN_PAT')).toBe(true);
+        expect(TOKEN_VARIABLE.test('TREEBIRD_ECOSYSTEM_SPIDERSAN_PAT')).toBe(true);
     });
 
     test('--preflight: the check alone, writes probed too; no lock, no database', () => {

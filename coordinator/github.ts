@@ -16,7 +16,7 @@
 
 import { isFullSha } from './decide';
 import type { GateRead, PrRead, PrRef } from './effects';
-import { isGitRef, isPrNumber, isRepoSlug } from './readers';
+import { isPrNumber, isRepoSlug } from './readers';
 import type { CiInput, CommandRunner, TouchesInput } from './readers';
 
 export const PAGE = 100;
@@ -32,6 +32,22 @@ function parse(stdout: unknown): unknown {
     } catch {
         return undefined;
     }
+}
+
+/**
+ * A branch name as a URL path under `git/ref/heads/`: each `/`-separated part percent-encoded. Null when it is not a
+ * name GitHub could hold: empty, an empty, `.` or `..` part, or a control character. A leading `_` or `.` is a name.
+ */
+export function branchPath(name: unknown): string | null {
+    if (typeof name !== 'string' || name === '' || name.length > 255 || /[\x00-\x20\x7f]/.test(name)) return null;
+    const parts = name.split('/');
+    if (parts.some((part) => part === '' || part === '.' || part === '..')) return null;
+    return parts.map(encodeURIComponent).join('/');
+}
+
+/** A branch name GitHub could hold (`branchPath` reads it). Not an argv element: it only ever goes in a URL path. */
+export function isBranch(value: unknown): value is string {
+    return branchPath(value) !== null;
 }
 
 /** `full_name` of a payload's repo object; null when the repo is gone (a deleted fork). */
@@ -77,7 +93,7 @@ export function parseInventory(stdout: unknown, repo: string): Inventory {
             !isPrNumber(entry.number) ||
             typeof entry.draft !== 'boolean' ||
             !isFullSha(head.sha) ||
-            !isGitRef(base.ref) ||
+            !isBranch(base.ref) ||
             repoName(base) !== repo
         ) {
             complete = false;
@@ -113,7 +129,7 @@ export function parsePr(stdout: unknown, ref: PrRef): PrDetail {
     if (repoName(doc.base) !== ref.repo || !isFullSha(doc.head.sha)) return UNKNOWN;
     const head = doc.head.sha;
     if (doc.state === 'open' && doc.merged === false) {
-        if (!isGitRef(doc.base.ref) || typeof doc.changed_files !== 'number') return UNKNOWN;
+        if (!isBranch(doc.base.ref) || typeof doc.changed_files !== 'number') return UNKNOWN;
         if (!Number.isSafeInteger(doc.changed_files) || doc.changed_files < 0) return UNKNOWN;
         return { kind: 'open', head, baseRef: doc.base.ref, changedFiles: doc.changed_files };
     }
@@ -204,11 +220,15 @@ function stateOf(status: unknown, conclusion: unknown): string | null {
  * `pull_request` run of one workflow) are not attempts of each other: both count,
  * and `readCi` wants a required context to agree across them.
  *
- * A run that has not completed adds one `pending` observation, so the commit is not
- * complete while it runs, whatever jobs it lists so far. A completed run whose current
- * attempt has no jobs (a workflow that failed to start, or a re-run cancelled before a
- * job started) adds its own conclusion. Neither can stand in for a required context:
- * they carry no app id. A required context that is neither a
+ * Every run adds an observation of its own state (`pending` until it completes, then its
+ * conclusion) unless that is `success` and its current attempt lists jobs. So a run still
+ * going keeps the commit incomplete whatever jobs it lists so far; a workflow that failed
+ * or was cancelled is not green though every job it listed passed; and one whose current
+ * attempt has no jobs (it failed to start, or a re-run was cancelled first) counts by its
+ * conclusion. `readCi` judges these like any entry: `neutral` and `skipped` are not red,
+ * `failure` is, and a state outside CI_STATES (`cancelled`, `timed_out`,
+ * `startup_failure`, …) is no verdict. A run observation carries no app id and is named
+ * `actions run <id>`, so it can never satisfy a required context. A required context that is neither a
  * job nor a status has no observation at all, and `readCi` gives it no verdict.
  *
  * ponytail: check runs from apps other than Actions (Socket Security on
@@ -246,7 +266,9 @@ export function ciObservations(
     }
     for (const run of runs as readonly Record<string, unknown>[]) {
         const state = stateOf(run.status, run.conclusion) as string;
-        if (state === 'pending' || current.get(run.id as number)?.jobs === 0) {
+        // A run's own state stands beside its jobs unless it is plainly success with jobs listed: a failed workflow
+        // whose listed jobs all passed (it failed expanding a later one) is not green (#361).
+        if (state !== 'success' || current.get(run.id as number)?.jobs === 0) {
             observations.push({ context: `actions run ${run.id as number}`, appId: null, headSha: head, state });
         }
     }
@@ -301,12 +323,16 @@ export const GITHUB_HOST = ['--hostname', 'github.com'] as const;
 /** The token for a repo's owner, or undefined when there is none. */
 export type TokenFor = (repo: string) => string | undefined;
 
+const GITHUB_TOKEN_FORMAT = /^(?:github_pat_[A-Za-z0-9_]{60,240}|gh[opsu]_[A-Za-z0-9]{30,240})$/;
+
 /**
- * A token `gh` will use as given: non-empty, one line, no spaces. An empty `GH_TOKEN` makes `gh` fall back to its
- * stored login.
+ * A GitHub token, by its own prefix: a fine-grained PAT (`github_pat_`), or a classic PAT, OAuth, app or
+ * user-to-server token (`ghp_`, `gho_`, `ghs_`, `ghu_`). Anything else is not sent to GitHub at all: a variable
+ * mapped by mistake to another service's credential (prsan #361) never leaves the host. An empty `GH_TOKEN` would
+ * also make `gh` fall back to its stored login.
  */
 export function isToken(value: unknown): value is string {
-    return typeof value === 'string' && /^[\x21-\x7e]{1,1024}$/.test(value);
+    return typeof value === 'string' && GITHUB_TOKEN_FORMAT.test(value);
 }
 
 /**
@@ -351,10 +377,10 @@ export class GitHub {
     async readPr(ref: PrRef): Promise<PrRead> {
         const detail = await this.detail(ref);
         if (detail.kind !== 'open') return detail;
-        const base = parseBranchTip(
-            await this.#get(ref.repo, `repos/${ref.repo}/git/ref/heads/${detail.baseRef}`),
-            detail.baseRef,
-        );
+        const path = branchPath(detail.baseRef);
+        if (path === null) return UNKNOWN;
+        const tip = await this.#get(ref.repo, `repos/${ref.repo}/git/ref/heads/${path}`);
+        const base = parseBranchTip(tip, detail.baseRef);
         return base === null ? UNKNOWN : { kind: 'open', head: detail.head, base };
     }
 

@@ -41,7 +41,9 @@ runs are separate: they still get an ambient `GH_TOKEN` if one is set.) The toke
 requests, Commit statuses and Actions read; a repo in `live` mode also needs
 Commit statuses write (and Contents and Pull requests write to merge).
 
-Before any pass, each repo's token is checked. It must be set, read the repo,
+Before any pass, each repo's token is checked. It must be set and look like a
+GitHub token (`github_pat_`, `ghp_`, `gho_`, `ghs_` or `ghu_`), checked before
+anything is sent, so a misplaced credential never reaches GitHub. It must read the repo,
 its pull requests, its default branch, commit statuses and Actions runs, and not
 be expired. In `live` mode it must also be allowed to write commit statuses:
 the check posts a status to the all-zero sha, which GitHub refuses with 422
@@ -62,7 +64,9 @@ goes first: the launcher refuses anything after the config path (exit 78).
 CI is read from each head's Actions runs and jobs and its commit statuses, not
 from check runs, which a fine-grained token cannot read on a private repo. A
 re-run counts at the run's current attempt only: an older attempt's jobs are
-history, and a re-run cancelled before any job started reads as cancelled. Check runs from other apps (Socket
+history, and a re-run cancelled before any job started reads as cancelled. A
+workflow run that did not succeed counts by its own conclusion too, so a failed
+run is not green though every job it listed passed. Check runs from other apps (Socket
 Security) are not seen; no repo requires one.
 
 ## Config
@@ -76,7 +80,7 @@ One JSON file. Nothing has a default: a missing field is exit 78.
 | `self`, `owner` | The coordinator's invoak principal, and the owner's |
 | `escalationProject` | The invoak project escalation tasks are created in |
 | `maxReviewsPerPass` | Review runs per pass, over all pull requests |
-| `githubTokens` | GitHub owner → the environment variable holding that owner's token, e.g. `{"treebird7": "TREEBIRD7_SPIDERSAN_PAT", "Treebird-Ecosystem": "TREEBIRD_ECOSYSTEM_SPIDERSAN_PAT"}`. Every repo's owner, spelled as in its key. One variable per owner; not `GH_TOKEN` or `GITHUB_TOKEN` |
+| `githubTokens` | GitHub owner → the environment variable holding that owner's token, e.g. `{"treebird7": "TREEBIRD7_SPIDERSAN_PAT", "Treebird-Ecosystem": "TREEBIRD_ECOSYSTEM_SPIDERSAN_PAT"}`. Every repo's owner, spelled as in its key. One variable per owner, named `…_PAT` (so no other credential the coordinator holds can be mapped by mistake); not `GH_TOKEN` or `GITHUB_TOKEN` |
 | `prsan.home` | Absolute path of the prsan agent directory |
 | `prsan.timeoutMs` | How long one triage or review run may take |
 | `prsan.models` | Model family → what `prsan -m` is given. Needs `luna`, `terra`, `sol` and each repo's `secondFamily` |
